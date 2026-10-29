@@ -1,0 +1,4 @@
+{
+  "description": "staff-guard hooks module",
+  "modules": ["./register.js"]
+}

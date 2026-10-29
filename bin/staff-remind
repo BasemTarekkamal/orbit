@@ -1,0 +1,4 @@
+#!/bin/sh
+# Reminders and self-scheduled follow-ups. See core/tools/remind.py.
+D=$(cd "$(dirname "$0")/.." && pwd -P)
+exec /usr/bin/env python3 "$D/core/tools/remind.py" "$@"

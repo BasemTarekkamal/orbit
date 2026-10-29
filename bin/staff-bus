@@ -1,0 +1,4 @@
+#!/bin/sh
+# The team bus: ask a colleague, post to the team. See core/tools/bus.py.
+D=$(cd "$(dirname "$0")/.." && pwd -P)
+exec /usr/bin/env python3 "$D/core/tools/bus.py" "$@"
