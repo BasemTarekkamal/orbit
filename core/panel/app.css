@@ -418,6 +418,14 @@ pre.raw { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5p
 .job b { font-weight: 600; font-size: 14px; line-height: 1.35; text-wrap: pretty; }
 .job span { font-size: 12.5px; color: var(--ink-3); }
 .hire-bar { margin-top: 18px; display: grid; gap: 16px; animation: rise 220ms var(--ease); }
+.jobs.sits { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.jobs.sits .job { padding: 18px 18px; }
+.jobs.sits .job b { font-size: 15px; }
+.sit-line { margin: -6px 0 14px; }
+.status-line { color: var(--ink-2); }
+.results { display: grid; gap: 14px; }
+.result { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; background: var(--bg); max-width: 80ch; }
+.result .head { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--ink-3); margin-bottom: 6px; }
 @keyframes rise { from { transform: translateY(5px); } to { transform: none; } }
 details.adv > summary { cursor: pointer; color: var(--ink-2); font-size: 13px; width: fit-content; }
 details.adv > summary:hover { color: var(--ink); }

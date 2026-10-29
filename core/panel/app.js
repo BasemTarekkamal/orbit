@@ -15,6 +15,20 @@ const NOTES = [['STATE.md', 'State'], ['TASKS.md', 'Tasks'], ['GOALS.md', 'Goals
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const CH = { telegram: 'Telegram', slack: 'Slack', discord: 'Discord' };
 const CANT = ['Spend money or buy anything', 'Post, email or message anyone but you', 'Log in to accounts', 'See your passwords or private folders'];
+const ACCESS = [
+  ['web', 'Web search and reading', ['web', 'fetch']],
+  ['social', 'TikTok, Instagram, Facebook, X, Reddit, YouTube, Maps', ['apify']],
+  ['browser', 'Headless browser for hard pages', ['browser']],
+  ['docs', 'Documents, scans and photos you send', ['documents', 'files']],
+  ['watch', 'Watchers on pages and feeds', ['watchers']],
+  ['calls', 'Call recordings and voice notes', ['meetings', 'voice']],
+  ['remind', 'Reminders and follow-ups', ['reminders']],
+  ['learn', 'Learns the skills you teach', ['learn']],
+  ['tools', 'Builds its own small tools', ['build_tools']],
+  ['brief', 'A brief every workday morning', ['brief']],
+];
+const COMING = ['Your own browser, acting as you', 'Email inbox', 'Google Docs and Notion', 'GitHub (private)', 'Live calls'];
+const ALWAYS = ['telegram', 'team_room'];
 const SLACK_MANIFEST = `display_information:
   name: Staffroom
   description: My AI team
@@ -106,7 +120,7 @@ function store(get) { try { return get(); } catch (e) { return null; } }
 
 // ---------------------------------------------------------------- state & api
 const S = { data: null, detail: null, detailId: null, detailAt: 0, cat: null, roles: null, settings: null, file: null, fileLoading: '',
-  skill: null, skillLoading: '', pair: null, job: null, theme: store(() => localStorage.getItem('theme')) || '', lastHtml: '', vals: {},
+  skill: null, skillLoading: '', pair: null, job: null, situation: null, theme: store(() => localStorage.getItem('theme')) || '', lastHtml: '', vals: {},
   open: new Set(), busy: new Set() };
 
 async function api(path, body) {
@@ -155,7 +169,7 @@ function route() {
   const m = p.match(/^\/e\/([a-z0-9-]+)(?:\/([a-z]+))?$/);
   if (m) {
     const alias = { memory: 'knowledge', skills: 'knowledge', activity: 'work', abilities: 'manage' };   // older links
-    const tab = alias[m[2]] || m[2] || 'chat';
+    const tab = alias[m[2]] || m[2] || 'work';
     if (!['chat', 'knowledge', 'work', 'manage'].includes(tab)) return { page: 'missing' };
     let f = q.get('f') || '';
     if (m[2] === 'memory' && f && !f.includes(':')) f = 'note:' + f;
@@ -260,7 +274,7 @@ function renderSide(r) {
 function afterRender(r, nav) {
   main.querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w + '%'; });
   main.querySelectorAll('textarea[data-grow]').forEach(grow);
-  if (r.page === 'employee' && r.tab === 'work' && r.v !== 'activity' && r.f) ensureFile(r.id, r.f);
+  if (r.page === 'employee' && r.tab === 'work' && r.v === 'files' && r.f) ensureFile(r.id, r.f);
   if (r.page === 'employee' && r.tab === 'knowledge' && /^(own|team|kit):/.test(r.f)) { const i = r.f.indexOf(':'); ensureSkill(r.id, r.f.slice(0, i), r.f.slice(i + 1)); }
   if (nav && r.page === 'welcome') { const f = $('#w-name'); if (f) f.focus(); }
 }
@@ -333,50 +347,58 @@ PAGES.missing = () => `<div class="empty"><b>No such page.</b><p><a class="link"
 PAGES.welcome = () => {
   const st = S.data.setup || {};
   const step = st.owner ? 2 : 1;
-  const steps = `<ol class="w-steps"><li class="${step > 1 ? 'done' : 'on'}">About you</li><li class="${step === 2 ? 'on' : ''}">Your first employee</li><li>Your phone</li></ol>`;
+  const steps = `<ol class="w-steps"><li class="${step > 1 ? 'done' : 'on'}">You</li><li class="${step === 2 ? 'on' : ''}">Their job</li><li>Your phone</li></ol>`;
   const brand = `<div class="w-brand"><img src="/icon.svg" alt=""><span>Staffroom</span></div>`;
   if (step === 1) {
-    return `<div class="welcome">${brand}<h1>Your own AI employees, on your Mac.</h1>
-      <p class="lede">They research the hard-to-reach places, remember what you tell them, and report back to you, on the Claude plan you already have. Two questions, and your first one starts working.</p>${steps}
+    return `<div class="welcome">${brand}<h1>Build your first AI employee.</h1>
+      <p class="lede">Your AI team. Your work, handled. On the Claude plan you already have, on this Mac.</p>${steps}
       <form class="form w-card" data-form="welcome">
         <div class="field"><label for="w-name">Your first name</label><input id="w-name" class="input lg" name="name" required maxlength="40" autocomplete="given-name" placeholder="Alex" value="${esc(v('welcome', 'name', ''))}"></div>
-        <div class="field"><label for="w-team">Your business</label><input id="w-team" class="input lg" name="team_name" maxlength="60" placeholder="Northwind Coffee" value="${esc(v('welcome', 'team_name', ''))}"></div>
-        <div class="field"><label for="w-about">What it does, for whom, and what matters right now</label><textarea id="w-about" class="textarea" name="about" rows="4" maxlength="6000" placeholder="We roast specialty coffee and sell it online and to cafés. This quarter: keep our price, and find out whether subscriptions are worth it.">${esc(v('welcome', 'about', ''))}</textarea>
-          <span class="hint">Every employee reads this before they work. Brief them like a new hire, in any language.</span></div>
+        <div class="field"><label for="w-team">Your business or your work</label><input id="w-team" class="input lg" name="team_name" maxlength="60" placeholder="Northwind Coffee" value="${esc(v('welcome', 'team_name', ''))}"></div>
+        <div class="field"><label for="w-about">What you do, for whom, and what matters right now</label><textarea id="w-about" class="textarea" name="about" rows="4" maxlength="6000" placeholder="I'm a product designer at a fintech. I review designs against PRDs all day and I'm behind on three threads.">${esc(v('welcome', 'about', ''))}</textarea>
+          <span class="hint">Every employee reads this first. Any language.</span></div>
         <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit">Continue</button></div>
       </form></div>`;
   }
   if (!S.roles) return loading;
-  return `<div class="welcome wide">${brand}<h1>What should your first employee do?</h1>
-    <p class="lede">Pick one; you can hire more later. They introduce themselves and do a first piece of real work for ${esc(S.data.team_name)} straight away.</p>${steps}${jobPicker('welcome')}</div>`;
+  const sit = situationOf();
+  const h1 = sit ? 'What should they take off your plate?' : 'What do you do?';
+  return `<div class="welcome wide">${brand}<h1>${h1}</h1>${steps}${jobPicker('welcome')}</div>`;
 };
 
+function situationOf() { return (S.roles.situations || []).find((x) => x.id === S.situation) || null; }
 function jobPicker(from) {
-  const roles = S.roles.roles;
-  const order = roles.filter((x) => x.id !== 'blank').concat(roles.filter((x) => x.id === 'blank'));
-  const cards = order.map((x) => `<button type="button" class="job ${S.job === x.id ? 'on' : ''}" data-act="job" data-role="${x.id}" aria-pressed="${S.job === x.id}"><b>${esc(x.outcome || x.title)}</b><span>${esc(x.title)}</span></button>`).join('');
+  const roles = S.roles.roles, sits = S.roles.situations || [];
+  const sit = situationOf();
+  if (!sit) {
+    return `<div class="jobs sits">${sits.map((x) => `<button type="button" class="job" data-act="situation" data-id="${x.id}"><b>${esc(x.title)}</b><span>${esc(x.blurb)}</span></button>`).join('')}</div>`;
+  }
+  const order = sit.jobs.map((id) => roles.find((r) => r.id === id)).filter(Boolean);
+  const cards = order.map((x) => `<button type="button" class="job ${S.job === x.id ? 'on' : ''}" data-act="job" data-role="${x.id}" aria-pressed="${S.job === x.id}"><b>${esc(x.title)}</b><span>${esc(x.role || 'Your own job')}</span></button>`).join('');
+  const back = `<p class="meta sit-line">${esc(sit.title)} · <a class="link" href="#" data-act="situation" data-id="">change</a>${sit.id === 'other' ? '' : ` · <a class="link" href="#" data-act="situation" data-id="other">all jobs</a>`}</p>`;
   const sel = roles.find((x) => x.id === S.job);
-  if (!sel) return `<div class="jobs">${cards}</div>`;
+  if (!sel) return back + `<div class="jobs">${cards}</div>`;
   const custom = sel.id === 'blank';
   const name = v('hire', 'name', sel.names[0] || '');
-  const owners = S.data.owners.map((o) => `<option ${o.name === v('hire', 'supervisor', S.data.me) ? 'selected' : ''}>${esc(o.name)}</option>`).join('');
-  const advanced = from === 'hire' ? `<details class="adv"><summary>Customize the role, model and abilities</summary><div class="form mt">
-      ${custom ? '' : `<div class="field"><label for="h-role">Job title</label><input id="h-role" class="input" name="role" maxlength="120" value="${esc(v('hire', 'role', sel.role))}"></div>
-      <div class="field"><label for="h-scope">What they own</label><textarea id="h-scope" class="textarea" name="scope" rows="3" maxlength="2000">${esc(v('hire', 'scope', sel.scope))}</textarea></div>`}
-      <div class="form-row"><div class="field"><label for="h-sup">Reports to</label><select id="h-sup" class="select" name="supervisor">${owners}</select></div>
-      <div class="field"><label for="h-model">Model</label><select id="h-model" class="select" name="model">${MODELS.map((m) => `<option value="${m}" ${m === v('hire', 'model', sel.model || 'sonnet') ? 'selected' : ''}>${m}${m === 'sonnet' ? ' (balanced)' : m === 'haiku' ? ' (lightest on your plan)' : ' (strongest, heaviest)'}</option>`).join('')}</select></div>
-      <div class="field"><label for="h-preset">Abilities</label><select id="h-preset" class="select" name="preset">${sel.abilities ? `<option value="role">What this role needs (${sel.abilities.length})</option>` : ''}<option value="default">Default set</option><option value="super">Super agent (everything)</option></select></div></div>
-    </div></details>` : '';
+  const on = new Set(v('hire', 'access', null) || ACCESS.filter(([, , ids]) => !sel.abilities || ids.some((a) => sel.abilities.includes(a))).map(([k]) => k));
+  const access = `<div class="field"><span class="lbl">What they get access to</span><div class="chips">${ACCESS.map(([k, l]) => `<label class="chip ${on.has(k) ? 'on' : ''}"><input class="sr" type="checkbox" name="access" value="${k}" ${on.has(k) ? 'checked' : ''}>${esc(l)}</label>`).join('')}</div>
+    <span class="hint">Always: memory, the safety guard, your chat. Coming: ${COMING.join(' · ')}. Until then they prepare and you send.</span></div>`;
+  const status = sel.today ? `<p class="small status-line">${esc(sel.today)}${sel.soon ? ` <span class="faint">Soon: ${esc(sel.soon)}</span>` : ''}</p>` : '';
+  const model = v('hire', 'model', sel.model || 'sonnet');
   const form = `<form class="w-card hire-bar" data-form="hire" data-from="${from}">
       <div class="form-row"><div class="field"><label for="h-name">Their name</label><input id="h-name" class="input lg" name="name" required maxlength="60" value="${esc(name)}" placeholder="Sara">
         ${sel.names.length ? `<div class="chips">${sel.names.map((n) => `<button type="button" class="chip ${name === n ? 'on' : ''}" data-act="name" data-name="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}</div>
       ${custom ? `<div class="field"><label for="h-role">Job title</label><input id="h-role" class="input lg" name="role" required maxlength="120" value="${esc(v('hire', 'role', ''))}" placeholder="Bookkeeper"></div>` : ''}</div>
-      ${custom ? `<div class="field"><label for="h-scope">The job, in your own words</label><textarea id="h-scope" class="textarea" name="scope" rows="3" required maxlength="2000" placeholder="Keep my books from the bank statements I send each month: sort every line, flag anything odd, and send me a one-page summary.">${esc(v('hire', 'scope', ''))}</textarea></div>`
-        : `<ul class="gets">${sel.gets.map((g) => `<li>${icon('check')}<span>${esc(g)}</span></li>`).join('')}</ul>`}
-      ${advanced}
-      <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit" data-hire-label>${icon('plus')}Hire ${esc(name || 'them')}</button><span class="meta">They introduce themselves and do a first task in about a minute, on your Claude plan.</span></div>
+      ${custom ? `<div class="field"><label for="h-scope">The job, in your own words</label><textarea id="h-scope" class="textarea" name="scope" rows="3" required maxlength="2000" placeholder="Keep my books from the bank statements I send each month: sort every line, flag anything odd, send me a one-page summary.">${esc(v('hire', 'scope', ''))}</textarea></div>` : status}
+      ${access}
+      <details class="adv"><summary>Job title, scope and model</summary><div class="form mt">
+        ${custom ? '' : `<div class="field"><label for="h-role">Job title</label><input id="h-role" class="input" name="role" maxlength="120" value="${esc(v('hire', 'role', sel.role))}"></div>
+        <div class="field"><label for="h-scope">What they own</label><textarea id="h-scope" class="textarea" name="scope" rows="3" maxlength="2000">${esc(v('hire', 'scope', sel.scope))}</textarea></div>`}
+        <div class="field"><label for="h-model">Model</label><select id="h-model" class="select auto" name="model">${MODELS.map((m) => `<option value="${m}" ${m === model ? 'selected' : ''}>${m}${m === 'sonnet' ? ' (balanced)' : m === 'haiku' ? ' (lightest on your plan)' : ' (strongest, heaviest)'}</option>`).join('')}</select></div>
+      </div></details>
+      <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit" data-hire-label>${icon('plus')}Hire ${esc(name || 'them')}</button><span class="meta">They start with a real first task, in about a minute.</span></div>
     </form>`;
-  return `<div class="jobs">${cards}</div>${form}`;
+  return back + `<div class="jobs">${cards}</div>${form}`;
 }
 function pickJob(id, rerender = true) {
   const x = S.roles.roles.find((y) => y.id === id); if (!x) return;
@@ -515,7 +537,7 @@ PAGES.employee = (r) => {
   if (!e) return `<div class="empty"><b>No employee called “${esc(r.id)}”.</b><p><a class="link" href="/team">Back to the team</a></p></div>`;
   const dt = S.detail && S.detailId === r.id ? S.detail : null;
   const nKnow = dt ? dt.skills.own.length + dt.skills.team.length : '';
-  const tabs = [['chat', 'Chat', ''], ['knowledge', 'Knowledge', nKnow || ''], ['work', 'Work', dt && dt.files.length ? dt.files.length : ''], ['manage', 'Manage', '']];
+  const tabs = [['work', 'Work', ''], ['chat', 'Chat', ''], ['knowledge', 'Knowledge', nKnow || ''], ['manage', 'Manage', '']];
   const body = { chat: tabChat, knowledge: tabKnowledge, work: tabWork, manage: tabManage }[r.tab](e, dt, r);
   return `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span>·</span><span>reports to ${esc(e.supervisor)}</span><span>·</span>${statusHtml(e)}</div></div></header>
     <nav class="tabs">${tabs.map(([k, l, n]) => `<a href="/e/${e.id}/${k}" class="${r.tab === k ? 'on' : ''}">${l}${n !== '' ? `<small>${esc(n)}</small>` : ''}</a>`).join('')}</nav>${body}`;
@@ -529,13 +551,12 @@ function tabChat(e, dt) {
   const tries = (dt && dt.try) || [];
   const setup = S.data.setup || {};
   const phone = setup.paired
-    ? `<section><h3>On your phone</h3><p class="muted small">Message ${esc(e.name)} from your chat: <code>/${esc(e.id)}</code> on Telegram, <code>@${esc(e.id)}</code> on Slack or Discord, then your question. Voice notes work too.</p></section>`
-    : `<section class="phone-cta"><h3>On your phone</h3><p class="muted small">Talk to ${esc(e.name)} from Telegram, Slack or Discord, voice notes included.</p><a class="btn btn-sm mt" href="/connect">${icon('phone')}Connect your phone</a></section>`;
+    ? `<section><h3>On your phone</h3><p class="muted small"><code>/${esc(e.id)}</code> on Telegram, <code>@${esc(e.id)}</code> on Slack or Discord. Voice notes work.</p></section>`
+    : `<section class="phone-cta"><h3>On your phone</h3><a class="btn btn-sm" href="/connect">${icon('phone')}Connect your phone</a></section>`;
   const rail = `<aside class="rail">
     <section><h3>Try asking</h3><div class="chips col">${tries.map((t) => `<button type="button" class="chip try" data-act="try" data-emp="${e.id}" data-text="${esc(t)}">${esc(t)}</button>`).join('')}
       <button type="button" class="chip try" data-act="try" data-emp="${e.id}" data-text="From now on, ">“From now on, …” teaches a skill</button></div></section>
-    <section><h3>${esc(e.name)} can</h3><ul class="can">${(dt ? dt.can : []).map((c) => `<li>${icon('check')}<span>${esc(c)}</span></li>`).join('')}</ul></section>
-    <section><h3>…and never</h3><ul class="cant">${CANT.map((c) => `<li>${icon('x')}<span>${esc(c)}</span></li>`).join('')}</ul></section>
+    <section><h3>Never</h3><ul class="cant">${CANT.map((c) => `<li>${icon('x')}<span>${esc(c)}</span></li>`).join('')}</ul></section>
     ${phone}</aside>`;
   return `<div class="chat"><div class="chat-main">${thread}<div data-live-slot="${e.id}">${liveCard(e.id)}</div>
     <form class="composer" data-form="message" data-emp="${e.id}"><div class="box"><textarea id="composer-${e.id}" name="text" data-grow rows="1" placeholder="Message ${esc(e.name)}…" aria-label="Message" maxlength="4000">${esc(v('message:' + e.id, 'text', ''))}</textarea>
@@ -614,14 +635,24 @@ async function ensureSkill(emp, where, name) {
 
 function tabWork(e, dt, r) {
   if (!dt) return loading;
-  const activity = r.v === 'activity';
-  const subs = `<div class="subtabs"><a href="/e/${e.id}/work" class="${activity ? '' : 'on'}">Files${dt.files.length ? ' · ' + dt.files.length : ''}</a><a href="/e/${e.id}/work?v=activity" class="${activity ? 'on' : ''}">Activity${dt.runs.length ? ' · ' + dt.runs.length : ''}</a></div>`;
+  const activity = r.v === 'activity', files = r.v === 'files';
+  const subs = `<div class="subtabs"><a href="/e/${e.id}/work" class="${activity || files ? '' : 'on'}">Latest</a><a href="/e/${e.id}/work?v=files" class="${files ? 'on' : ''}">Files${dt.files.length ? ' · ' + dt.files.length : ''}</a><a href="/e/${e.id}/work?v=activity" class="${activity ? 'on' : ''}">Activity${dt.runs.length ? ' · ' + dt.runs.length : ''}</a></div>`;
   if (activity) return subs + runsHtml(dt);
-  if (!dt.files.length) return subs + `<div class="empty"><b>No work yet.</b><p>Files ${esc(e.name)} writes (research notes, scrapes, tools, the growth log) appear here, readable in place.</p></div>`;
+  if (!files) {                                   // the latest results, newest first, with the live view on top
+    const live = liveCard(e.id);
+    const mine = dt.chat.filter((m) => m.from_id === e.id).slice(-5).reverse();
+    const results = mine.length ? `<div class="results">${mine.map((m) => `<article class="result"><div class="head"><span>${fmtTime(m.ts)}</span>${m.to_id && m.to_id !== 'owner' && m.to_id !== e.id ? `<span>→ ${esc(nameOf(m.to_id))}</span>` : ''}${channelBadge(m.channel)}</div><div class="body md rich">${bodyHtml(m.body, e.id)}</div>${receiptHtml(m.receipt, 'res:' + (m.id || m.ts))}</article>`).join('')}</div>`
+      : live ? '' : `<div class="empty"><b>Nothing yet.</b><p>${esc(e.name)}'s results show up here as they finish.</p></div>`;
+    return subs + `<div class="chat"><div class="chat-main"><div data-live-slot="${e.id}">${live}</div>${results}
+      <form class="composer" data-form="message" data-emp="${e.id}"><div class="box"><textarea id="composer-${e.id}" name="text" data-grow rows="1" placeholder="Tell ${esc(e.name)} something…" aria-label="Message" maxlength="4000">${esc(v('message:' + e.id, 'text', ''))}</textarea>
+      <div class="bar"><span class="meta">Enter to send</span><button class="btn btn-primary btn-sm" type="submit">${icon('send')}Send</button></div></div></form></div>
+      <aside class="rail"><section><h3>Try asking</h3><div class="chips col">${(dt.try || []).map((t) => `<button type="button" class="chip try" data-act="try" data-emp="${e.id}" data-text="${esc(t)}">${esc(t)}</button>`).join('')}</div></section></aside></div>`;
+  }
+  if (!dt.files.length) return subs + `<div class="empty"><b>No files yet.</b><p>Files ${esc(e.name)} writes (research notes, scrapes, tools, the growth log) appear here, readable in place.</p></div>`;
   const groups = {};
   for (const f of dt.files) { const g = f.path.split('/')[0]; (groups[g] ||= []).push(f); }
   const list = Object.entries(groups).map(([g, fs]) => `<h3>${esc(g)}</h3>${fs.slice(0, 60).map((f) => f.text
-    ? `<a href="/e/${e.id}/work?f=${encodeURIComponent(f.path)}" class="${r.f === f.path ? 'on' : ''}" title="${esc(f.path)} · ${fmtTime(f.mtime)}">${icon('file')}<span>${esc(f.path.slice(g.length + 1))}</span></a>`
+    ? `<a href="/e/${e.id}/work?v=files&f=${encodeURIComponent(f.path)}" class="${r.f === f.path ? 'on' : ''}" title="${esc(f.path)} · ${fmtTime(f.mtime)}">${icon('file')}<span>${esc(f.path.slice(g.length + 1))}</span></a>`
     : `<span class="faint small pad">${esc(f.path.slice(g.length + 1))}</span>`).join('')}`).join('');
   let preview = `<div class="empty"><p>Pick a file to read it here. Newest first.</p></div>`;
   if (r.f) {
@@ -699,8 +730,9 @@ PAGES.abilities = () => {
 // ---- hire
 PAGES.hire = (r) => {
   if (!S.roles) return loading;
-  if (r.role && !S.job) pickJob(r.role, false);
-  return `<header class="page-head"><div><h1>Hire someone</h1><p class="sub">What should they do? Every employee gets the whole toolbelt; the job sets their scope, abilities and model. They start with a real piece of work for you.</p></div></header>${jobPicker('hire')}`;
+  if (r.role && !S.job) { S.situation = S.situation || 'other'; pickJob(r.role, false); }
+  const sit = situationOf();
+  return `<header class="page-head"><div><h1>${sit ? 'What should they take off your plate?' : 'Build an AI employee.'}</h1><p class="sub">${sit ? 'Pick a job; they start with a real first task.' : 'First, what do you do?'}</p></div></header>${jobPicker('hire')}`;
 };
 
 // ---- settings
@@ -827,10 +859,11 @@ document.addEventListener('click', async (ev) => {
   if (act === 'theme') { setTheme(b.dataset.v); render(true); }
   else if (act === 'more') { const body = b.previousElementSibling; body.classList.remove('clamp'); b.remove(); }
   else if (act === 'job') { pickJob(b.dataset.role); }
+  else if (act === 'situation') { ev.preventDefault(); S.situation = b.dataset.id || null; S.job = null; delete S.vals.hire; render(true); }
   else if (act === 'name') { (S.vals.hire ||= {}).name = b.dataset.name; render(true); }
   else if (act === 'try') {
     const emp = b.dataset.emp;
-    if (route().page !== 'employee' || route().id !== emp || route().tab !== 'chat') { (S.vals['message:' + emp] ||= {}).text = b.dataset.text; go('/e/' + emp); return; }
+    if (!document.getElementById('composer-' + emp)) { (S.vals['message:' + emp] ||= {}).text = b.dataset.text; go('/e/' + emp); return; }
     const ta = document.getElementById('composer-' + emp);
     if (ta) { ta.value = b.dataset.text; (S.vals['message:' + emp] ||= {}).text = ta.value; grow(ta); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   }
@@ -921,8 +954,8 @@ document.addEventListener('submit', async (ev) => {
       const sel = S.roles.roles.find((x) => x.id === S.job) || {};
       const body = { kind: 'hire', name: fd.get('name'), role: fd.get('role') || sel.role, scope: fd.get('scope') || sel.scope,
         supervisor: fd.get('supervisor') || S.data.me, model: fd.get('model') || sel.model || 'sonnet' };
-      const preset = fd.get('preset') || (sel.abilities ? 'role' : 'default');
-      if (preset === 'role' && sel.abilities) body.abilities = sel.abilities; else body.preset = preset;
+      const picked = new Set(fd.getAll('access'));
+      body.abilities = ALWAYS.concat(...ACCESS.filter(([k]) => picked.has(k)).map(([, , ids]) => ids));
       const r = await api('/api/order', body);
       const id = (r.message.match(/\/([a-z0-9-]+)$/) || [])[1];
       delete S.vals.hire; S.job = null;

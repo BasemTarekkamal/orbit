@@ -1,8 +1,25 @@
 # Staffroom
 
-**Turn your own Claude Code into a team of AI employees.** They research anything, work on their own
-schedule, learn what you teach them, talk to each other, and report to you on Telegram, Slack or
-Discord. Everything runs on your Mac, signed in with your own Claude account.
+**Your AI team. Your work, handled.**
+
+Build your first AI employee in two minutes and watch it do a real piece of your work. It runs on
+your Mac, on the Claude plan you already have (no API bill), and it can't spend, post or message
+anyone but you. Early: built in the open, tested by a few people; tell us what breaks.
+
+**Who it's for:** founders who can't hire yet, freelancers with clients, product and design leads
+drowning in reviews and threads, agencies and recruiters. You say what you do; it proposes the jobs:
+
+- Research where normal AI can't: TikTok, Instagram, Facebook, X, Reddit, YouTube, Maps
+- Watch competitors and speak only when something changes
+- Keep your books from the statements you send, read-only
+- Review designs against the PRD; keep you posted on PRD and commit changes
+- Handle your clients' questions in your voice (you send), chase deadlines and invoices
+- Find candidates and leads, screen them, draft the outreach; find jobs and tailor applications
+- Turn your calls into minutes with action items and reminders
+
+Every job card says what works today and what's coming (email, docs, GitHub, your own browser acting
+as you, live calls). Until an action can go out with your tap, your employee prepares it and you
+send it.
 
 ## Get started
 
