@@ -5,7 +5,7 @@ schedule, learn what you teach them, talk to each other, and report to you on Te
 Discord. Everything runs on your Mac, signed in with your own Claude account.
 
 ```bash
-git clone <this repo> ~/staffroom && ~/staffroom/install.sh
+git clone https://github.com/BasemTarekkamal/staffroom ~/staffroom && ~/staffroom/install.sh
 ```
 
 Setup takes about five minutes: it checks Claude Code, asks about your business, connects your chat
