@@ -30,7 +30,7 @@ const TEAM_FILES = ['feed.jsonl', 'orders.jsonl', 'staffd_state.json', 'pending_
 
 const BLOCKED_COMMANDS = [
   [/\b(curl|wget|nc|ncat|netcat|telnet|ssh|scp|sftp|ftp|rsync|mail|sendmail|mutt|osascript)\b/i, 'network or messaging command'],
-  [/api\.telegram\.org/i, 'raw Telegram API (only the harness may message the owners)'],
+  [/api\.telegram\.org|slack\.com\/api|discord(app)?\.com\/api|gateway\.discord\.gg/i, 'raw Telegram/Slack/Discord API (only the harness may message the owners)'],
   [/\bgit\s+(push|remote)\b/i, 'git push/remote'],
   [/(^|[\s;&|(`$])gh(\s|$)|api\.github\.com/i, 'GitHub CLI/API'],
   [/(^|[\s;&|(`$\/])claude(-code)?(\s|$)|@anthropic-ai\/claude-code/i, 'nested claude run or plugin install'],

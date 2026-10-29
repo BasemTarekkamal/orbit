@@ -305,6 +305,9 @@ a.row:hover, .row.click:hover { background: var(--bg-2); cursor: pointer; }
 .files a:hover { background: var(--bg-3); color: var(--ink); }
 .files a.on { background: var(--bg-4); color: var(--ink); }
 .files a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.demo-bar { margin-bottom: 18px; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--accent-soft); color: var(--ink); font-size: 13px; line-height: 1.5; }
+.demo-bar b { font-weight: 600; }
+.demo-bar code { background: var(--bg); }
 .preview { min-height: 200px; }
 .preview p.err { color: var(--danger-text); font-size: 12.5px; margin-bottom: 10px; }
 .textarea.mono { font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }

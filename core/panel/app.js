@@ -158,7 +158,7 @@ function renderSide(r) {
   }).join('');
   const today = d.employees.reduce((a, e) => a + e.use_today, 0);
   side.innerHTML = `
-    <div class="brand"><img src="/icon.svg" alt=""><div><b>${esc(d.team_name)}</b><span class="meta"><i class="dot ${d.online ? 'active' : 'off'}"></i>${d.online ? 'Running' : 'Service stopped'}</span></div></div>
+    <div class="brand"><img src="/icon.svg" alt=""><div><b>${esc(d.team_name)}${d.demo ? ' <span class="badge accent">demo</span>' : ''}</b><span class="meta"><i class="dot ${d.online ? 'active' : 'off'}"></i>${d.online ? 'Running' : 'Service stopped'}</span></div></div>
     <nav class="nav">
       <a href="/" class="${on('today')}">${icon('home')}Today</a>
       <a href="/team" class="${on('team')}">${icon('users')}Team</a>
@@ -232,7 +232,8 @@ PAGES.today = () => {
   const orders = d.orders.slice(-6).reverse();
   const ordHtml = orders.length ? `<div class="list mini">${orders.map((o) => `<div class="row row-2"><div><div class="small">${esc(o.summary)}</div><div class="meta">${esc(o.by)} · ${fmtTime(o.ts)}${o.result ? ' · ' + esc(o.result) : ''}</div></div><span class="badge ${o.status === 'failed' ? 'danger' : ''}">${esc(o.status)}</span></div>`).join('')}</div>` : `<p class="quiet">No orders yet.</p>`;
 
-  return `<header class="greet"><h1>${greet}, ${esc(d.me)}.</h1><p class="sub">${sub}</p></header>${setup}
+  const demo = d.demo ? `<div class="demo-bar"><b>A pretend team, to look around.</b> The business, the people and their findings are invented (links end in .example) and the replies are canned: no Claude run, no bot. Chat with someone anyway, teach a skill, change abilities. Your own team starts with <code>staff setup</code>.</div>` : '';
+  return `${demo}<header class="greet"><h1>${greet}, ${esc(d.me)}.</h1><p class="sub">${sub}</p></header>${setup}
     <div class="cols"><div>
       <section><div class="sec-head"><h2>Needs you</h2>${d.needs.length ? `<span class="meta">${d.needs.length}</span>` : ''}</div>${needs}</section>
       <section><div class="sec-head"><h2>Today</h2><span class="meta">the team room</span></div>${timeline}</section>
@@ -495,7 +496,12 @@ PAGES.settings = () => {
   const times = Object.entries(JOB_LABELS).map(([k, l]) => `<div class="field"><label for="t-${k}">${l}</label><input id="t-${k}" class="input" name="jobs.${k}" value="${esc(v('settings', 'jobs.' + k, s.jobs[k]))}" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" inputmode="numeric" placeholder="08:30"></div>`).join('');
   const budget = Number(s.apify.monthly_budget_usd || 5), spent = Number(s.apify.spent || 0);
   const pct = budget ? Math.min(100, (spent / budget) * 100) : 0;
-  const pending = d.pending.length ? `<div class="list">${d.pending.map((p) => `<div class="row row-3"><div><div class="title">${esc(p.name || 'Someone')} ${p.username ? `<span class="muted">@${esc(p.username)}</span>` : ''}</div><div class="meta">Telegram id ${esc(p.id)} · ${fmtTime(p.at)}</div></div><button class="btn btn-sm btn-primary" data-act="owner" data-id="${esc(p.id)}" data-do="approve" data-name="${esc(p.name || '')}">Make owner</button><button class="btn btn-sm" data-act="owner" data-id="${esc(p.id)}" data-do="ignore">Ignore</button></div>`).join('')}</div>` : '';
+  const CH = { telegram: 'Telegram', slack: 'Slack', discord: 'Discord' };
+  const real = d.owners.filter((o) => !o.local);
+  const pending = d.pending.length ? `<div class="list">${d.pending.map((p) => `<div class="row row-3"><div><div class="title">${esc(p.name || 'Someone')} ${p.username ? `<span class="muted">@${esc(p.username)}</span>` : ''}</div><div class="meta">${esc(CH[p.channel] || 'Chat')} id ${esc(String(p.id).replace(/^[a-z]+:/, ''))} · ${fmtTime(p.at)}</div></div>
+    <span class="status"><button class="btn btn-sm btn-primary" data-act="owner" data-id="${esc(p.id)}" data-do="approve" data-name="${esc(p.name || '')}">Make owner</button>${real.length ? `<select class="select auto" data-into="${esc(p.id)}" aria-label="Same person as"><option value="">Same person as…</option>${real.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>` : ''}</span>
+    <button class="btn btn-sm" data-act="owner" data-id="${esc(p.id)}" data-do="ignore">Ignore</button></div>`).join('')}</div>` : '';
+  const conn = Object.entries(CH).map(([k, l]) => { const c = s.channels[k] || {}; return `<dt>${l} bot</dt><dd>${c.on ? 'connected' : `not set · <code>staff secret ${k}</code>`}${c.on ? (c.team_chat ? ` · team chat <code>${esc(c.team_chat)}</code>` : ` · no team chat yet · <code>staff group &lt;chat id&gt; --channel ${k}</code>`) : ''}</dd>`; }).join('');
   return `<header class="page-head"><div><h1>Settings</h1></div></header>
   <div class="settings">
   <form class="settings" data-form="settings">
@@ -513,12 +519,11 @@ PAGES.settings = () => {
     <div class="save-bar"><button class="btn btn-primary" type="submit">Save settings</button></div>
   </form>
   <section id="access"><h2>Access</h2><p class="desc">Owners can direct every employee. Only approve people you know.</p>
-    <dl class="kv">${d.owners.map((o) => `<dt>${esc(o.name)}</dt><dd>${o.local ? 'this Mac only (pair on Telegram: message the bot, then approve yourself here)' : 'Telegram id ' + esc(o.id)}</dd>`).join('')}</dl>
+    <dl class="kv">${d.owners.map((o) => `<dt>${esc(o.name)}</dt><dd>${o.local ? 'this Mac only (message your bot, then approve yourself here)' : esc((o.addresses || []).join(' · '))}</dd>`).join('')}</dl>
     ${pending ? `<h3>Messaged your bot</h3>${pending}` : `<p class="meta">Nobody is waiting for approval.</p>`}</section>
-  <section><h2>Connections</h2>
+  <section><h2>Connections</h2><p class="desc">Your employees answer on Telegram, Slack or Discord through bots you create; each one talks only to your bots. Setup steps are in the kit's <code>docs/channels.md</code>.</p>
     <dl class="kv"><dt>Claude</dt><dd>${s.claude.ok ? `signed in (${esc(s.claude.note)})` : `<span class="badge danger">not signed in</span> run <code>claude auth login</code>`} · runs on ${s.auth === 'api_key' ? 'your API key' : 'your subscription'}</dd>
-      <dt>Telegram bot</dt><dd>${s.telegram ? 'connected' : 'not set · <code>staff secret telegram</code>'}</dd>
-      <dt>Team group</dt><dd>${s.group_id ? esc(s.group_id) : 'none · add the bot to a group as admin, then <code>staff group &lt;chat id&gt;</code>'}</dd>
+      ${conn}
       <dt>Service</dt><dd>${d.online ? 'running' : '<span class="badge danger">stopped</span> · <code>staff start</code>'} · panel on port ${s.port}</dd>
       <dt>Team folder</dt><dd><code>${esc(s.home)}</code></dd><dt>Kit</dt><dd><code>${esc(s.kit)}</code></dd></dl></section>
   <section><h2>Appearance</h2><div class="seg" role="group" aria-label="Appearance"><button data-act="theme" data-v="" class="${S.theme === '' ? 'on' : ''}">Match the Mac</button><button data-act="theme" data-v="light" class="${S.theme === 'light' ? 'on' : ''}">Light</button><button data-act="theme" data-v="dark" class="${S.theme === 'dark' ? 'on' : ''}">Dark</button></div></section>
@@ -619,6 +624,12 @@ document.addEventListener('click', async (ev) => {
 document.addEventListener('change', async (ev) => {
   const sel = ev.target.closest('select[data-field]');
   if (sel) { await order({ kind: 'set_field', employee_id: sel.dataset.emp, field: sel.dataset.field, value: sel.value }); return; }
+  const into = ev.target.closest('select[data-into]');
+  if (into && into.value) {
+    try { const r = await api('/api/owner', { id: into.dataset.into, do: 'approve', into: into.value }); toast(r.message); S.settings = await api('/api/settings'); await refresh(true); }
+    catch (e) { toast(e.message, 'err'); }
+    return;
+  }
   const chip = ev.target.closest('label.chip');
   if (chip) chip.classList.toggle('on', ev.target.checked);
 });

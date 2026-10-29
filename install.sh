@@ -17,7 +17,7 @@ if ! command -v claude >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/claude" ] && 
 fi
 
 echo "1/4  Python packages for the page reader, the browser and documents (your user only)…"
-python3 -m pip install --user --quiet --upgrade requests beautifulsoup4 playwright pypdf
+python3 -m pip install --user --quiet --upgrade requests beautifulsoup4 playwright pypdf websocket-client
 
 echo "2/4  The headless browser (Chromium for Playwright, ~150 MB)…"
 python3 -m playwright install chromium

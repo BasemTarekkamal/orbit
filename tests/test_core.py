@@ -216,7 +216,7 @@ class Panel(unittest.TestCase):
             return e.code, dict(e.headers), e.read().decode()
 
     def auth(self, extra=None):
-        return {"Cookie": "sr=" + self.tok, **(extra or {})}
+        return {"Cookie": "sr%d=%s" % (self.panel.port(), self.tok), **(extra or {})}
 
     def test_needs_the_token(self):
         self.assertEqual(self.req("/")[0], 401)
@@ -288,6 +288,25 @@ class Panel(unittest.TestCase):
         code, _, body = self.req("/api/order", b"not json", self.auth({"Origin": self.base, "content-type": "application/json"}), raw=True)
         self.assertEqual(code, 400)
 
+    def test_access_approvals(self):
+        h = self.auth({"Origin": self.base})
+        team.jsave(self.panel.PENDING, {"slack:U7": {"name": "Sam", "channel": "slack", "at": "2026-10-29 10:00"},
+                                        "discord:5": {"name": "Sam", "channel": "discord", "at": "2026-10-29 10:01"}})
+        st = json.loads(self.req("/api/state", headers=self.auth())[2])
+        self.assertIn("Sam messaged your Slack bot", [n["title"] for n in st["needs"]])
+        code, _, body = self.req("/api/owner", {"id": "slack:U7", "do": "approve", "name": "Sam"}, h)
+        self.assertEqual(code, 200, body)
+        self.assertEqual(engine.registry()["owners"]["slack:U7"]["name"], "Sam")
+        code, _, body = self.req("/api/owner", {"id": "discord:5", "do": "approve", "into": "slack:U7"}, h)
+        self.assertEqual(code, 200, body)
+        self.assertEqual(engine.owner_key("discord:5"), "slack:U7")
+        s = json.loads(self.req("/api/settings", headers=self.auth())[2])
+        self.assertEqual(sorted(s["channels"]), ["discord", "slack", "telegram"])
+        st = json.loads(self.req("/api/state", headers=self.auth())[2])
+        sam = next(o for o in st["owners"] if o["id"] == "slack:U7")
+        self.assertEqual(sam["addresses"], ["Slack id U7", "Discord id 5"])
+        self.assertEqual(self.req("/api/owner", {"id": "slack:U7", "do": "approve"}, h)[0], 400)   # gone
+
     def test_skills_api(self):
         h = self.auth({"Origin": self.base})
         code, _, body = self.req("/api/skill", {"emp": "tess", "do": "create", "name": "digest-format", "text": "Steps\n1. Three bullets.\n2. Sources inline.\n",
@@ -311,6 +330,83 @@ class Panel(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(json.loads(self.req("/api/state", headers=self.auth())[2])["team_skills"], [])
         self.assertEqual(self.req("/api/skill?emp=nobody&where=own&name=x", headers=self.auth())[0], 404)
+
+
+class Channels(unittest.TestCase):
+    def setUp(self):
+        fresh_team()
+        hire.hire("Tess", "Research", supervisor="Alex")
+
+    def test_addresses_and_owner_keys(self):
+        import channels
+        self.assertEqual(channels.parse("111"), ("telegram", "111"))
+        self.assertEqual(channels.parse("-100123"), ("telegram", "-100123"))
+        self.assertEqual(channels.parse("slack:U1"), ("slack", "U1"))
+        self.assertEqual(channels.parse("local-alex"), ("", "local-alex"))
+        self.assertEqual(channels.norm("111"), "telegram:111")
+        self.assertEqual([channels.guess(x) for x in ("-100", "C0ABC123", "123456789012345678", "x")], ["telegram", "slack", "discord", ""])
+        reg = engine.registry()
+        reg["owners"]["111"]["addresses"] = ["slack:U1"]
+        engine.save_registry(reg)
+        self.assertEqual((engine.owner_key("telegram:111"), engine.owner_key("111"), engine.owner_key("slack:U1")), ("111", "111", "111"))
+        self.assertIsNone(engine.owner_key("slack:U2"))
+        self.assertEqual(engine.owner_id("alex"), "111")
+        self.assertTrue(team.may_send_to("111"))
+        self.assertFalse(team.may_send_to("slack:U2"))               # never a stranger
+        self.assertFalse(team.may_send_to("telegram:-100999"))      # never an unregistered chat
+
+    def test_handle_routes_owners_and_ignores_strangers(self):
+        import channels
+        import staffd
+        sent, runs = [], []
+
+        class Fake:
+            NAME, LIMIT = "slack", 3900
+            def token(self): return "xoxb-test"
+            def send(self, cid, text): sent.append((cid, text)); return True
+            def send_file(self, cid, path, caption=""): return True
+            def typing(self, cid): pass
+            def dm_chat(self, uid): return "D" + uid
+            def download(self, att, d, n): return None
+            def mention(self, h): return "@" + h
+        fake = Fake()
+        real_get, real_run = channels.get, staffd.run_async
+        channels.get = lambda n: fake if n == "slack" else real_get(n)
+        staffd.run_async = lambda *a, **k: runs.append((a, k))
+        try:
+            reg = engine.registry()
+            reg["owners"] = {"slack:U1": {"name": "Alex", "aliases": []}}
+            engine.save_registry(reg)
+            dm = {"channel": "slack", "sender": "slack:U1", "sender_name": "Alex", "username": "alex", "chat": "slack:D1",
+                  "is_group": False, "chat_title": None, "text": "help", "reply_to_text": "", "attachments": []}
+            staffd.handle(dm)
+            self.assertEqual(sent[-1][0], "D1")
+            self.assertIn("@tess", sent[-1][1])
+            staffd.handle({**dm, "text": "@tess what's new?"})
+            a, k = runs[-1]
+            self.assertEqual((a[0], k["session_key"], k["deliver_to"], k["channel"], k["said"]), ("tess", "slack:U1", ["slack:D1"], "slack", "what's new?"))
+            self.assertEqual(team.to_people(engine.employee("tess"), "supervisor"), ["slack:D1"])   # replies go where they wrote
+            staffd.handle({**dm, "sender": "slack:U9", "sender_name": "Stranger"})
+            self.assertEqual(len(runs), 1)
+            self.assertEqual(team.jload(staffd.PENDING, {})["slack:U9"]["channel"], "slack")
+            self.assertEqual(len(sent), 1)                             # strangers never get an answer
+            grp = {**dm, "chat": "slack:C1", "is_group": True, "text": "tess: summarize this"}
+            staffd.handle(grp)
+            self.assertEqual(len(runs), 1)                             # an unregistered chat is ignored
+            reg = engine.registry()
+            reg["team_chats"] = {"slack": "C1"}
+            engine.save_registry(reg)
+            staffd.handle(grp)
+            a, k = runs[-1]
+            self.assertEqual((a[0], k["session_key"], k["deliver_to"], k["channel"]), ("tess", "group", ["slack:C1"], "group"))
+            staffd.handle({**grp, "text": "just us owners talking"})
+            self.assertEqual(len(runs), 2)                             # no employee named: stay out
+            team.send("slack:C1", "hello room")
+            self.assertEqual(sent[-1], ("C1", "hello room"))
+            team.send("slack:U9", "leak?")
+            self.assertEqual(sent[-1], ("C1", "hello room"))
+        finally:
+            channels.get, staffd.run_async = real_get, real_run
 
 
 class Skills(unittest.TestCase):

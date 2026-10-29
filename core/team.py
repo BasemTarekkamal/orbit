@@ -1,6 +1,6 @@
 """Shared runtime for staffd and the control panel: running employees in the background, delivering
-their words to owners on Telegram, the team room log, the order log, routine schedules.
-Harness-owned. Python 3.9 compatible.
+their words to owners on whichever chat channel they use, the team room log, the order log, routine
+schedules. Harness-owned. Python 3.9 compatible.
 """
 from __future__ import annotations
 
@@ -12,11 +12,10 @@ import subprocess
 import threading
 import time
 import traceback
-import urllib.parse
-import urllib.request
 import uuid
 
 import abilities
+import channels
 import engine
 
 TEAM = os.path.join(engine.HOME, "team")
@@ -95,67 +94,127 @@ def active(runtime_ok=True):
     return {k: e for k, e in engine.registry().get("employees", {}).items() if e.get("status", "active") == "active"}
 
 
-# ------------------------------------------------------------------ Telegram delivery
-def token_from(path):
-    try:
-        with open(os.path.expanduser(path)) as fh:
-            return fh.read().strip()
-    except (OSError, TypeError):
-        return ""
-
-
+# ------------------------------------------------------------------ delivery (any channel)
 def bot_token():
+    """The Telegram bot token (kept for the setup wizard and older callers)."""
     return engine.secret("telegram_bot_token") or ""
 
 
 def api(tok, method, params=None, timeout=60):
-    data = urllib.parse.urlencode({k: (json.dumps(v) if isinstance(v, (dict, list)) else v)
-                                   for k, v in (params or {}).items()}).encode()
-    try:
-        with urllib.request.urlopen(urllib.request.Request(
-                "https://api.telegram.org/bot%s/%s" % (tok, method), data=data), timeout=timeout) as r:
-            return json.loads(r.read().decode())
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "description": str(e)}
+    """Telegram's API (kept for the setup wizard and older callers)."""
+    return channels.get("telegram").api(tok, method, params, timeout)
+
+
+def team_chats() -> dict:
+    """{channel: chat id} of the team chats (the Telegram group, a Slack channel, a Discord channel)."""
+    reg = engine.registry()
+    out = {k: str(v) for k, v in (reg.get("team_chats") or {}).items() if v and k in channels.NAMES}
+    legacy = (reg.get("telegram") or {}).get("group_id")
+    if legacy and "telegram" not in out:
+        out["telegram"] = str(legacy)
+    return out
+
+
+def team_addrs() -> set:
+    return {channels.addr(k, v) for k, v in team_chats().items()}
 
 
 def group_id():
-    return str(engine.registry().get("telegram", {}).get("group_id") or "")
+    """The Telegram team group's id (older callers)."""
+    return team_chats().get("telegram", "")
 
 
-def send(chat_id, text, emp=None):
-    """Deliver text to an owner or the team group. Nobody else, whatever the caller asks."""
-    reg = engine.registry()
-    if str(chat_id) not in reg.get("owners", {}) and str(chat_id) != group_id():
-        log("refused send to %s" % chat_id)
+def dm_chats() -> dict:
+    """{private chat address: owner key}: where each owner last wrote to us, per channel."""
+    return jload(STATEF, {}).get("dms", {})
+
+
+def remember_dm(chat, owner):
+    st = jload(STATEF, {})
+    dms = st.setdefault("dms", {})
+    if dms.get(chat) != owner or st.get("last_dm:%s" % owner) != chat:
+        dms[chat] = owner
+        st["last_dm:%s" % owner] = chat
+        jsave(STATEF, st)
+
+
+def may_send_to(chat) -> bool:
+    """Only an owner's own address, a private chat an owner opened, or a team chat. Nobody else, ever."""
+    n = channels.norm(chat)
+    return bool(engine.owner_key(n)) or n in dm_chats() or n in team_addrs()
+
+
+def send(chat, text, emp=None):
+    """Deliver text (and ATTACH: files) to an owner or a team chat, on the channel its address names."""
+    chat = channels.norm(chat)
+    if not may_send_to(chat):
+        log("refused send to %s" % chat)
         return
-    tok = bot_token()
+    ch, cid = channels.parse(chat)
+    try:
+        mod = channels.get(ch)
+        ready = bool(mod.token())
+    except Exception:  # noqa: BLE001
+        mod, ready = None, False
     prefix = "%s: " % emp["name"] if emp else ""
-    if not tok:
-        append(os.path.join(TEAM, "undelivered.jsonl"), {"ts": time.strftime("%F %T"), "to": chat_id,
+    if not ready:
+        append(os.path.join(TEAM, "undelivered.jsonl"), {"ts": time.strftime("%F %T"), "to": chat,
                                                          "from": emp and emp["id"], "text": text})
         return
     files = re.findall(r"ATTACH:\s*(\S+)", text)
     body = (prefix + re.sub(r"\s*ATTACH:\s*\S+", "", text).strip()) or "(done)"
-    for i in range(0, len(body), 3900):
-        api(tok, "sendMessage", {"chat_id": chat_id, "text": body[i:i + 3900], "disable_web_page_preview": "true"})
+    for i in range(0, len(body), mod.LIMIT):
+        try:
+            mod.send(cid, body[i:i + mod.LIMIT])
+        except Exception as e:  # noqa: BLE001
+            log("%s send failed: %s" % (ch, e))
     ws = emp["workspace"] if emp else engine.HOME
     for f in files:
         p = os.path.realpath(os.path.join(ws, f))
         if p.startswith(os.path.realpath(ws) + os.sep) and os.path.isfile(p):
-            subprocess.run(["curl", "-s", "-F", "chat_id=%s" % chat_id, "-F", "document=@%s" % p,
-                            "https://api.telegram.org/bot%s/sendDocument" % tok], capture_output=True, timeout=120)
+            try:
+                mod.send_file(cid, p)
+            except Exception as e:  # noqa: BLE001
+                log("%s file send failed: %s" % (ch, e))
+
+
+def owner_address(key):
+    """Where to write to an owner: the private chat they last used, else a fresh private chat on the
+    channel they paired with. None for an owner who only exists on this Mac."""
+    st = jload(STATEF, {})
+    last = st.get("last_dm:%s" % key)
+    if last:
+        return last
+    o = engine.registry().get("owners", {}).get(key, {})
+    for a in [key] + list(o.get("addresses", [])):
+        ch, uid = channels.parse(a)
+        if not ch:
+            continue
+        try:
+            mod = channels.get(ch)
+            if not mod.token():
+                continue
+            cid = mod.dm_chat(uid)
+        except Exception:  # noqa: BLE001
+            continue
+        if cid:
+            chat = channels.addr(ch, cid)
+            remember_dm(chat, key)
+            return chat
+    return None
 
 
 def to_people(emp, target):
-    """'supervisor' | owner name | 'all' → owner chat ids."""
+    """'supervisor' | owner name | 'all' → delivery addresses (one per owner)."""
     reg = engine.registry()
     if target in ("both", "all"):
-        return list(reg.get("owners", {}).keys())
-    if target == "supervisor":
-        target = emp.get("supervisor", "")
-    oid = engine.owner_id(str(target))
-    return [oid] if oid else list(reg.get("owners", {}).keys())[:1]
+        keys = list(reg.get("owners", {}).keys())
+    else:
+        if target == "supervisor":
+            target = emp.get("supervisor", "")
+        oid = engine.owner_id(str(target))
+        keys = [oid] if oid else list(reg.get("owners", {}).keys())[:1]
+    return [a for a in (owner_address(k) for k in keys) if a]
 
 
 # ------------------------------------------------------------------ running employees

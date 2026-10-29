@@ -88,13 +88,27 @@ def owners() -> dict:
     return registry().get("owners", {})
 
 
+def owner_key(address):
+    """The registry key of the owner who holds this address: their key itself ("telegram:123", or a bare
+    Telegram id from older registries), or one of owners.<key>.addresses. None for strangers."""
+    import channels
+    s = str(address or "").strip()
+    if not s:
+        return None
+    n = channels.norm(s)
+    for key, o in owners().items():
+        if s == key or n in {channels.norm(key)} | {channels.norm(a) for a in o.get("addresses", [])}:
+            return key
+    return None
+
+
 def owner_id(name_or_id: str):
-    """An owner's Telegram id from their id, name or alias, any case."""
+    """An owner's key from their key, any of their addresses, their name or an alias, any case."""
     key = str(name_or_id).strip().lower()
     for oid, o in owners().items():
-        if key in [oid, o["name"].lower()] + [a.lower() for a in o.get("aliases", [])]:
+        if key in [oid.lower(), o["name"].lower()] + [a.lower() for a in o.get("aliases", [])]:
             return oid
-    return None
+    return owner_key(name_or_id)
 
 
 def owner_name(name_or_id: str):
@@ -244,6 +258,9 @@ def friendly_error(err: str) -> str:
 def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
         timeout: int = 1800, extra_env: dict = None) -> dict:
     """Run the employee headless in its folder. Chats resume one session per (employee, person)."""
+    if os.environ.get("STAFFROOM_DEMO"):                  # `staff demo`: canned answers, no Claude run
+        import demo
+        return demo.fake_run(emp, prompt, job, session_key)
     if not os.path.isfile(os.path.join(GUARD, "hooks", "register.js")):
         return {"ok": False, "text": "My safety guard is missing, so I've stopped myself. Owner: reinstall the kit.",
                 "error": "guard missing", "model": None}

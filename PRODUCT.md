@@ -14,7 +14,7 @@ evening to read the end-of-day report. They are not developers; Terminal is for 
 ## Product Purpose
 
 Staffroom turns a person's own Claude Code into AI employees that work on their Mac: research,
-routines, memory, Telegram. The control panel is where the owner sees the team, directs it and tunes
+routines, memory, chat (Telegram, Slack or Discord), skills they learn. The control panel is where the owner sees the team, directs it and tunes
 what each employee may do. Success: the owner trusts the panel at a glance (what's running, what
 needs me, what did it cost), reaches any action in one or two clicks, and would show it on a screen
 when announcing the project.

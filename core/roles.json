@@ -9,7 +9,7 @@
       "scope": "Everything the owner asks for day to day: research questions, reading documents and photos they send, reminders and follow-ups, minutes from meeting recordings, and a short morning brief of what needs them today.",
       "abilities": ["telegram", "team_room", "voice", "files", "reminders", "meetings", "web", "fetch", "browser", "documents", "build_tools", "brief"],
       "model": "sonnet",
-      "gets": ["Morning brief at 08:30 on workdays", "Voice notes and PDFs over Telegram", "Reminders it sets for you and for itself"],
+      "gets": ["Morning brief at 08:30 on workdays", "Voice notes and PDFs over chat", "Reminders it sets for you and for itself"],
       "first": "Hi. Read what you know about me and the business, then tell me in three lines what you'd watch for me this week."
     },
     {

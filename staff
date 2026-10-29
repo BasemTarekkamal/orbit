@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """staff: set up and run your team of AI employees on this Mac.
 
-  staff setup                      first run: checks, your business, Telegram, your first hire
+  staff demo [--stop]              look around first: a pretend team in the control panel, nothing to set up
+  staff setup                      first run: checks, your business, your chat bot, your first hire
   staff start | stop | restart     the background service (starts at login)
   staff status                     is it running, who works here
   staff panel                      open the control panel in your browser
@@ -11,8 +12,8 @@
   staff abilities <handle> [--default | --super | --on a,b --off c]
   staff skills [<handle>] [--share NAME | --remove NAME | --export NAME DIR]   what they learned
   staff run <handle> "<message>"   talk to someone right here in the terminal
-  staff secret telegram | apify | anthropic     save a token (typed hidden, stored only on this Mac)
-  staff group <chat id>            use a Telegram group as the team room
+  staff secret telegram | slack | discord | apify | anthropic    save a token (typed hidden, stored only on this Mac)
+  staff group <chat id> [--channel telegram|slack|discord]      use a group or channel as the team chat
   staff doctor                     check everything the team needs
   staff logs                       the service log
 
@@ -37,7 +38,11 @@ import engine  # noqa: E402
 
 LABEL = "com.staffroom.staffd"
 PLIST = os.path.expanduser("~/Library/LaunchAgents/%s.plist" % LABEL)
-SECRET_NAMES = {"telegram": "telegram_bot_token", "apify": "apify_token", "anthropic": "anthropic_api_key"}
+SECRET_NAMES = {"telegram": [("telegram_bot_token", "bot token from @BotFather")],
+                "slack": [("slack_bot_token", "Bot User OAuth Token (xoxb-…)"),
+                          ("slack_app_token", "App-Level Token with connections:write (xapp-…)")],
+                "discord": [("discord_bot_token", "bot token from the Developer Portal")],
+                "apify": [("apify_token", "API token")], "anthropic": [("anthropic_api_key", "API key")]}
 
 
 def say(msg=""):
@@ -83,7 +88,7 @@ def ensure_home():
         reg = {"team_name": "My team", "owners": {}, "employees": {}, "auth": "subscription",
                "defaults": {"model": "sonnet", "fallback_model": "haiku", "effort": "medium"},
                "workdays": ["Mon", "Tue", "Wed", "Thu", "Fri"], "network_domains": [],
-               "apify": {"monthly_budget_usd": 5, "max_run_usd": 0.5}, "telegram": {"group_id": None},
+               "apify": {"monthly_budget_usd": 5, "max_run_usd": 0.5}, "team_chats": {},
                "panel": {"port": 7317}}
         engine.save_registry(reg)
     with open(os.path.join(engine.HOME, ".gitignore"), "w") as fh:
@@ -128,7 +133,15 @@ def checks():
         out.append((bool(found), "%s (%s)%s" % (b, why, "" if found else ": brew install ffmpeg whisper-cpp"), False))
     model = os.path.join(engine.HOME, "models", "ggml-large-v3-turbo-q5_0.bin")
     out.append((os.path.exists(model), "speech model%s" % ("" if os.path.exists(model) else ": `staff doctor --get-voice-model` (~550 MB)"), False))
-    out.append((bool(engine.secret("telegram_bot_token")), "Telegram bot token%s" % ("" if engine.secret("telegram_bot_token") else ": `staff secret telegram`"), False))
+    import channels
+    conf = channels.configured()
+    out.append((bool(conf), "chat channel%s" % ((": " + ", ".join(conf)) if conf else " (none yet): `staff secret telegram|slack|discord`"), False))
+    if "slack" in conf or "discord" in conf:
+        try:
+            __import__("websocket")
+            out.append((True, "python websocket-client (Slack/Discord)", False))
+        except ImportError:
+            out.append((False, "python websocket-client missing (Slack/Discord can't listen): pip3 install --user websocket-client", False))
     out.append((running(), "service running%s" % ("" if running() else ": `staff start`"), False))
     return out
 
@@ -230,8 +243,9 @@ def setup(no_start=False):
             fh.write("# %s\n\n%s\n\nOwner: %s.\n" % (reg["team_name"], about or "(not described yet: owners, add it in Settings)", me))
     engine.save_registry(reg, "setup: team name")
 
-    say("\nTelegram lets you talk to your team from your phone (optional, recommended).")
-    say("Create a bot: open Telegram, message @BotFather, send /newbot, and copy the token it gives you.")
+    say("\nA chat bot lets you talk to your team from your phone (optional, recommended). Telegram is the quickest;")
+    say("Slack and Discord work too: `staff secret slack` / `staff secret discord` later, steps in docs/channels.md.")
+    say("Telegram: open it, message @BotFather, send /newbot, and copy the token it gives you.")
     tok = engine.secret("telegram_bot_token")
     if tok and not yes("A bot token is already saved. Keep it?"):
         tok = None
@@ -269,7 +283,7 @@ def setup(no_start=False):
         scope = ask("What they own (one or two sentences)", "Research anything I ask; watch competitors and our market; brief me every morning")
         sup = yes("Make them a super agent (every ability on)?", False)
         h = hire.hire(name, role, scope, supervisor=me, preset="super" if sup else "default")
-        say("✓ Hired %s. Message them on Telegram with /%s, or in the control panel." % (name, h))
+        say("✓ Hired %s. Message them with /%s on Telegram (@%s on Slack or Discord), or in the control panel." % (name, h, h))
     hire.directory()
     say("")
     if no_start:
@@ -281,11 +295,66 @@ def setup(no_start=False):
     say("\nRun `staff doctor` any time to check voice notes, the browser and the rest.")
 
 
+# ------------------------------------------------------------------ demo
+def demo(stop=False):
+    """A pretend team in the panel: its own folder (~/.staffroom-demo), its own port, canned answers, no bot."""
+    import secrets as _secrets
+    import signal
+    home = os.path.expanduser("~/.staffroom-demo")
+    pidf = os.path.join(home, "team", "demo.pid")
+    port = 7318
+    try:
+        with open(pidf) as fh:
+            pid = int(fh.read().strip())
+        os.kill(pid, 0)
+    except (OSError, ValueError):
+        pid = None
+    if stop:
+        if pid:
+            os.kill(pid, signal.SIGTERM)
+            say("Demo stopped. The pretend team's folder stays in %s until the next `staff demo`." % home)
+        else:
+            say("The demo isn't running.")
+        return
+    tokf = os.path.join(home, ".secrets", "panel_token")
+    if pid:
+        with open(tokf) as fh:
+            tok = fh.read().strip()
+        u = "http://127.0.0.1:%d/?t=%s" % (port, tok)
+        say("The demo is already running: %s" % u)
+        subprocess.run(["open", u], capture_output=True)
+        return
+    shutil.rmtree(home, ignore_errors=True)
+    os.makedirs(os.path.join(home, ".secrets"), mode=0o700)
+    os.makedirs(os.path.join(home, "team"))
+    tok = _secrets.token_urlsafe(24)
+    with open(tokf, "w") as fh:
+        fh.write(tok)
+    os.chmod(tokf, 0o600)
+    env = dict(os.environ, STAFFROOM_HOME=home, STAFFROOM_DEMO="1")
+    out = open(os.path.join(home, "team", "demo.out"), "ab")
+    p = subprocess.Popen([sys.executable, os.path.join(KIT, "core", "demo.py")], env=env, stdout=out, stderr=out, start_new_session=True)
+    with open(pidf, "w") as fh:
+        fh.write(str(p.pid))
+    say("Seeding a pretend team…")
+    alive = os.path.join(home, "team", "staffd_alive")
+    for _ in range(40):
+        if os.path.exists(alive) or p.poll() is not None:
+            break
+        time.sleep(0.5)
+    if p.poll() is not None:
+        sys.exit("The demo didn't start; see %s" % os.path.join(home, "team", "demo.out"))
+    u = "http://127.0.0.1:%d/?t=%s" % (port, tok)
+    say("Demo running: %s\nNothing in it is real. `staff demo --stop` ends it; `staff setup` starts your own team." % u)
+    subprocess.run(["open", u], capture_output=True)
+
+
 # ------------------------------------------------------------------ main
 def main():
     ap = argparse.ArgumentParser(prog="staff", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("setup").add_argument("--no-start", action="store_true", help="don't install or start the service")
+    sub.add_parser("demo").add_argument("--stop", action="store_true", help="end the demo")
     for c in ("start", "stop", "restart", "status", "panel", "list", "logs"):
         sub.add_parser(c)
     d = sub.add_parser("doctor")
@@ -307,7 +376,7 @@ def main():
     s = sub.add_parser("secret")
     s.add_argument("name", choices=sorted(SECRET_NAMES))
     g = sub.add_parser("group")
-    g.add_argument("chat_id")
+    g.add_argument("chat_id"); g.add_argument("--channel", choices=["telegram", "slack", "discord"])
     args = ap.parse_args()
 
     if args.cmd in (None, "help"):
@@ -315,6 +384,8 @@ def main():
         return
     if args.cmd == "setup":
         return setup(no_start=args.no_start)
+    if args.cmd == "demo":
+        return demo(stop=args.stop)
     if args.cmd == "start":
         return start()
     if args.cmd == "stop":
@@ -323,12 +394,28 @@ def main():
         stop()
         return start()
     if args.cmd == "secret":
-        v = getpass.getpass("Paste the %s token (hidden): " % args.name).strip()
-        if not v:
-            sys.exit("Nothing saved.")
-        if args.name == "telegram" and not tg(v, "getMe").get("ok"):
+        vals = {}
+        for fname, label in SECRET_NAMES[args.name]:
+            v = getpass.getpass("Paste the %s %s (hidden): " % (args.name.capitalize() if args.name in ("telegram", "slack", "discord") else args.name, label)).strip()
+            if not v:
+                sys.exit("Nothing saved.")
+            vals[fname] = v
+        if args.name == "telegram" and not tg(vals["telegram_bot_token"], "getMe").get("ok"):
             sys.exit("Telegram didn't accept that token.")
-        save_secret(SECRET_NAMES[args.name], v)
+        for fname, v in vals.items():
+            save_secret(fname, v)
+        if args.name in ("slack", "discord"):
+            import channels
+            ok, note = channels.get(args.name).check()
+            if not ok:
+                for fname in vals:
+                    os.remove(os.path.join(engine.SECRETS, fname))
+                sys.exit("%s didn't accept that: %s. Nothing saved." % (args.name.capitalize(), note))
+            say("✓ Connected as %s" % note)
+            try:
+                __import__("websocket")
+            except ImportError:
+                say("One more thing so the service can listen: pip3 install --user websocket-client")
         if args.name == "anthropic":
             reg = engine.registry()
             reg["auth"] = "api_key" if yes("Use this API key instead of your Claude subscription? (billed to your Anthropic account)", False) else "subscription"
@@ -391,10 +478,18 @@ def main():
             say("; ".join(["+" + x for x in added] + ["−" + x for x in removed]) or "No change")
             say("On: " + ", ".join(sorted(abilities.effective(args.handle))))
         elif args.cmd == "group":
+            import channels
+            ch = args.channel or channels.guess(args.chat_id)
+            if not ch:
+                sys.exit("Which channel is that id from? Add --channel telegram|slack|discord")
             reg = engine.registry()
-            reg.setdefault("telegram", {})["group_id"] = args.chat_id
-            engine.save_registry(reg, "telegram group set")
-            say("Team group set. Add the bot to the group as an admin so it can read messages.")
+            reg.setdefault("team_chats", {})[ch] = args.chat_id
+            if ch == "telegram":
+                reg.setdefault("telegram", {})["group_id"] = args.chat_id
+            engine.save_registry(reg, "%s team chat set" % ch)
+            say({"telegram": "Team chat set. Add the bot to the group as an admin so it can read messages.",
+                 "slack": "Team chat set. Invite the bot to that channel: /invite @YourBot.",
+                 "discord": "Team chat set. Make sure the bot can view and post in that channel."}[ch])
         elif args.cmd == "run":
             emp = engine.employee(args.handle)
             me = next(iter(engine.registry().get("owners", {}).values()), {}).get("name", "Owner")

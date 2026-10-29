@@ -1,15 +1,18 @@
 # Staffroom
 
 **Turn your own Claude Code into a team of AI employees.** They research anything, work on their own
-schedule, talk to each other, and report to you on Telegram. Everything runs on your Mac, signed in
-with your own Claude account.
+schedule, learn what you teach them, talk to each other, and report to you on Telegram, Slack or
+Discord. Everything runs on your Mac, signed in with your own Claude account.
 
 ```bash
 git clone <this repo> ~/staffroom && ~/staffroom/install.sh
 ```
 
-Setup takes about five minutes: it checks Claude Code, asks about your business, connects a
-Telegram bot, and hires your first employee.
+Setup takes about five minutes: it checks Claude Code, asks about your business, connects your chat
+bot, and hires your first employee.
+
+**Just want to look around?** `staff demo` opens the control panel with a pretend team (invented
+business, canned replies, no bot, no Claude run, nothing to set up). `staff demo --stop` ends it.
 
 ---
 
@@ -47,8 +50,15 @@ and claim comes with a source link.
   self-test against their own test cases. Each one can be switched on or off.
 - **Memory in files:** each employee keeps STATE, TASKS, GOALS and LESSONS in its own folder (a git
   repository). Correct them once and they write the lesson down.
-- **Telegram:** `/sara what did our competitors post this week?`, voice notes (transcribed on your
-  Mac), photos and PDFs, meeting recordings turned into minutes, and a team group.
+- **They learn:** tell one "from now on, when I ask for X, do Y" and it writes a skill it loads on
+  every run from then on. It also keeps what it worked out the hard way (a site's hidden feed, a
+  report format you liked) and can share a skill with the whole team. You read, edit or remove every
+  skill in the panel, or teach one there directly. Abilities (what they *may* do) stay locks that
+  only you switch; skills (what they *know how* to do) grow.
+- **Your chat, your bots:** Telegram, Slack or Discord, through bots you create
+  (`/sara what did our competitors post this week?`), voice notes (transcribed on your Mac), photos
+  and PDFs, meeting recordings turned into minutes, and a team channel. Each install talks only to
+  the bots whose tokens you saved; only the owners you approve can direct the team.
 
 ## The control panel
 
@@ -61,7 +71,8 @@ and claim comes with a source link.
 - **Team:** who is working on what, their next routine, runs and plan use today.
 - **An employee's page:** a **chat** with them, their **memory** (state, tasks, goals, lessons,
   instructions, and a box for rules you set), their **work** (every file they wrote, readable in
-  place), their **activity** (every run, with duration and plan use) and their **abilities**.
+  place), their **activity** (every run, with duration and plan use), their **skills** (what they
+  learned, what you taught, what the team shares; teach one here) and their **abilities**.
 - **Hire:** pick a role (personal assistant, market researcher, social media analyst, lead finder,
   competitor watcher, document analyst, content researcher, or from scratch); the scope, abilities
   and model come pre-filled, and the first message to send is suggested.
@@ -77,7 +88,7 @@ An autonomous agent that reads the open web needs locks, not promises. Every run
 - **The macOS sandbox:** shell commands reach only the sites you approve, and can't read your
   secrets, your Documents, Desktop or Downloads, or a colleague's folder.
 - **A guard** (a Claude Code hooks module, tested): no money movement, no banking, payment or
-  crypto sites, no outside messages (no email, no posting, no raw Telegram), no secrets, no editing
+  crypto sites, no outside messages (no email, no posting, no raw chat APIs), no secrets, no editing
   the kit, its registry or the guard, no nested Claude runs. Card numbers and IBANs are masked before
   the model sees them.
 - **Gateways for the open web:** the page reader, the browser, Apify and the watchers run outside
@@ -110,16 +121,18 @@ staff setup | start | stop | restart | status | panel | logs | doctor
 staff hire --name … --role … [--scope …] [--super] [--model opus|sonnet|haiku]
 staff list | pause <h> | resume <h> | retire <h>
 staff abilities <h> [--default | --super | --on a,b --off c]
+staff skills [<h>] [--share NAME | --remove NAME | --export NAME DIR]
 staff run <h> "message"          talk to an employee in the terminal
-staff secret telegram|apify|anthropic
-staff group <telegram chat id>   use a Telegram group as the team room
+staff secret telegram|slack|discord|apify|anthropic
+staff group <chat id> [--channel telegram|slack|discord]   the team chat
 ```
 
 ## Requirements
 
 macOS, [Claude Code](https://claude.com/claude-code) signed in with your Claude account, and
 Python 3.9 or newer (the one macOS ships is fine). Optional: Homebrew for voice notes
-(`ffmpeg`, `whisper-cpp`), a Telegram bot from @BotFather, an Apify token.
+(`ffmpeg`, `whisper-cpp`), a bot on Telegram, Slack or Discord ([docs/channels.md](docs/channels.md)),
+an Apify token.
 
 ## How it fits together
 
@@ -127,9 +140,11 @@ Python 3.9 or newer (the one macOS ships is fine). Optional: Homebrew for voice 
 ~/staffroom/                 the kit (this repository; update with git pull)
   staff                      the command
   core/engine.py             runs one employee turn: claude -p + sandbox + guard + abilities
-  core/staffd.py             the service: Telegram, routines, reminders, team bus, control panel
+  core/staffd.py             the service: chat channels, routines, reminders, team bus, control panel
+  core/channels/             one adapter per chat channel (telegram, slack, discord)
   core/abilities.json        the ability catalog (what the checkboxes mean)
   core/skills/               the research playbooks
+  core/skillbook.py          skills employees learn and owners teach (<employee>/skills, team/skills)
   core/tools/ + bin/         the toolbelt (staff-fetch, staff-browse, staff-apify, staff-watch, staff-docs, staff-bus, staff-remind)
   core/guard/staff-guard/    the guard
 ~/Staff/                     your team (yours, never in the repository)
@@ -139,7 +154,8 @@ Python 3.9 or newer (the one macOS ships is fine). Optional: Homebrew for voice 
   .secrets/                  tokens (readable by you, never by employees)
 ```
 
-More: [docs/toolbelt.md](docs/toolbelt.md) (every tool and skill).
+More: [docs/toolbelt.md](docs/toolbelt.md) (every tool and skill), [docs/channels.md](docs/channels.md)
+(connecting Telegram, Slack and Discord).
 
 ## Terms
 

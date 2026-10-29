@@ -30,6 +30,7 @@ CORE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, CORE)
 sys.path.insert(0, os.path.join(CORE, "tools"))
 import abilities  # noqa: E402
+import channels  # noqa: E402
 import engine  # noqa: E402
 import hire  # noqa: E402
 import orders  # noqa: E402
@@ -44,6 +45,7 @@ MEMORY_FILES = ("STATE.md", "TASKS.md", "GOALS.md", "LESSONS.md", "CLAUDE.md")
 WORK_DIRS = ("research", "notes", "tools", "growth", "evals")
 TEXT_EXT = (".md", ".txt", ".json", ".jsonl", ".csv", ".tsv", ".py", ".sh", ".js", ".html", ".yaml", ".yml", ".log")
 MAX_FILE = 400_000
+DEMO = bool(os.environ.get("STAFFROOM_DEMO"))
 _auth = {"at": 0.0, "ok": None, "note": ""}
 
 
@@ -77,6 +79,8 @@ def daemon_online() -> bool:
 
 def claude_auth() -> dict:
     """`claude auth status`, cached for ten minutes (it takes a second)."""
+    if DEMO:
+        return {"at": time.time(), "ok": True, "note": "demo"}
     if time.time() - _auth["at"] < 600:
         return _auth
     _auth["at"] = time.time()
@@ -141,8 +145,8 @@ def needs_you(emps, ords, pending, usage):
     today = time.strftime("%Y-%m-%d")
     day_ago = (dt.datetime.now() - dt.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
     for i, p in pending.items():
-        out.append({"kind": "owner", "title": "%s messaged your bot" % (p.get("name") or "Someone"),
-                    "detail": "Approve them as an owner or ignore. Owners can direct every employee.", "href": "/settings#access"})
+        out.append({"kind": "owner", "title": "%s messaged your %s bot" % (p.get("name") or "Someone", channels.LABELS.get(p.get("channel"), "chat")),
+                    "detail": "Approve them as an owner (or as you, on another channel), or ignore. Owners can direct every employee.", "href": "/settings#access"})
     for o in ords:
         if o.get("status") == "failed" and o.get("ts", "") >= day_ago:
             out.append({"kind": "failed", "title": o.get("summary", "An order failed"), "detail": o.get("result", ""), "href": "/"})
@@ -170,11 +174,14 @@ def checklist(emps, feed):
     auth = claude_auth()
     model = os.path.join(engine.HOME, "models", "ggml-large-v3-turbo-q5_0.bin")
     emp_ids = {e["id"] for e in emps}
+    if DEMO:
+        return [{"id": "demo", "done": True, "title": "Demo team", "how": ""}]
     return [
         {"id": "claude", "done": bool(auth["ok"]), "title": "Claude Code signed in", "how": "Run `claude` in Terminal and sign in with your Claude account."},
         {"id": "service", "done": daemon_online(), "title": "The team service is running", "how": "Run `staff start` in Terminal. It starts at login from then on."},
-        {"id": "telegram", "done": bool(team.bot_token()), "title": "Telegram bot connected", "how": "Create a bot with @BotFather, then run `staff secret telegram`."},
-        {"id": "owner", "done": any(not o.get("local") for o in reg.get("owners", {}).values()), "title": "You're paired on Telegram",
+        {"id": "channel", "done": bool(channels.configured()), "title": "A chat channel connected (Telegram, Slack or Discord)",
+         "how": "Telegram: a bot from @BotFather, then `staff secret telegram`. Slack: `staff secret slack`. Discord: `staff secret discord`. Steps in docs/channels.md."},
+        {"id": "owner", "done": any(not o.get("local") for o in reg.get("owners", {}).values()), "title": "You're paired with your bot",
          "how": "Message your bot once, then approve yourself under Access in Settings."},
         {"id": "hire", "done": bool(emps), "title": "First employee hired", "how": "Pick a role on the Hire page."},
         {"id": "hello", "done": any(r.get("from_id") in emp_ids for r in feed), "title": "First conversation", "how": "Open an employee and say hello."},
@@ -193,8 +200,10 @@ def state():
     pending = team.jload(PENDING, {})
     usage = engine.usage()
     me = next(iter(reg.get("owners", {}).values()), {}).get("name", "Owner")
-    return {"team_name": reg.get("team_name", "Staffroom"), "me": me, "online": daemon_online(), "now": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "usage": usage, "owners": [{"id": i, "name": o["name"], "local": bool(o.get("local"))} for i, o in reg.get("owners", {}).items()],
+    return {"team_name": reg.get("team_name", "Staffroom"), "me": me, "online": daemon_online(), "now": time.strftime("%Y-%m-%dT%H:%M:%S"), "demo": DEMO,
+            "usage": usage, "owners": [{"id": i, "name": o["name"], "local": bool(o.get("local")),
+                                        "addresses": [channels.label(i)] + [channels.label(a) for a in o.get("addresses", [])]}
+                                       for i, o in reg.get("owners", {}).items()],
             "employees": emps, "feed": feed, "orders": ords,
             "pending": [{"id": i, **p} for i, p in pending.items()],
             "needs": needs_you(emps, ords, pending, usage), "checklist": checklist(emps, feed),
@@ -244,11 +253,11 @@ def employee_detail(emp_id):
                 if len(files) >= 400:
                     break
     files.sort(key=lambda f: f["mtime"], reverse=True)
-    # Private Telegram chats live only in the chat log; panel and group messages are already in the team room.
-    dms = [r for r in team.tail(team.CHATLOG, 400) if r.get("employee") == emp_id and r.get("channel") == "telegram"]
-    chat = [{"ts": r.get("ts", ""), "from_id": "owner", "from_name": r.get("who", "Owner"), "to_id": emp_id, "body": r.get("text", ""), "channel": "telegram"}
+    # Private chats (Telegram, Slack, Discord) live only in the chat log; panel and team-chat messages are already in the team room.
+    dms = [r for r in team.tail(team.CHATLOG, 400) if r.get("employee") == emp_id and r.get("channel") in channels.NAMES]
+    chat = [{"ts": r.get("ts", ""), "from_id": "owner", "from_name": r.get("who", "Owner"), "to_id": emp_id, "body": r.get("text", ""), "channel": r.get("channel")}
             for r in dms]
-    chat += [{"ts": r.get("ts", "") + " ", "from_id": emp_id, "from_name": m["name"], "to_id": "owner", "body": r.get("answer", ""), "channel": "telegram"}
+    chat += [{"ts": r.get("ts", "") + " ", "from_id": emp_id, "from_name": m["name"], "to_id": "owner", "body": r.get("answer", ""), "channel": r.get("channel")}
              for r in dms if r.get("answer")]
     chat += [r for r in team.tail(team.FEED, 400) if r.get("from_id") == emp_id or r.get("to_id") == emp_id]
     chat.sort(key=lambda r: r.get("ts", ""))
@@ -355,15 +364,25 @@ def approve_owner(f, me):
     team.jsave(PENDING, pend)
     if f.get("do") != "approve":
         return "Ignored"
-    name = (str(f.get("name") or "").strip() or p.get("name") or "Owner")[:40]
     reg = engine.registry()
     owners = reg.setdefault("owners", {})
+    into = str(f.get("into") or "")
+    if into:                                              # the same person, on another channel
+        if into not in owners:
+            raise orders.OrderError("No such owner")
+        addrs = owners[into].setdefault("addresses", [])
+        if i not in addrs:
+            addrs.append(i)
+        engine.save_registry(reg, "owner %s: also %s (by %s)" % (owners[into]["name"], i, me))
+        team.order_log(me, "owner", "%s is also %s" % (owners[into]["name"], channels.label(i)), "done", "same person")
+        return "%s can now also write from %s" % (owners[into]["name"], channels.label(i))
+    name = (str(f.get("name") or "").strip() or p.get("name") or "Owner")[:40]
     for k in [k for k, o in owners.items() if o.get("local") and o["name"].lower() == name.lower()]:
-        owners.pop(k)                                     # the setup placeholder becomes the real Telegram owner
+        owners.pop(k)                                     # the setup placeholder becomes the real, reachable owner
     owners[i] = {"name": name, "aliases": []}
     engine.save_registry(reg, "owner added: %s (by %s)" % (name, me))
     hire.directory(reg)
-    team.order_log(me, "owner", "Make %s an owner" % name, "done", "Telegram id %s" % i)
+    team.order_log(me, "owner", "Make %s an owner" % name, "done", channels.label(i))
     return "%s is now an owner" % name
 
 
@@ -377,10 +396,12 @@ def settings_view():
     sys.path.insert(0, os.path.join(CORE, "tools"))
     import apify
     spent, pending = apify.month_spend(team.jload(os.path.join(engine.HOME, "state", "apify_spend.json"), {}))
+    on, chats = channels.configured(), team.team_chats()
     return {"team_name": reg.get("team_name", ""), "about": about, "workdays": reg.get("workdays", ["Mon", "Tue", "Wed", "Thu", "Fri"]),
             "network_domains": reg.get("network_domains", []), "jobs": {j: team.job_spec({}, j)["at"] for j in team.JOBS},
             "apify": {"token": bool(engine.secret("apify_token")), "spent": spent + pending, **reg.get("apify", {})},
-            "auth": reg.get("auth", "subscription"), "claude": claude_auth(), "telegram": bool(team.bot_token()), "group_id": team.group_id(),
+            "auth": reg.get("auth", "subscription"), "claude": claude_auth(),
+            "channels": {n: {"on": n in on, "team_chat": chats.get(n, "")} for n in channels.NAMES},
             "home": engine.HOME, "kit": engine.KIT, "port": port()}
 
 
@@ -402,7 +423,7 @@ class Handler(BaseHTTPRequestHandler):
     def _authed(self):
         for part in (self.headers.get("Cookie") or "").split(";"):
             k, _, v = part.strip().partition("=")
-            if k == "sr" and hmac.compare_digest(v, token()):
+            if k == "sr%d" % port() and hmac.compare_digest(v, token()):   # per port: the demo and your panel coexist
                 return True
         return False
 
@@ -433,7 +454,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(303)
         self.send_header("Location", to)
         if cookie:
-            self.send_header("Set-Cookie", "sr=%s; HttpOnly; SameSite=Strict; Path=/" % cookie)
+            self.send_header("Set-Cookie", "sr%d=%s; HttpOnly; SameSite=Strict; Path=/" % (port(), cookie))
         self.send_header("Content-Length", "0")
         self.end_headers()
 
