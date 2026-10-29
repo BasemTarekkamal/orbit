@@ -44,7 +44,7 @@ def message(by, eid, text):
     team.feed(by, by, eid, text, "panel")
     for t in targets:
         team.run_async(t, team.panel_prompt(by, text, team=eid == "team"), "chat", "panel:" + by.lower(), [], who=by,
-                       on_done=team.to_room(t, act[t]["name"], by, "panel"))
+                       on_done=team.to_room(t, act[t]["name"], by, "panel"), said=text, channel="panel")
     return "Passed to " + ", ".join(act[t]["name"] for t in targets)
 
 
@@ -60,8 +60,9 @@ def execute(by, kind, p):
         elif kind == "hire":
             sup = p.get("supervisor") or by
             preset = "super" if p.get("preset") == "super" else "default"
+            picked = [str(x) for x in p["abilities"]][:100] if isinstance(p.get("abilities"), list) else None
             new = hire.hire(p.get("name", ""), p.get("role", ""), p.get("scope", ""), supervisor=sup, preset=preset,
-                            model=p.get("model") or None)
+                            picked=picked, model=p.get("model") or None)
             e = engine.registry()["employees"][new]
             team.feed("staff", "Staffroom", "team", "%s joined as %s, reporting to %s. Message them here, or /%s on "
                       "Telegram." % (e["name"], e["role"], e["supervisor"], new), "panel")

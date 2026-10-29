@@ -193,7 +193,8 @@ def handle(tok, msg):
         team.feed(who, who, emp_id, body, "telegram")
         on_done = team.to_room(emp_id, emp["name"], who, "telegram")
     run_async(emp_id, team.chat_prompt(who, where, body, extra), "chat",
-              session_key=("group" if is_group else sender), deliver_to=[chat_id], who=who, on_done=on_done)
+              session_key=("group" if is_group else sender), deliver_to=[chat_id], who=who, on_done=on_done, said=body,
+              channel="group" if is_group else "telegram")
 
 
 def minutes(emp_id, info, who, title):

@@ -184,6 +184,12 @@ class Panel(unittest.TestCase):
     def setUpClass(cls):
         fresh_team()
         hire.hire("Tess", "Research", supervisor="Alex")
+        ws = engine.employee("tess")["workspace"]
+        os.makedirs(os.path.join(ws, "research"), exist_ok=True)
+        with open(os.path.join(ws, "research", "notes.md"), "w") as fh:
+            fh.write("# Notes\n\nhello")
+        with open(os.path.join(ws, "state", "secret.txt"), "w") as fh:
+            fh.write("nope")
         import panel
         cls.panel = panel
         cls.tok = panel.token()
@@ -197,8 +203,11 @@ class Panel(unittest.TestCase):
         cls.srv.shutdown()
         cls.srv.server_close()
 
-    def req(self, path, data=None, headers=None):
-        r = urllib.request.Request(self.base + path, data=data, headers=headers or {})
+    def req(self, path, data=None, headers=None, raw=False):
+        body = None if data is None else (data if raw else json.dumps(data).encode())
+        h = {"content-type": "application/json"} if data is not None and not raw else {}
+        h.update(headers or {})
+        r = urllib.request.Request(self.base + path, data=body, headers=h)
         opener = urllib.request.build_opener(NoRedirect)
         try:
             with opener.open(r, timeout=10) as resp:
@@ -206,35 +215,78 @@ class Panel(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, dict(e.headers), e.read().decode()
 
+    def auth(self, extra=None):
+        return {"Cookie": "sr=" + self.tok, **(extra or {})}
+
     def test_needs_the_token(self):
         self.assertEqual(self.req("/")[0], 401)
+        self.assertEqual(self.req("/api/state")[0], 401)
         self.assertEqual(self.req("/?t=wrong")[0], 403)
         code, h, _ = self.req("/?t=" + self.tok)
         self.assertEqual(code, 303)
         self.assertIn("HttpOnly", h["Set-Cookie"])
         self.assertIn("SameSite=Strict", h["Set-Cookie"])
 
-    def test_pages_render(self):
-        for path, want in (("/", "Tess"), ("/abilities", "Super agent"), ("/settings", "Routine times")):
-            code, _, body = self.req(path, headers={"Cookie": "sr=" + self.tok})
+    def test_app_and_api(self):
+        for path in ("/", "/team", "/e/tess/memory", "/settings"):
+            code, h, body = self.req(path, headers=self.auth())
             self.assertEqual(code, 200, path)
-            self.assertIn(want, body)
-            self.assertEqual("setInterval" in body, path == "/")
+            self.assertIn('<script src="/app.js"', body)
+            self.assertIn("script-src 'self'", h["Content-Security-Policy"])
+        code, _, body = self.req("/api/state", headers=self.auth())
+        st = json.loads(body)
+        self.assertEqual(code, 200)
+        self.assertEqual([e["id"] for e in st["employees"]], ["tess"])
+        self.assertIn("memory", st["employees"][0]["abilities"])
+        self.assertTrue(any(c["id"] == "hire" and c["done"] for c in st["checklist"]))
+        code, _, body = self.req("/api/employee/tess", headers=self.auth())
+        d = json.loads(body)
+        self.assertEqual(code, 200)
+        self.assertIn("Tess", d["memory"]["CLAUDE.md"])
+        self.assertEqual([f["path"] for f in d["files"]][0], "research/notes.md")          # newest first
+        self.assertTrue(all(f["path"].split("/")[0] in ("research", "notes", "tools", "growth", "evals") for f in d["files"]))
+        self.assertEqual(self.req("/api/employee/nobody", headers=self.auth())[0], 404)
+
+    def test_files_stay_inside_the_workspace(self):
+        code, _, body = self.req("/api/file?emp=tess&path=research/notes.md", headers=self.auth())
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(body)["text"], "# Notes\n\nhello")
+        for bad in ("../../staff.json", "state/secret.txt", "/etc/passwd", "profile.json.png", ".git/config"):
+            self.assertEqual(self.req("/api/file?emp=tess&path=" + urllib.parse.quote(bad), headers=self.auth())[0], 400, bad)
 
     def test_rejects_other_hosts_and_origins(self):
-        self.assertEqual(self.req("/", headers={"Cookie": "sr=" + self.tok, "Host": "evil.example:7398"})[0], 403)
-        data = b"kind=pause&employee_id=tess"
-        self.assertEqual(self.req("/order", data, {"Cookie": "sr=" + self.tok, "Origin": "https://evil.example"})[0], 403)
-        self.assertEqual(self.req("/order", data, {})[0], 403)
+        self.assertEqual(self.req("/api/state", headers=self.auth({"Host": "evil.example:7398"}))[0], 403)
+        order = {"kind": "pause", "employee_id": "tess"}
+        self.assertEqual(self.req("/api/order", order, self.auth({"Origin": "https://evil.example"}))[0], 403)
+        self.assertEqual(self.req("/api/order", order, self.auth())[0], 403)               # no Origin at all
+        self.assertEqual(self.req("/api/order", order, {"Origin": self.base})[0], 403)      # no cookie
         self.assertEqual(engine.registry()["employees"]["tess"]["status"], "active")
 
-    def test_an_order_from_the_panel(self):
-        code, h, _ = self.req("/order", b"kind=pause&employee_id=tess",
-                              {"Cookie": "sr=" + self.tok, "Origin": self.base})
-        self.assertEqual(code, 303)
-        self.assertIn("Paused", urllib.parse.unquote(h["Location"]))
+    def test_orders_settings_and_rules(self):
+        h = self.auth({"Origin": self.base})
+        code, _, body = self.req("/api/order", {"kind": "pause", "employee_id": "tess"}, h)
+        self.assertEqual(code, 200)
+        self.assertIn("Paused Tess", json.loads(body)["message"])
         self.assertEqual(engine.registry()["employees"]["tess"]["status"], "paused")
-        self.req("/order", b"kind=resume&employee_id=tess", {"Cookie": "sr=" + self.tok, "Origin": self.base})
+        self.req("/api/order", {"kind": "resume", "employee_id": "tess"}, h)
+        code, _, body = self.req("/api/order", {"kind": "run_job", "employee_id": "tess", "job": "rm -rf"}, h)
+        self.assertEqual(code, 400)
+        self.assertIn("Unknown routine", json.loads(body)["error"])
+        code, _, body = self.req("/api/employee/tess/rules", {"text": "Reply in Arabic.\nAlways give three options."}, h)
+        self.assertEqual(code, 200)
+        with open(os.path.join(engine.employee("tess")["workspace"], "CLAUDE.md")) as fh:
+            doc = fh.read()
+        self.assertTrue(doc.rstrip().endswith("## Role-specific rules\nReply in Arabic.\nAlways give three options."))
+        code, _, _ = self.req("/api/settings", {"team_name": "Acme", "workdays": ["Sun", "Mon"], "jobs": {"brief": "07:45", "eod": "99:99"},
+                                               "apify": {"monthly_budget_usd": "12", "max_run_usd": "9"}, "network_domains": "api.example.com\nbad host"}, h)
+        self.assertEqual(code, 200)
+        reg = engine.registry()
+        self.assertEqual((reg["team_name"], reg["workdays"], reg["jobs"]["brief"]["at"]), ("Acme", ["Sun", "Mon"], "07:45"))
+        self.assertNotIn("eod", reg["jobs"])
+        self.assertEqual((reg["apify"]["monthly_budget_usd"], reg["apify"]["max_run_usd"]), (12.0, 2.0))
+        self.assertEqual(reg["network_domains"], ["api.example.com"])
+        code, _, body = self.req("/api/order", b"not json", self.auth({"Origin": self.base, "content-type": "application/json"}), raw=True)
+        self.assertEqual(code, 400)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

@@ -159,8 +159,9 @@ def to_people(emp, target):
 
 
 # ------------------------------------------------------------------ running employees
-def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None, extra_env=None):
-    """Runs an employee in the background (one run at a time each). on_done(output) gets the final text."""
+def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None, extra_env=None, said=None, channel=None):
+    """Runs an employee in the background (one run at a time each). on_done(output) gets the final text.
+    `said` is the owner's own words (for the chat log); the prompt wraps them."""
     def work():
         lock = LOCKS.setdefault(emp_id, threading.Lock())
         with lock:
@@ -183,8 +184,8 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
                 for c in deliver_to:
                     send(c, out, emp)
             if job == "chat":
-                append(CHATLOG, {"ts": time.strftime("%Y-%m-%d %H:%M"), "who": who, "employee": emp_id,
-                                 "text": prompt[-500:], "answer": out[:500]})
+                append(CHATLOG, {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "who": who, "employee": emp_id, "channel": channel,
+                                 "text": (said if said is not None else prompt)[:4000], "answer": out[:8000]})
             if not res["ok"] and job != "chat":
                 st = jload(STATEF, {})
                 k = "alert:%s:%s:%s" % (emp_id, job, time.strftime("%F"))

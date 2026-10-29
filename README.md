@@ -50,17 +50,23 @@ and claim comes with a source link.
 - **Telegram:** `/sara what did our competitors post this week?`, voice notes (transcribed on your
   Mac), photos and PDFs, meeting recordings turned into minutes, and a team group.
 
-## The control panel: one checkbox per ability
+## The control panel
 
-`staff panel` opens a page on your Mac (no account, no cloud) with:
+`staff panel` opens a small app on your Mac (no account, no cloud, light and dark) with:
 
-- **Team:** what each employee is doing now, their next routine, runs today and plan use. Pause,
-  resume, run a routine now, change the model, retire.
+- **Today:** what needs you (approvals, reminders, failed runs, people who messaged your bot),
+  what the team said today, a setup checklist until everything is connected, and your plan use.
+- **Team:** who is working on what, their next routine, runs and plan use today.
+- **An employee's page:** a **chat** with them, their **memory** (state, tasks, goals, lessons,
+  instructions, and a box for rules you set), their **work** (every file they wrote, readable in
+  place), their **activity** (every run, with duration and plan use) and their **abilities**.
+- **Hire:** pick a role (personal assistant, market researcher, social media analyst, lead finder,
+  competitor watcher, document analyst, content researcher, or from scratch); the scope, abilities
+  and model come pre-filled, and the first message to send is suggested.
 - **Abilities:** a checkbox for every ability, per employee. **Default** is a capable, low-cost
   setup. **Super agent** ticks everything.
-- **Team room:** talk to one employee or the whole team, and read what they say to each other.
 - **Settings:** your business description (every employee reads it), workdays, routine times, the
-  Apify budget, and the sites their own scripts may reach.
+  Apify budget, who may direct the team, and the sites their own scripts may reach.
 
 ## Safe by design
 

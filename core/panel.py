@@ -1,40 +1,49 @@
-"""The control panel: a small web page on this Mac (http://127.0.0.1:7317) where owners see and run
-the team. No accounts, no cloud, nothing to install. Started by staffd in a thread; `staff panel`
+"""The control panel: a small web app on this Mac (http://127.0.0.1:7317) where owners see and run
+the team. No accounts, no cloud, nothing to build. Started by staffd in a thread; `staff panel`
 opens it in the browser.
 
-Pages: Team (cards, hire, team room, orders, Telegram sign-ups), Abilities (the checkbox matrix with
-Default and Super agent), Settings. Every change goes through orders.py and is logged.
+The page (core/panel/) is plain HTML, CSS and JavaScript; it talks to the JSON API below. Every change
+goes through orders.py and is logged in team/orders.jsonl.
 
-Security: listens on 127.0.0.1 only; a secret token (in ~/Staff/.secrets/panel_token, which
-employees can't read) is exchanged once for an HttpOnly SameSite=Strict cookie; the Host and Origin
-headers must be this Mac (no DNS rebinding, no cross-site posts). Employees' shells can't reach
-localhost (sandbox) and the toolbelt gateways refuse local addresses.
+Security: listens on 127.0.0.1 only; a secret token (in ~/Staff/.secrets/panel_token, which employees
+can't read) is exchanged once for an HttpOnly SameSite=Strict cookie; the Host header must be this Mac
+(no DNS rebinding) and every write must carry our own Origin (no cross-site posts). Employees' shells
+can't reach localhost (sandbox) and the toolbelt gateways refuse local addresses.
 """
 from __future__ import annotations
 
 import datetime as dt
 import hmac
-import html
 import json
+import mimetypes
 import os
+import re
 import secrets
+import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CORE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, CORE)
+sys.path.insert(0, os.path.join(CORE, "tools"))
 import abilities  # noqa: E402
 import engine  # noqa: E402
 import hire  # noqa: E402
 import orders  # noqa: E402
 import team  # noqa: E402
 
+STATIC = os.path.join(CORE, "panel")
+ROLES_F = os.path.join(CORE, "roles.json")
 ABOUT = os.path.join(team.TEAM, "ABOUT.md")
 PENDING = os.path.join(team.TEAM, "pending_owners.json")
-MODELS = ("opus", "sonnet", "haiku")
-e = html.escape
+MEMORY_FILES = ("STATE.md", "TASKS.md", "GOALS.md", "LESSONS.md", "CLAUDE.md")
+WORK_DIRS = ("research", "notes", "tools", "growth", "evals")
+TEXT_EXT = (".md", ".txt", ".json", ".jsonl", ".csv", ".tsv", ".py", ".sh", ".js", ".html", ".yaml", ".yml", ".log")
+MAX_FILE = 400_000
+_auth = {"at": 0.0, "ok": None, "note": ""}
 
 
 def port() -> int:
@@ -65,267 +74,257 @@ def daemon_online() -> bool:
         return False
 
 
-def when(ts) -> str:
-    if not ts:
-        return "—"
+def claude_auth() -> dict:
+    """`claude auth status`, cached for ten minutes (it takes a second)."""
+    if time.time() - _auth["at"] < 600:
+        return _auth
+    _auth["at"] = time.time()
     try:
-        d = dt.datetime.fromisoformat(str(ts).replace(" ", "T")[:19])
-    except ValueError:
-        return e(str(ts))
-    today = dt.date.today()
-    if d.date() == today:
-        return d.strftime("%H:%M")
-    if d.date() == today - dt.timedelta(days=1):
-        return "yesterday " + d.strftime("%H:%M")
-    if d.date() == today + dt.timedelta(days=1):
-        return "tomorrow " + d.strftime("%H:%M")
-    return d.strftime("%a %d %b %H:%M")
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_")) and k != "CLAUDECODE"}
+        r = subprocess.run([engine.resolve_claude(), "auth", "status"], capture_output=True, text=True, timeout=20, env=env)
+        d = json.loads(r.stdout or "{}")
+        _auth["ok"] = bool(d.get("loggedIn"))
+        _auth["note"] = d.get("authMethod", "") if _auth["ok"] else "not signed in"
+    except Exception as ex:  # noqa: BLE001
+        _auth["ok"], _auth["note"] = None, "couldn't check (%s)" % ex.__class__.__name__
+    return _auth
 
 
-CSS = """
-:root{--bg:#f7f6f2;--card:#fff;--text:#1d1d1b;--muted:#6b6a65;--line:#e4e2da;--accent:#2f6b4f;--accent-ink:#fff;
---warn:#a4441c;--chip:#efede6;--focus:#2f6b4f55}
-@media (prefers-color-scheme:dark){:root{--bg:#141513;--card:#1d1f1c;--text:#ecebe6;--muted:#9c9b94;--line:#30322e;
---accent:#7cc39c;--accent-ink:#102018;--warn:#f0936a;--chip:#272925;--focus:#7cc39c55}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
-a{color:inherit}header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card)}
-header b{font-size:17px}nav a{margin-right:14px;text-decoration:none;color:var(--muted)}nav a.on{color:var(--text);font-weight:600}
-main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}h2{font-size:15px;margin:26px 0 10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));align-items:start}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}
-.muted{color:var(--muted)}.small{font-size:13px}.chip{display:inline-block;padding:1px 8px;border-radius:99px;background:var(--chip);font-size:12px}
-.chip.on{background:var(--accent);color:var(--accent-ink)}.chip.warn{background:var(--warn);color:#fff}
-dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:10px 0;font-size:13px}dt{color:var(--muted)}dd{margin:0}
-button,.btn{font:inherit;font-size:13px;padding:5px 11px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer;text-decoration:none;display:inline-block}
-button.primary,.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-input,select,textarea{font:inherit;font-size:14px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);max-width:100%}
-textarea{width:100%}:focus-visible{outline:3px solid var(--focus);outline-offset:1px}
-form.inline{display:inline}details summary{cursor:pointer}.flash{padding:10px 14px;border-radius:10px;background:var(--chip);margin-bottom:12px}
-.flash.err{background:var(--warn);color:#fff}.feed li{list-style:none;border-bottom:1px solid var(--line);padding:10px 0}.feed{padding:0;margin:0}
-.feed p{margin:4px 0 0;white-space:pre-wrap}.meter{height:6px;border-radius:9px;background:var(--chip);overflow:hidden;width:120px;display:inline-block;vertical-align:middle}
-.meter i{display:block;height:100%;background:var(--accent)}.meter.hot i{background:var(--warn)}
-table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-td.c,th.c{text-align:center}.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
-.two{display:grid;gap:14px;grid-template-columns:minmax(0,2fr) minmax(0,1fr)}@media (max-width:820px){.two{grid-template-columns:1fr}}
-label{display:block;font-size:13px;color:var(--muted);margin:8px 0 3px}
-"""
-
-JS = """
-// Refresh the page every 20s so the cards stay live, unless you're typing or have something open.
-setInterval(function(){var a=document.activeElement;if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;
-if(document.querySelector('details[open]'))return;if(document.hidden)return;location.replace(location.pathname);},20000);
-"""
-
-
-def page(title, active, body, flash=None, err=False):
-    script = JS if active == "team" else ""                 # only the team page refreshes itself
-    online = daemon_online()
-    u = engine.usage()
-    meters = ""
-    for k, label in (("five_hour", "5-hour"), ("seven_day", "Weekly")):
-        if k in u:
-            pct = max(0, min(100, u[k]))
-            meters += ' <span class="small muted">%s limit</span> <span class="meter%s" title="%d%% used"><i style="width:%d%%"></i></span>' % (
-                label, " hot" if pct >= 80 else "", pct, pct)
-    nav = "".join('<a href="%s" class="%s">%s</a>' % (h, "on" if active == k else "", t)
-                  for k, h, t in (("team", "/", "Team"), ("abilities", "/abilities", "Abilities"), ("settings", "/settings", "Settings")))
-    return ("<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-            "<title>%s · %s</title><style>%s</style></head><body><header><div class=row><b>%s</b>"
-            "<span class='chip %s'>%s</span>%s</div><nav>%s</nav></header><main>%s%s</main><script>%s</script></body></html>") % (
-        e(title), e(engine.registry().get("team_name", "Staffroom")), CSS, e(engine.registry().get("team_name", "Staffroom")),
-        "on" if online else "warn", "Running" if online else "Stopped: run `staff start`", meters, nav,
-        ('<div class="flash%s" role=status>%s</div>' % (" err" if err else "", e(flash))) if flash else "", body, script)
-
-
-def hidden(**kw):
-    return "".join('<input type=hidden name="%s" value="%s">' % (e(k), e(str(v))) for k, v in kw.items())
-
-
-def order_form(kind, label, cls="", **kw):
-    return '<form method=post action=/order class=inline>%s<button class="%s">%s</button></form>' % (hidden(kind=kind, **kw), cls, e(label))
-
-
-def card(eid, m):
-    emp = engine.employee(eid)
-    s = engine.stats(emp)
-    paused = m.get("status") == "paused"
-    doing = team.DOING.get(eid)
-    state = ("Paused", "") if paused else ("Working", "on") if doing else ("Idle", "")
-    nj, nwhen = team.next_job(eid) if not paused else (None, None)
-    on = len(abilities.effective(eid))
-    model = m.get("model") or emp.get("model", "sonnet")
-    jobs = "".join('<option value="%s">%s</option>' % (j, e(l)) for j, l in team.JOBS.items())
-    models = "".join('<option %s>%s</option>' % ("selected" if x == model else "", x) for x in MODELS)
-    return """<div class=card><div class="row between"><div><b>{name}</b><div class="small muted">{role} · reports to {sup}</div></div>
-<span class="chip {stc}">{st}</span></div><p class=small>{doing}</p>
-<dl><dt>Last run</dt><dd>{last}</dd><dt>Next</dt><dd>{nxt}</dd><dt>Today</dt><dd>{runs}{fail}</dd>
-<dt>Plan use</dt><dd>≈${ut:.2f} today · ≈${u7:.2f} 7 days</dd><dt>Abilities</dt><dd>{on} on · <a href="/abilities#{id}">edit</a></dd>
-<dt>Model</dt><dd><form method=post action=/order class=inline>{mh}<select name=value aria-label="Model for {name}">{models}</select> <button>Set</button></form></dd></dl>
-<div class=row>{pause}<form method=post action=/order class=inline>{jh}<select name=job aria-label="Routine">{jobs}</select> <button>Run now</button></form></div>
-<details class="small" style="margin-top:8px"><summary class=muted>Retire…</summary><p class=muted>Stops {name}. Their folder and memory are kept.</p>{retire}</details></div>""".format(
-        name=e(m["name"]), role=e(m["role"]), sup=e(m.get("supervisor", "")), st=state[0], stc=state[1], id=e(eid),
-        doing=e(doing or ("Paused" if paused else "Nothing running")), last=when(s["last_run"]),
-        nxt=("%s · %s" % (e(nj), when(nwhen))) if nj else "—",
-        runs="%d run%s" % (s["runs_today"], "" if s["runs_today"] == 1 else "s"),
-        fail=(' · <span style="color:var(--warn)">%d failed</span>' % s["failures_today"]) if s["failures_today"] else "",
-        ut=s["use_today"], u7=s["use_7d"], on=on, models=models, jobs=jobs,
-        mh=hidden(kind="set_field", employee_id=eid, field="model"), jh=hidden(kind="run_job", employee_id=eid),
-        pause=order_form("resume" if paused else "pause", "Resume" if paused else "Pause", employee_id=eid),
-        retire=order_form("retire", "Retire %s" % m["name"], employee_id=eid))
-
-
-def team_page(me):
+# ------------------------------------------------------------------ reading the team
+def members():
     reg = engine.registry()
-    emps = {k: m for k, m in reg.get("employees", {}).items() if m.get("status") != "retired"}
-    owners = "".join('<option %s>%s</option>' % ("selected" if o["name"] == me else "", e(o["name"])) for o in reg.get("owners", {}).values())
-    hire_f = """<details class=card><summary><b>+ Hire someone</b> <span class="small muted">They start within a minute, with the whole toolbelt.</span></summary>
-<form method=post action=/order>{h}<div class=two><div><label for=hn>Name</label><input id=hn name=name required maxlength=60 placeholder="Sara">
-<label for=hr>Role</label><input id=hr name=role required maxlength=120 placeholder="Market researcher" style="width:100%">
-<label for=hs>Scope: what they own</label><textarea id=hs name=scope rows=3 maxlength=2000 placeholder="Competitors, prices and social media in our market; weekly summary for me"></textarea></div>
-<div><label for=hsup>Reports to</label><select id=hsup name=supervisor>{owners}</select><label for=hp>Start as</label>
-<select id=hp name=preset><option value=default>Default employee</option><option value=super>Super agent (every ability)</option></select>
-<label for=hm>Model</label><select id=hm name=model><option value="">Team default</option>{models}</select></div></div>
-<p><button class=primary>Hire</button></p></form></details>""".format(
-        h=hidden(kind="hire"), owners=owners, models="".join("<option>%s</option>" % x for x in MODELS))
-    cards = "".join(card(k, m) for k, m in emps.items()) or '<p class=muted>Nobody works here yet. Hire your first employee above.</p>'
-    act = team.active()
-    to = '<option value=team>Whole team</option>' + "".join('<option value="%s">%s</option>' % (e(k), e(m["name"])) for k, m in act.items())
-    names = {k: m["name"] for k, m in reg.get("employees", {}).items()}
-    feed = "".join("""<li><div class="small muted"><b style="color:var(--text)">{f}</b> → {t} · {w} <span class=chip>{c}</span></div><p>{b}</p></li>""".format(
-        f=e(r.get("from_name", "")), t=e("Team" if r.get("to_id") == "team" else names.get(r.get("to_id"), r.get("to_id", ""))),
-        w=when(r.get("ts")), c=e(r.get("channel", "")), b=e(r.get("body", "")[:3000])) for r in reversed(team.tail(team.FEED, 60)))
-    working = "".join('<p class="small muted">%s is working: %s…</p>' % (e(names.get(k, k)), e(v)) for k, v in team.DOING.items())
-    room = """<div class=card><b>Team room</b><form method=post action=/order class=row style="margin:10px 0">{h}
-<select name=employee_id aria-label=To>{to}</select><textarea name=text rows=2 required maxlength=4000 aria-label=Message placeholder="Sara, what did our competitors post this week?" style="flex:1;min-width:200px"></textarea>
-<button class=primary>Send</button></form>{working}<ul class=feed>{feed}</ul></div>""".format(
-        h=hidden(kind="message"), to=to, working=working, feed=feed or '<li class=muted>Nothing said yet. Messages between the team and you appear here.</li>')
-    ords = "".join('<li><div class="row between"><span class=small>%s</span><span class="chip %s">%s</span></div><div class="small muted">%s · %s%s</div></li>' % (
-        e(o["summary"]), "warn" if o["status"] == "failed" else "", e(o["status"]), e(o["by"]), when(o["ts"]),
-        (" · " + e(o["result"])) if o.get("result") else "") for o in reversed(team.tail(team.ORDERS, 25)))
-    pend = team.jload(PENDING, {})
-    pend_html = ""
-    if pend:
-        rows = "".join("""<li><div class=small><b>{n}</b> {u} · Telegram id {i} · {a}</div>
-<form method=post action=/owner class=row style="margin-top:6px">{h}<input name=name value="{n}" aria-label="Owner name" maxlength=40>
-<button class=primary name=do value=approve>Make owner</button><button name=do value=ignore>Ignore</button></form></li>""".format(
-            n=e(p.get("name") or "Someone"), u=("@" + e(p["username"])) if p.get("username") else "", i=e(i), a=when(p.get("at")), h=hidden(id=i))
-            for i, p in pend.items())
-        pend_html = '<div class=card style="margin-top:14px"><b>Messaged your bot</b><p class="small muted">Only owners can talk to the team. Approve someone only if you know them: owners can direct every employee.</p><ul class=feed>%s</ul></div>' % rows
-    return "%s<h2>Team</h2><div class=grid>%s</div><h2>Talk</h2><div class=two>%s<div><div class=card><b>Orders</b><ul class=feed>%s</ul></div>%s</div></div>" % (
-        hire_f, cards, room, ords or '<li class=muted>No orders yet.</li>', pend_html)
-
-
-def abilities_page():
-    reg = engine.registry()
-    emps = [(k, m) for k, m in reg.get("employees", {}).items() if m.get("status") != "retired"]
-    if not emps:
-        return '<p class=muted>Hire someone first; their abilities appear here.</p>'
-    eff = {k: abilities.effective(k) for k, _ in emps}
-    head = "".join('<th class=c id="%s">%s</th>' % (e(k), e(m["name"])) for k, m in emps)
-    rows = ""
-    for g in abilities.groups():
-        items = [a for a in abilities.catalog() if a["group"] == g]
-        if not items:
+    total = len(abilities.catalog())
+    out = []
+    for k, m in reg.get("employees", {}).items():
+        if m.get("status") == "retired":
             continue
-        rows += '<tr><th colspan=%d class="small muted">%s</th></tr>' % (len(emps) + 1, e(g))
-        for a in items:
-            cells = ""
-            for k, _ in emps:
-                if a.get("locked"):
-                    cells += '<td class=c title="Always on">✓</td>'
-                else:
-                    cells += '<td class=c><input type=checkbox form="ab-%s" name=abilities value="%s" %s aria-label="%s for %s"></td>' % (
-                        e(k), e(a["id"]), "checked" if a["id"] in eff[k] else "", e(a["name"]), e(reg["employees"][k]["name"]))
-            rows += '<tr><td><b>%s</b>%s<div class="small muted">%s</div></td>%s</tr>' % (
-                e(a["name"]), ' <span class="chip warn">paid</span>' if a.get("paid") else "", e(a.get("description", "")), cells)
-    foot = "".join("""<td class=c><form id="ab-{k}" method=post action=/order>{h}<button class=primary>Save</button><br>
-<button name=preset value=default style="margin-top:4px">Default</button><br><button name=preset value=super style="margin-top:4px">Super agent</button></form></td>""".format(
-        k=e(k), h=hidden(kind="set_abilities", employee_id=k)) for k, _ in emps)
-    return """<p class="muted small">Tick what each employee may do. <b>Default</b> is a capable, low-cost setup; <b>Super agent</b> ticks everything.
-Locked rows are the safety basics. Paid abilities spend from budgets you set in Settings.</p>
-<div class=wrap><table><thead><tr><th>Ability</th>{head}</tr></thead><tbody>{rows}<tr><td class="small muted">Save each column</td>{foot}</tr></tbody></table></div>""".format(
-        head=head, rows=rows, foot=foot)
+        emp = engine.employee(k)
+        s = engine.stats(emp)
+        paused = m.get("status") == "paused"
+        nj, nw = team.next_job(k) if not paused else (None, None)
+        out.append({"id": k, "name": m["name"], "role": m["role"], "scope": m.get("scope", ""), "supervisor": m.get("supervisor", ""),
+                    "status": "paused" if paused else "active", "doing": team.DOING.get(k), "hired": m.get("hired"),
+                    "last_run": s["last_run"], "next_job": nj, "next_job_at": nw.strftime("%Y-%m-%dT%H:%M:%S") if nw else None,
+                    "runs_today": s["runs_today"], "failures_today": s["failures_today"],
+                    "use_today": round(s["use_today"], 3), "use_7d": round(s["use_7d"], 3),
+                    "abilities": sorted(abilities.effective(k)), "abilities_on": len(abilities.effective(k)), "abilities_total": total,
+                    "model": m.get("model") or emp.get("model", "sonnet"), "effort": m.get("effort") or emp.get("effort", "medium")})
+    return out
 
 
-def apify_spent():
-    """This month's Apify spend, as the gateway records it (runs in flight count at their cap)."""
-    sys.path.insert(0, os.path.join(CORE, "tools"))
-    import apify
-    spent, pending = apify.month_spend(team.jload(os.path.join(engine.HOME, "state", "apify_spend.json"), {}))
-    return spent + pending
-
-
-def settings_page():
-    reg = engine.registry()
+def waiting_lines(emp_id):
+    """Bullets under 'Waiting on owners' in the employee's TASKS.md."""
+    ws = engine.employee(emp_id)["workspace"]
     try:
-        with open(ABOUT, encoding="utf-8") as fh:
-            about = fh.read()
+        with open(os.path.join(ws, "TASKS.md"), encoding="utf-8") as fh:
+            text = fh.read()
     except OSError:
-        about = ""
-    wd = reg.get("workdays", ["Mon", "Tue", "Wed", "Thu", "Fri"])
-    days = "".join('<label style="display:inline;margin-right:10px;color:var(--text)"><input type=checkbox name=workdays value=%s %s> %s</label>' % (
-        d, "checked" if d in wd else "", d) for d in team.DAYS)
-    times = "".join('<label for="t-%s">%s</label><input id="t-%s" name="at_%s" value="%s" pattern="[0-2][0-9]:[0-5][0-9]" size=5>' % (
-        j, e(l), j, j, e(team.job_spec({}, j)["at"])) for j, l in team.JOBS.items())
-    ap = reg.get("apify", {})
-    owners = "".join("<li>%s <span class='small muted'>Telegram id %s</span></li>" % (e(o["name"]), e(i)) for i, o in reg.get("owners", {}).items())
-    return """<form method=post action=/settings class=two>{h}<div class=card><b>Your business</b>
-<label for=tn>Team name</label><input id=tn name=team_name value="{tn}" maxlength=60>
-<label for=ab>About the business (every employee reads this)</label><textarea id=ab name=about rows=8 maxlength=6000>{about}</textarea>
-<label>Workdays</label>{days}<label for=nd>Sites their own scripts may reach (one per line, e.g. api.example.com or *.example.org)</label>
-<textarea id=nd name=network_domains rows=4 placeholder="api.example.com">{nd}</textarea>
-<p class="small muted">Web search, the page reader, the browser and Apify work without this list; it only limits scripts employees write themselves.</p></div>
-<div><div class=card><b>Routine times</b>{times}</div><div class=card style="margin-top:14px"><b>Apify (paid)</b>
-<p class="small muted">Token: {tok}. Spent this month: ${spent:.2f}.</p>
-<label for=amb>Monthly budget (USD)</label><input id=amb name=apify_monthly_budget_usd value="{mb}" size=6>
-<label for=amr>Max per run (USD)</label><input id=amr name=apify_max_run_usd value="{mr}" size=6></div>
-<div class=card style="margin-top:14px"><b>Owners</b><ul>{owners}</ul><p class="small muted">Claude: {auth}. Telegram bot: {bot}. Team group: {grp}.</p></div>
-<p><button class=primary>Save settings</button></p></div></form>""".format(
-        h="", tn=e(reg.get("team_name", "")), about=e(about), days=days, nd=e("\n".join(reg.get("network_domains", []))), times=times,
-        tok="set" if engine.secret("apify_token") else "not set (run `staff secret apify` in Terminal)", spent=apify_spent(),
-        mb=e(str(ap.get("monthly_budget_usd", 5))), mr=e(str(ap.get("max_run_usd", 0.5))), owners=owners or "<li class=muted>none yet</li>",
-        auth="your own API key" if reg.get("auth") == "api_key" else "your Claude subscription, signed in on this Mac",
-        bot="connected" if team.bot_token() else "not set (`staff setup`)", grp=e(team.group_id() or "none"))
+        return []
+    out, inside = [], False
+    for line in text.splitlines():
+        if line.startswith("#"):
+            inside = "waiting on" in line.lower()
+            continue
+        if inside and line.strip().startswith(("-", "*")):
+            out.append(line.strip()[1:].strip())
+    return out[:10]
 
 
-def save_settings(f):
+def reminders_for(emp_id, ws):
+    import remind
+    return remind.load(ws)
+
+
+def needs_you(emps, ords, pending, usage):
+    out = []
+    today = time.strftime("%Y-%m-%d")
+    day_ago = (dt.datetime.now() - dt.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    for i, p in pending.items():
+        out.append({"kind": "owner", "title": "%s messaged your bot" % (p.get("name") or "Someone"),
+                    "detail": "Approve them as an owner or ignore. Owners can direct every employee.", "href": "/settings#access"})
+    for o in ords:
+        if o.get("status") == "failed" and o.get("ts", "") >= day_ago:
+            out.append({"kind": "failed", "title": o.get("summary", "An order failed"), "detail": o.get("result", ""), "href": "/"})
+    for e in emps:
+        if e["status"] == "paused":
+            out.append({"kind": "paused", "title": "%s is paused" % e["name"], "detail": "Routines and chats are off until you resume them.",
+                        "href": "/e/%s" % e["id"], "emp": e["id"]})
+        if e["failures_today"]:
+            out.append({"kind": "failed", "title": "%s: %d run%s failed today" % (e["name"], e["failures_today"], "" if e["failures_today"] == 1 else "s"),
+                        "detail": "See Activity for the reason.", "href": "/e/%s/activity" % e["id"], "emp": e["id"]})
+        for line in waiting_lines(e["id"]):
+            out.append({"kind": "waiting", "title": line, "detail": "%s is waiting on you" % e["name"], "href": "/e/%s/memory" % e["id"], "emp": e["id"]})
+        ws = engine.employee(e["id"])["workspace"]
+        for r in reminders_for(e["id"], ws):
+            if r.get("to") != "me" and r.get("at", "")[:10] <= today:
+                out.append({"kind": "reminder", "title": r.get("text", ""), "detail": "Reminder from %s · %s" % (e["name"], r.get("at", "")[11:]),
+                            "href": "/e/%s" % e["id"], "emp": e["id"]})
+    if usage.get("five_hour", 0) >= 80 or usage.get("seven_day", 0) >= 90:
+        out.append({"kind": "usage", "title": "Claude plan usage is high", "detail": "Employees switch to the light model until it resets.", "href": "/settings"})
+    return out[:30]
+
+
+def checklist(emps, feed):
     reg = engine.registry()
-    reg["team_name"] = (f.get("team_name", [""])[0].strip() or "Staffroom")[:60]
-    reg["workdays"] = [d for d in f.get("workdays", []) if d in team.DAYS] or ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    auth = claude_auth()
+    model = os.path.join(engine.HOME, "models", "ggml-large-v3-turbo-q5_0.bin")
+    emp_ids = {e["id"] for e in emps}
+    return [
+        {"id": "claude", "done": bool(auth["ok"]), "title": "Claude Code signed in", "how": "Run `claude` in Terminal and sign in with your Claude account."},
+        {"id": "service", "done": daemon_online(), "title": "The team service is running", "how": "Run `staff start` in Terminal. It starts at login from then on."},
+        {"id": "telegram", "done": bool(team.bot_token()), "title": "Telegram bot connected", "how": "Create a bot with @BotFather, then run `staff secret telegram`."},
+        {"id": "owner", "done": any(not o.get("local") for o in reg.get("owners", {}).values()), "title": "You're paired on Telegram",
+         "how": "Message your bot once, then approve yourself under Access in Settings."},
+        {"id": "hire", "done": bool(emps), "title": "First employee hired", "how": "Pick a role on the Hire page."},
+        {"id": "hello", "done": any(r.get("from_id") in emp_ids for r in feed), "title": "First conversation", "how": "Open an employee and say hello."},
+        {"id": "apify", "done": bool(engine.secret("apify_token")), "optional": True, "title": "Apify connected (social media and Maps research)",
+         "how": "Free account at apify.com, then `staff secret apify`."},
+        {"id": "voice", "done": os.path.exists(model), "optional": True, "title": "Voice notes on this Mac",
+         "how": "`brew install ffmpeg whisper-cpp`, then `staff doctor --get-voice-model`."},
+    ]
+
+
+def state():
+    reg = engine.registry()
+    emps = members()
+    feed = team.tail(team.FEED, 150)
+    ords = team.tail(team.ORDERS, 40)
+    pending = team.jload(PENDING, {})
+    usage = engine.usage()
+    me = next(iter(reg.get("owners", {}).values()), {}).get("name", "Owner")
+    return {"team_name": reg.get("team_name", "Staffroom"), "me": me, "online": daemon_online(), "now": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "usage": usage, "owners": [{"id": i, "name": o["name"], "local": bool(o.get("local"))} for i, o in reg.get("owners", {}).items()],
+            "employees": emps, "feed": feed, "orders": ords,
+            "pending": [{"id": i, **p} for i, p in pending.items()],
+            "needs": needs_you(emps, ords, pending, usage), "checklist": checklist(emps, feed),
+            "working": dict(team.DOING), "jobs": team.JOBS}
+
+
+def employee_detail(emp_id):
+    reg = engine.registry()
+    if emp_id not in reg.get("employees", {}) or reg["employees"][emp_id].get("status") == "retired":
+        return None
+    m = next(e for e in members() if e["id"] == emp_id)
+    emp = engine.employee(emp_id)
+    ws = emp["workspace"]
+    memory = {}
+    for f in MEMORY_FILES:
+        try:
+            with open(os.path.join(ws, f), encoding="utf-8") as fh:
+                memory[f] = fh.read()[:MAX_FILE]
+        except OSError:
+            memory[f] = ""
+    runs = []
+    try:
+        with open(os.path.join(ws, "state", "runs.jsonl"), encoding="utf-8") as fh:
+            for line in fh.readlines()[-80:]:
+                try:
+                    runs.append(json.loads(line))
+                except ValueError:
+                    pass
+    except OSError:
+        pass
+    files = []
+    for d in WORK_DIRS:
+        root = os.path.join(ws, d)
+        for base, dirs, names in os.walk(root):
+            dirs[:] = [x for x in dirs if not x.startswith(".")]
+            for n in sorted(names):
+                if n.startswith("."):
+                    continue
+                p = os.path.join(base, n)
+                try:
+                    st = os.stat(p)
+                except OSError:
+                    continue
+                files.append({"path": os.path.relpath(p, ws), "size": st.st_size, "mtime": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(st.st_mtime)),
+                              "text": n.lower().endswith(TEXT_EXT)})
+                if len(files) >= 400:
+                    break
+    files.sort(key=lambda f: f["mtime"], reverse=True)
+    # Private Telegram chats live only in the chat log; panel and group messages are already in the team room.
+    dms = [r for r in team.tail(team.CHATLOG, 400) if r.get("employee") == emp_id and r.get("channel") == "telegram"]
+    chat = [{"ts": r.get("ts", ""), "from_id": "owner", "from_name": r.get("who", "Owner"), "to_id": emp_id, "body": r.get("text", ""), "channel": "telegram"}
+            for r in dms]
+    chat += [{"ts": r.get("ts", "") + " ", "from_id": emp_id, "from_name": m["name"], "to_id": "owner", "body": r.get("answer", ""), "channel": "telegram"}
+             for r in dms if r.get("answer")]
+    chat += [r for r in team.tail(team.FEED, 400) if r.get("from_id") == emp_id or r.get("to_id") == emp_id]
+    chat.sort(key=lambda r: r.get("ts", ""))
+    return {**m, "abilities": sorted(abilities.effective(emp_id)), "chosen": abilities.chosen(emp_id), "memory": memory,
+            "runs": list(reversed(runs)), "files": files, "reminders": reminders_for(emp_id, ws), "chat": chat[-120:],
+            "workspace": ws, "network_domains": emp.get("network_domains", [])}
+
+
+def read_file(emp_id, rel):
+    emp = engine.employee(emp_id)
+    ws = os.path.realpath(emp["workspace"])
+    p = os.path.realpath(os.path.join(ws, rel))
+    if not p.startswith(ws + os.sep) or any(part in (".git", ".claude", "state") for part in rel.split(os.sep)):
+        raise orders.OrderError("Not a file you can open here")
+    if not p.lower().endswith(TEXT_EXT) or not os.path.isfile(p):
+        raise orders.OrderError("Only text files open in the panel")
+    with open(p, encoding="utf-8", errors="replace") as fh:
+        text = fh.read(MAX_FILE + 1)
+    return {"path": rel, "text": text[:MAX_FILE], "truncated": len(text) > MAX_FILE}
+
+
+def set_rules(emp_id, by, text):
+    """Replace the 'Role-specific rules' section of the employee's CLAUDE.md."""
+    emp = engine.employee(emp_id)
+    p = os.path.join(emp["workspace"], "CLAUDE.md")
+    with open(p, encoding="utf-8") as fh:
+        doc = fh.read()
+    head = "## Role-specific rules"
+    i = doc.find(head)
+    body = doc[:i] if i >= 0 else doc.rstrip() + "\n\n"
+    with open(p, "w", encoding="utf-8") as fh:
+        fh.write(body + head + "\n" + text.strip()[:20000] + "\n")
+    subprocess.run(["git", "add", "CLAUDE.md"], cwd=emp["workspace"], capture_output=True)
+    subprocess.run(["git", "-c", "user.name=%s" % by, "-c", "user.email=owner@staffroom.local", "commit", "-qm", "rules: edited by %s in the panel" % by],
+                   cwd=emp["workspace"], capture_output=True)
+    team.order_log(by, "rules", "Rules for %s" % emp["name"], "done", "%d characters" % len(text.strip()))
+    return "Rules saved. %s reads them on their next run." % emp["name"]
+
+
+def save_settings(f, by):
+    reg = engine.registry()
+    reg["team_name"] = (str(f.get("team_name") or "").strip() or "Staffroom")[:60]
+    wd = [d for d in (f.get("workdays") or []) if d in team.DAYS]
+    reg["workdays"] = wd or ["Mon", "Tue", "Wed", "Thu", "Fri"]
     doms = []
-    for line in f.get("network_domains", [""])[0].splitlines():
+    for line in str(f.get("network_domains") or "").replace(",", "\n").splitlines():
         d = line.strip().lower()
         if d and all(c.isalnum() or c in ".-*" for c in d) and "." in d:
             doms.append(d)
     reg["network_domains"] = sorted(set(doms))[:100]
     jobs = reg.setdefault("jobs", {})
-    for j in team.JOBS:
-        v = f.get("at_" + j, [""])[0].strip()
-        if len(v) == 5 and v[2] == ":" and v[:2].isdigit() and v[3:].isdigit() and int(v[:2]) < 24 and int(v[3:]) < 60:
+    for j, v in (f.get("jobs") or {}).items():
+        v = str(v).strip()
+        if j in team.JOBS and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", v):
             jobs.setdefault(j, {})["at"] = v
     ap = reg.setdefault("apify", {})
     for k, hi in (("monthly_budget_usd", 1000.0), ("max_run_usd", 2.0)):
         try:
-            ap[k] = max(0.0, min(hi, float(f.get("apify_" + k, [""])[0])))
-        except ValueError:
+            ap[k] = max(0.0, min(hi, float((f.get("apify") or {}).get(k))))
+        except (TypeError, ValueError):
             pass
-    engine.save_registry(reg, "settings changed in the control panel")
-    with open(ABOUT, "w", encoding="utf-8") as fh:
-        fh.write(f.get("about", [""])[0][:6000].replace("\r\n", "\n"))
+    engine.save_registry(reg, "settings changed in the control panel by %s" % by)
+    if "about" in f:
+        with open(ABOUT, "w", encoding="utf-8") as fh:
+            fh.write(str(f["about"])[:6000].replace("\r\n", "\n"))
     return "Settings saved"
 
 
 def approve_owner(f, me):
     pend = team.jload(PENDING, {})
-    i = f.get("id", [""])[0]
+    i = str(f.get("id") or "")
     if i not in pend:
         raise orders.OrderError("That request is gone")
     p = pend.pop(i)
     team.jsave(PENDING, pend)
-    if f.get("do", [""])[0] != "approve":
+    if f.get("do") != "approve":
         return "Ignored"
-    name = (f.get("name", [""])[0].strip() or p.get("name") or "Owner")[:40]
+    name = (str(f.get("name") or "").strip() or p.get("name") or "Owner")[:40]
     reg = engine.registry()
     owners = reg.setdefault("owners", {})
     for k in [k for k, o in owners.items() if o.get("local") and o["name"].lower() == name.lower()]:
@@ -337,37 +336,67 @@ def approve_owner(f, me):
     return "%s is now an owner" % name
 
 
+def settings_view():
+    reg = engine.registry()
+    try:
+        with open(ABOUT, encoding="utf-8") as fh:
+            about = fh.read()
+    except OSError:
+        about = ""
+    sys.path.insert(0, os.path.join(CORE, "tools"))
+    import apify
+    spent, pending = apify.month_spend(team.jload(os.path.join(engine.HOME, "state", "apify_spend.json"), {}))
+    return {"team_name": reg.get("team_name", ""), "about": about, "workdays": reg.get("workdays", ["Mon", "Tue", "Wed", "Thu", "Fri"]),
+            "network_domains": reg.get("network_domains", []), "jobs": {j: team.job_spec({}, j)["at"] for j in team.JOBS},
+            "apify": {"token": bool(engine.secret("apify_token")), "spent": spent + pending, **reg.get("apify", {})},
+            "auth": reg.get("auth", "subscription"), "claude": claude_auth(), "telegram": bool(team.bot_token()), "group_id": team.group_id(),
+            "home": engine.HOME, "kit": engine.KIT, "port": port()}
+
+
+# ------------------------------------------------------------------ HTTP
 class Handler(BaseHTTPRequestHandler):
     server_version = "Staffroom"
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):  # quiet; errors go to staffd.log
         pass
 
+    # -- helpers
+    def _origin(self):
+        return "http://127.0.0.1:%d" % port(), "http://localhost:%d" % port()
+
     def _allowed_host(self):
-        h = (self.headers.get("Host") or "").lower()
-        return h in ("127.0.0.1:%d" % port(), "localhost:%d" % port())
+        return "http://" + (self.headers.get("Host") or "").lower() in self._origin()
 
     def _authed(self):
-        c = self.headers.get("Cookie") or ""
-        for part in c.split(";"):
+        for part in (self.headers.get("Cookie") or "").split(";"):
             k, _, v = part.strip().partition("=")
             if k == "sr" and hmac.compare_digest(v, token()):
                 return True
         return False
 
+    def _me(self):
+        owners = engine.registry().get("owners", {})
+        return next(iter(owners.values()), {}).get("name", "Owner")
+
     def _send(self, code, body, ctype="text/html; charset=utf-8", extra=None):
-        data = body.encode("utf-8")
+        data = body if isinstance(body, bytes) else body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
-        self.send_header("Referrer-Policy", "same-origin")   # no-referrer would make form posts send "Origin: null"
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; "
+                                                    "img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+        self.send_header("Referrer-Policy", "same-origin")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(data)
+
+    def _json(self, code, obj):
+        self._send(code, json.dumps(obj, ensure_ascii=False), "application/json; charset=utf-8")
 
     def _redirect(self, to, cookie=None):
         self.send_response(303)
@@ -377,10 +406,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def _me(self):
-        owners = engine.registry().get("owners", {})
-        return next(iter(owners.values()), {}).get("name", "Owner")
+    def _static(self, name):
+        p = os.path.realpath(os.path.join(STATIC, name))
+        if not p.startswith(os.path.realpath(STATIC) + os.sep) or not os.path.isfile(p):
+            return self._send(404, "Not found", "text/plain")
+        ctype = mimetypes.guess_type(p)[0] or "application/octet-stream"
+        if ctype.startswith("text/") or ctype in ("application/javascript", "application/json", "image/svg+xml"):
+            ctype += "; charset=utf-8"
+        with open(p, "rb") as fh:
+            self._send(200, fh.read(), ctype)
 
+    # -- GET
     def do_GET(self):
         if not self._allowed_host():
             return self._send(403, "Forbidden", "text/plain")
@@ -392,53 +428,76 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, "Wrong link. Run `staff panel` in Terminal to open the panel.", "text/plain")
         if not self._authed():
             return self._send(401, "Open the panel with `staff panel` in Terminal.", "text/plain")
-        flash, err = q.get("m", [None])[0], q.get("err", ["0"])[0] == "1"
+        path = u.path
         try:
-            if u.path == "/":
-                return self._send(200, page("Team", "team", team_page(self._me()), flash, err))
-            if u.path == "/abilities":
-                return self._send(200, page("Abilities", "abilities", abilities_page(), flash, err))
-            if u.path == "/settings":
-                return self._send(200, page("Settings", "settings", settings_page(), flash, err))
+            if path.startswith("/api/"):
+                return self._api_get(path, q)
+            if path in ("/app.css", "/app.js", "/icon.svg"):
+                return self._static(path[1:])
+            return self._static("index.html")               # the app routes the rest
+        except orders.OrderError as ex:
+            return self._json(400, {"error": str(ex)})
         except Exception as ex:  # noqa: BLE001
             team.log("panel error: %r" % ex)
-            return self._send(500, page("Error", "", "<p>Something broke (logged in team/staffd.log).</p>"))
-        return self._send(404, "Not found", "text/plain")
+            return self._json(500, {"error": "Something broke (logged in team/staffd.log)"})
 
+    def _api_get(self, path, q):
+        if path == "/api/state":
+            return self._json(200, state())
+        if path == "/api/abilities":
+            return self._json(200, {"groups": abilities.groups(), "abilities": abilities.catalog()})
+        if path == "/api/roles":
+            with open(ROLES_F, encoding="utf-8") as fh:
+                return self._json(200, json.load(fh))
+        if path == "/api/settings":
+            return self._json(200, settings_view())
+        m = re.fullmatch(r"/api/employee/([a-z0-9-]+)", path)
+        if m:
+            d = employee_detail(m.group(1))
+            return self._json(200, d) if d else self._json(404, {"error": "No such employee"})
+        if path == "/api/file":
+            return self._json(200, read_file(q.get("emp", [""])[0], q.get("path", [""])[0]))
+        return self._json(404, {"error": "Not found"})
+
+    # -- POST
     def do_POST(self):
         if not self._allowed_host() or not self._authed():
             return self._send(403, "Forbidden", "text/plain")
-        origin = self.headers.get("Origin")
-        if origin and origin not in ("http://127.0.0.1:%d" % port(), "http://localhost:%d" % port()):
+        if (self.headers.get("Origin") or "") not in self._origin():
             return self._send(403, "Forbidden", "text/plain")
-        n = min(int(self.headers.get("Content-Length") or 0), 200_000)
-        f = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "replace"), keep_blank_values=True)
-        me = self._me()
-        back = {"/order": None, "/settings": "/settings", "/owner": "/"}.get(urllib.parse.urlparse(self.path).path, "/")
-        if back is None:
-            kind = f.get("kind", [""])[0]
-            back = "/abilities" if kind == "set_abilities" else "/"
+        n = min(int(self.headers.get("Content-Length") or 0), 500_000)
         try:
-            if self.path == "/order":
-                p = {k: (v if k == "abilities" else v[0]) for k, v in f.items()}
-                msg = orders.execute(me, p.pop("kind", ""), p)
-            elif self.path == "/settings":
-                msg = save_settings(f)
-            elif self.path == "/owner":
-                msg = approve_owner(f, me)
-            else:
-                return self._send(404, "Not found", "text/plain")
-            return self._redirect("%s?m=%s" % (back, urllib.parse.quote(msg)))
-        except orders.OrderError as ex:
-            return self._redirect("%s?err=1&m=%s" % (back, urllib.parse.quote(str(ex))))
+            f = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+            if not isinstance(f, dict):
+                raise ValueError
+        except ValueError:
+            return self._json(400, {"error": "Bad request"})
+        me = self._me()
+        path = urllib.parse.urlparse(self.path).path
+        try:
+            if path == "/api/order":
+                kind = str(f.pop("kind", ""))
+                return self._json(200, {"ok": True, "message": orders.execute(me, kind, f)})
+            if path == "/api/settings":
+                return self._json(200, {"ok": True, "message": save_settings(f, me)})
+            if path == "/api/owner":
+                return self._json(200, {"ok": True, "message": approve_owner(f, me)})
+            m = re.fullmatch(r"/api/employee/([a-z0-9-]+)/rules", path)
+            if m and m.group(1) in engine.registry().get("employees", {}):
+                return self._json(200, {"ok": True, "message": set_rules(m.group(1), me, str(f.get("text") or ""))})
+            return self._json(404, {"error": "Not found"})
+        except (orders.OrderError, hire.HireError) as ex:
+            return self._json(400, {"error": str(ex)})
         except Exception as ex:  # noqa: BLE001
             team.log("panel order error: %r" % ex)
-            return self._redirect("%s?err=1&m=%s" % (back, urllib.parse.quote("Something broke (logged)")))
+            return self._json(500, {"error": "Something broke (logged in team/staffd.log)"})
 
 
 def serve():
     token()
+    threading.Thread(target=claude_auth, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", port()), Handler)
+    srv.daemon_threads = True
     team.log("panel on http://127.0.0.1:%d" % port())
     srv.serve_forever()
 
