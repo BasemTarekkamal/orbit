@@ -264,6 +264,7 @@ a.row:hover, .row.click:hover { background: var(--bg-2); cursor: pointer; }
 .tl .body.clamp::after { content: ""; position: absolute; inset: auto 0 0; height: 2.4em; background: linear-gradient(transparent, var(--bg)); }
 .tl .more { margin-top: 4px; }
 .mini .row { grid-template-columns: 28px minmax(0, 1fr) auto; padding: 8px; }
+.mini .row.row-2 { grid-template-columns: minmax(0, 1fr) auto; }
 .mini .row .meta { white-space: normal; }
 .usage-box { display: grid; gap: 10px; }
 .usage-box .row2 { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--ink-2); }

@@ -60,6 +60,8 @@ and claim comes with a source link.
   and PDFs, meeting recordings turned into minutes, and a team channel. Each install talks only to
   the bots whose tokens you saved; only the owners you approve can direct the team.
 
+![An employee's skills](docs/screens/skills-dark.jpg)
+
 ## The control panel
 
 ![Today](docs/screens/today-dark.jpg)
