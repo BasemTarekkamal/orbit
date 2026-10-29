@@ -1,60 +1,227 @@
 {
-  "groups": ["Basics", "Talk", "Meetings", "Research", "Building", "Routines"],
+  "groups": [
+    "Basics",
+    "Talk",
+    "Meetings",
+    "Research",
+    "Building",
+    "Routines"
+  ],
   "abilities": [
-    {"id": "memory", "name": "Memory files", "group": "Basics", "locked": true, "default": true,
-     "description": "Keeps STATE, TASKS, GOALS and LESSONS in its own folder, so nothing is forgotten between chats."},
-    {"id": "safety", "name": "Safety guard", "group": "Basics", "locked": true, "default": true,
-     "description": "OS sandbox plus the guard: no money, no logins, no outside messages, no secrets. Can't be switched off."},
-
-    {"id": "telegram", "name": "Owner chat", "group": "Talk", "default": true,
-     "description": "Owners can message it on Telegram, Slack or Discord (a private chat or the team chat), through your own bots."},
-    {"id": "team_room", "name": "Team room", "group": "Talk", "default": true,
-     "description": "Asks and answers colleagues on the team bus; shown in the control panel's team room."},
-    {"id": "voice", "name": "Voice notes", "group": "Talk", "default": true,
-     "description": "Voice notes from chat, transcribed on this Mac (whisper.cpp). Nothing leaves the Mac."},
-    {"id": "files", "name": "Photos and files", "group": "Talk", "default": true,
-     "description": "Reads photos, PDFs and files owners send it."},
-    {"id": "reminders", "name": "Reminders", "group": "Talk", "default": true,
-     "description": "Sets reminders and follow-ups for owners and for itself."},
-
-    {"id": "meetings", "name": "Meeting recordings", "group": "Meetings",
-     "description": "Turns a long voice note or recording into minutes, transcribed on this Mac."},
-
-    {"id": "web", "name": "Web research", "group": "Research", "default": true,
-     "tools": ["WebSearch", "WebFetch"], "skills": ["research-playbook", "people-finder"],
-     "description": "Searches and reads the web, with the research playbook: free first, every claim sourced."},
-    {"id": "fetch", "name": "Page reader", "group": "Research", "default": true,
-     "commands": ["staff-fetch"], "skills": ["web-scraping"],
-     "description": "Reads any public page cleanly, finds the site's own data feeds, falls back to a headless browser."},
-    {"id": "browser", "name": "Headless browser", "group": "Research", "default": true,
-     "commands": ["staff-browse"], "skills": ["web-scraping"],
-     "description": "Opens JavaScript-heavy pages, scrolls, clicks 'load more', takes screenshots. Never logs in or types."},
-    {"id": "apify", "name": "Apify scrapers", "group": "Research", "paid": true,
-     "commands": ["staff-apify"], "skills": ["social-media", "local-business", "market-signals"],
-     "description": "TikTok, Instagram, Facebook, X, YouTube, LinkedIn, Reddit, Google Maps and more, through vetted scrapers with a monthly budget. Needs your Apify token."},
-    {"id": "watchers", "name": "Watchers", "group": "Research",
-     "commands": ["staff-watch"], "skills": ["monitoring"],
-     "description": "Watches feeds and pages and acts only on what changed."},
-    {"id": "documents", "name": "Documents and OCR", "group": "Research", "default": true,
-     "commands": ["staff-docs"], "skills": ["documents"],
-     "description": "Reads PDFs, scanned documents and images (OCR on this Mac), in any language."},
-
-    {"id": "build_tools", "name": "Builds its own tools", "group": "Building", "default": true,
-     "skills": ["web-scraping"],
-     "description": "Writes and runs its own scripts in its folder when a task needs one. Their internet access stays limited to the sites you approved."},
-    {"id": "learn", "name": "Learns skills", "group": "Building", "default": true,
-     "commands": ["staff-skill"], "sandboxed": true,
-     "description": "Keeps what you teach it, and what it works out, as skills that load on every run; can share one with the whole team. Off: it still uses the skills you give it, but writes no new ones."},
-
-    {"id": "brief", "name": "Morning brief", "group": "Routines", "default": true, "job": "brief",
-     "description": "Workdays at 08:30: what changed in its scope and what needs you today."},
-    {"id": "standup", "name": "Standup", "group": "Routines", "job": "standup",
-     "description": "Workdays at 09:00: its plan for today and one blocking question."},
-    {"id": "eod", "name": "End of day", "group": "Routines", "job": "eod",
-     "description": "Workdays at 17:00: what got done, what slipped."},
-    {"id": "scout", "name": "Self-improvement", "group": "Routines", "job": "scout",
-     "description": "Daily: checks what other assistants shipped and makes one small, safe improvement to itself."},
-    {"id": "evals", "name": "Weekly self-test", "group": "Routines", "job": "evals",
-     "description": "Fridays: runs its own test cases and reports failures honestly."}
+    {
+      "id": "memory",
+      "name": "Memory files",
+      "group": "Basics",
+      "locked": true,
+      "default": true,
+      "description": "Keeps STATE, TASKS, GOALS and LESSONS in its own folder, so nothing is forgotten between chats.",
+      "can": "Remember what you tell it, between chats"
+    },
+    {
+      "id": "safety",
+      "name": "Safety guard",
+      "group": "Basics",
+      "locked": true,
+      "default": true,
+      "description": "OS sandbox plus the guard: no money, no logins, no outside messages, no secrets. Can't be switched off."
+    },
+    {
+      "id": "telegram",
+      "name": "Owner chat",
+      "group": "Talk",
+      "default": true,
+      "description": "Owners can message it on Telegram, Slack or Discord (a private chat or the team chat), through your own bots.",
+      "can": "Talk with you on Telegram, Slack or Discord"
+    },
+    {
+      "id": "team_room",
+      "name": "Team room",
+      "group": "Talk",
+      "default": true,
+      "description": "Asks and answers colleagues on the team bus; shown in the control panel's team room.",
+      "can": "Ask colleagues for help"
+    },
+    {
+      "id": "voice",
+      "name": "Voice notes",
+      "group": "Talk",
+      "default": true,
+      "description": "Voice notes from chat, transcribed on this Mac (whisper.cpp). Nothing leaves the Mac.",
+      "can": "Understand your voice notes, in any language"
+    },
+    {
+      "id": "files",
+      "name": "Photos and files",
+      "group": "Talk",
+      "default": true,
+      "description": "Reads photos, PDFs and files owners send it.",
+      "can": "Read photos, PDFs and files you send"
+    },
+    {
+      "id": "reminders",
+      "name": "Reminders",
+      "group": "Talk",
+      "default": true,
+      "description": "Sets reminders and follow-ups for owners and for itself.",
+      "can": "Set reminders and follow up"
+    },
+    {
+      "id": "meetings",
+      "name": "Meeting recordings",
+      "group": "Meetings",
+      "description": "Turns a long voice note or recording into minutes, transcribed on this Mac.",
+      "can": "Turn call recordings into minutes and action items"
+    },
+    {
+      "id": "web",
+      "name": "Web research",
+      "group": "Research",
+      "default": true,
+      "tools": [
+        "WebSearch",
+        "WebFetch"
+      ],
+      "skills": [
+        "research-playbook",
+        "people-finder"
+      ],
+      "description": "Searches and reads the web, with the research playbook: free first, every claim sourced.",
+      "can": "Search and read the web, with sources"
+    },
+    {
+      "id": "fetch",
+      "name": "Page reader",
+      "group": "Research",
+      "default": true,
+      "commands": [
+        "staff-fetch"
+      ],
+      "skills": [
+        "web-scraping"
+      ],
+      "description": "Reads any public page cleanly, finds the site's own data feeds, falls back to a headless browser.",
+      "can": "Open any public website"
+    },
+    {
+      "id": "browser",
+      "name": "Headless browser",
+      "group": "Research",
+      "default": true,
+      "commands": [
+        "staff-browse"
+      ],
+      "skills": [
+        "web-scraping"
+      ],
+      "description": "Opens JavaScript-heavy pages, scrolls, clicks 'load more', takes screenshots. Never logs in or types.",
+      "can": "Read JavaScript-heavy pages, scroll and take screenshots"
+    },
+    {
+      "id": "apify",
+      "name": "Apify scrapers",
+      "group": "Research",
+      "paid": true,
+      "commands": [
+        "staff-apify"
+      ],
+      "skills": [
+        "social-media",
+        "local-business",
+        "market-signals"
+      ],
+      "description": "TikTok, Instagram, Facebook, X, YouTube, LinkedIn, Reddit, Google Maps and more, through vetted scrapers with a monthly budget. Needs your Apify token.",
+      "can": "Read TikTok, Instagram, Facebook, YouTube, X and Google Maps"
+    },
+    {
+      "id": "watchers",
+      "name": "Watchers",
+      "group": "Research",
+      "commands": [
+        "staff-watch"
+      ],
+      "skills": [
+        "monitoring"
+      ],
+      "description": "Watches feeds and pages and acts only on what changed.",
+      "can": "Watch pages and feeds and tell you what changed"
+    },
+    {
+      "id": "documents",
+      "name": "Documents and OCR",
+      "group": "Research",
+      "default": true,
+      "commands": [
+        "staff-docs"
+      ],
+      "skills": [
+        "documents"
+      ],
+      "description": "Reads PDFs, scanned documents and images (OCR on this Mac), in any language.",
+      "can": "Read scans and photos of documents (OCR)"
+    },
+    {
+      "id": "build_tools",
+      "name": "Builds its own tools",
+      "group": "Building",
+      "default": true,
+      "skills": [
+        "web-scraping"
+      ],
+      "description": "Writes and runs its own scripts in its folder when a task needs one. Their internet access stays limited to the sites you approved.",
+      "can": "Build its own small tools when needed"
+    },
+    {
+      "id": "learn",
+      "name": "Learns skills",
+      "group": "Building",
+      "default": true,
+      "commands": [
+        "staff-skill"
+      ],
+      "sandboxed": true,
+      "description": "Keeps what you teach it, and what it works out, as skills that load on every run; can share one with the whole team. Off: it still uses the skills you give it, but writes no new ones.",
+      "can": "Learn skills you teach it"
+    },
+    {
+      "id": "brief",
+      "name": "Morning brief",
+      "group": "Routines",
+      "default": true,
+      "job": "brief",
+      "description": "Workdays at 08:30: what changed in its scope and what needs you today.",
+      "can": "Brief you every workday morning"
+    },
+    {
+      "id": "standup",
+      "name": "Standup",
+      "group": "Routines",
+      "job": "standup",
+      "description": "Workdays at 09:00: its plan for today and one blocking question.",
+      "can": "Send a daily plan"
+    },
+    {
+      "id": "eod",
+      "name": "End of day",
+      "group": "Routines",
+      "job": "eod",
+      "description": "Workdays at 17:00: what got done, what slipped.",
+      "can": "Send an end-of-day summary"
+    },
+    {
+      "id": "scout",
+      "name": "Self-improvement",
+      "group": "Routines",
+      "job": "scout",
+      "description": "Daily: checks what other assistants shipped and makes one small, safe improvement to itself.",
+      "can": "Improve itself a little every day"
+    },
+    {
+      "id": "evals",
+      "name": "Weekly self-test",
+      "group": "Routines",
+      "job": "evals",
+      "description": "Fridays: runs its own test cases and reports failures honestly.",
+      "can": "Test itself every Friday"
+    }
   ]
 }

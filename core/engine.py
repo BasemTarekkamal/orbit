@@ -25,6 +25,8 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+import threading
 import time
 import uuid
 
@@ -162,6 +164,26 @@ def secret(name: str):
         return None
 
 
+def save_secret(name: str, value: str) -> None:
+    """~/Staff/.secrets/<name>, readable by the owner only (employees can't: sandbox deny list + guard)."""
+    if not re.fullmatch(r"[a-z0-9_]+", name):
+        raise ValueError("bad secret name")
+    os.makedirs(SECRETS, exist_ok=True)
+    os.chmod(SECRETS, 0o700)
+    p = os.path.join(SECRETS, name)
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(value.strip())
+    os.chmod(p, 0o600)
+
+
+def drop_secret(name: str) -> None:
+    try:
+        os.remove(os.path.join(SECRETS, name))
+    except OSError:
+        pass
+
+
 def clean_env(emp: dict) -> dict:
     """The CLI signs in with its own login (keychain). Nothing of the caller's Claude settings leaks in."""
     env = {k: v for k, v in os.environ.items()
@@ -233,7 +255,7 @@ def command(emp: dict, model: str) -> list:
     gateways = abilities.commands(emp["id"])
     bundle = skills_plugin(emp, abilities.skills(emp["id"]))
     cmd = [resolve_claude(), "-p", "--model", model, "--effort", emp.get("effort", "medium"),
-           "--permission-mode", "dontAsk", "--output-format", "json",
+           "--permission-mode", "dontAsk", "--output-format", "stream-json", "--verbose",
            "--setting-sources", "project", "--strict-mcp-config",
            "--settings", settings_json(emp, gateways), "--plugin-dir", GUARD, "--plugin-dir", bundle,
            "--append-system-prompt", "Paths: your team folder (~/Staff in the handbook) is %s; the kit (the handbook, "
@@ -255,12 +277,65 @@ def friendly_error(err: str) -> str:
     return "Something went wrong on my side (logged). Please resend."
 
 
+def stream(cmd: list, prompt: str, ws: str, env: dict, timeout: int, on_step=None):
+    """Runs one claude turn, reading its stream-json events as they come: each tool call becomes a plain
+    step ("Reading tiktok.com") passed to on_step(step, steps). Returns (final result event, steps)."""
+    import steps as steps_mod
+    t0, steps, result, killed = time.time(), [], None, []
+    errf = tempfile.TemporaryFile()
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errf, text=True, cwd=ws, env=env)
+
+    def kill():
+        killed.append(1)
+        p.kill()
+    timer = threading.Timer(timeout, kill)
+    timer.start()
+    try:
+        try:
+            p.stdin.write(prompt)
+            p.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
+        for line in p.stdout:
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get("type") == "assistant":
+                for b in (ev.get("message") or {}).get("content") or []:
+                    if isinstance(b, dict) and b.get("type") == "tool_use":
+                        text = steps_mod.describe(b.get("name"), b.get("input"), ws)
+                        if text and (not steps or steps[-1]["text"] != text):
+                            s = {"t": round(time.time() - t0), "text": text}
+                            steps.append(s)
+                            if on_step:
+                                try:
+                                    on_step(s, steps)
+                                except Exception:  # noqa: BLE001  (a display callback must never stop the work)
+                                    pass
+            elif ev.get("type") == "result":
+                result = ev
+        p.wait()
+        if killed:
+            return {"is_error": True, "result": "timed out after %d min" % max(1, timeout // 60)}, steps
+        if not result:
+            errf.seek(0)
+            err = errf.read().decode("utf-8", "replace")
+            result = {"is_error": True, "result": (err or "no output")[-400:]}
+        return result, steps
+    finally:
+        timer.cancel()
+        p.stdout.close()
+        errf.close()
+
+
 def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
-        timeout: int = 1800, extra_env: dict = None) -> dict:
-    """Run the employee headless in its folder. Chats resume one session per (employee, person)."""
+        timeout: int = 1800, extra_env: dict = None, on_step=None) -> dict:
+    """Run the employee headless in its folder. Chats resume one session per (employee, person).
+    on_step(step, steps) is called live for every tool call; the steps also come back in the result."""
     if os.environ.get("STAFFROOM_DEMO"):                  # `staff demo`: canned answers, no Claude run
         import demo
-        return demo.fake_run(emp, prompt, job, session_key)
+        return demo.fake_run(emp, prompt, job, session_key, on_step)
     if not os.path.isfile(os.path.join(GUARD, "hooks", "register.js")):
         return {"ok": False, "text": "My safety guard is missing, so I've stopped myself. Owner: reinstall the kit.",
                 "error": "guard missing", "model": None}
@@ -277,20 +352,10 @@ def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
     if session_key and sessions.get(session_key):
         attempts.append(("resume", sessions[session_key]))
     attempts.append(("new", str(uuid.uuid4())))
-    t0, d = time.time(), {}
+    t0, d, steps = time.time(), {}, []
     for kind, sid in attempts:
         cmd = base + (["--resume", sid] if kind == "resume" else ["--session-id", sid])
-        try:
-            p = subprocess.run(cmd, input=prompt, capture_output=True, text=True, cwd=ws,
-                               env={**clean_env(emp), **(extra_env or {})}, timeout=timeout)
-            try:
-                d = json.loads(p.stdout or "{}")
-            except ValueError:
-                d = {}
-            if not d:
-                d = {"is_error": True, "result": (p.stderr or p.stdout or "no output")[-400:]}
-        except subprocess.TimeoutExpired:
-            d = {"is_error": True, "result": "timed out after %d min" % (timeout // 60)}
+        d, steps = stream(cmd, prompt, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)
         if not d.get("is_error"):
             if session_key:
                 sessions[session_key] = sid
@@ -305,11 +370,12 @@ def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
     rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "employee": emp["id"], "job": job,
            "ok": not d.get("is_error"), "secs": round(time.time() - t0), "model": model,
            "turns": d.get("num_turns"), "cost_usd": d.get("total_cost_usd"),
-           "error": err[:200] or None}
+           "error": err[:200] or None, "steps": steps[-40:]}
     os.makedirs(os.path.join(ws, "state"), exist_ok=True)
     with open(os.path.join(ws, "state", "runs.jsonl"), "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(rec) + "\n")
-    return {"ok": not d.get("is_error"), "text": text, "error": err, "model": model}
+        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return {"ok": not d.get("is_error"), "text": text, "error": err, "model": model, "steps": steps[-40:],
+            "secs": rec["secs"], "cost_usd": rec["cost_usd"]}
 
 
 def stats(emp: dict) -> dict:

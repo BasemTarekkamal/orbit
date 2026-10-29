@@ -25,6 +25,9 @@ import hire  # noqa: E402
 import orders  # noqa: E402
 import team  # noqa: E402
 
+RUNS = []                                  # employee runs the code asked for; tests never start Claude
+team.run_async = lambda *a, **k: RUNS.append((a, k))
+
 
 def fresh_team():
     shutil.rmtree(TMP, ignore_errors=True)
@@ -407,6 +410,169 @@ class Channels(unittest.TestCase):
             self.assertEqual(sent[-1], ("C1", "hello room"))
         finally:
             channels.get, staffd.run_async = real_get, real_run
+
+
+FAKE_CLAUDE = r'''#!/usr/bin/env python3
+import json, sys, time
+sys.stdin.read()
+if "--sleep" in open(__file__).read() and False:
+    pass
+def out(d):
+    print(json.dumps(d), flush=True)
+out({"type": "system", "subtype": "init"})
+out({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "WebSearch", "input": {"query": "coffee prices"}}]}})
+out({"type": "user", "message": {"content": [{"type": "tool_result", "content": "..."}]}})
+out({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "staff-fetch https://www.example.com/x"}}]}})
+out({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Glob", "input": {"pattern": "*"}}]}})
+out({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Write", "input": {"file_path": "WS/research/prices.md"}}]}})
+SLEEP
+out({"type": "assistant", "message": {"content": [{"type": "text", "text": "Done."}]}})
+out({"type": "result", "subtype": "success", "is_error": False, "result": "Done.", "num_turns": 4, "total_cost_usd": 0.0123})
+'''
+
+
+class LiveSteps(unittest.TestCase):
+    def setUp(self):
+        fresh_team()
+        hire.hire("Tess", "Research", supervisor="Alex")
+        self.emp = engine.employee("tess")
+        self.real = engine.resolve_claude
+
+    def tearDown(self):
+        engine.resolve_claude = self.real
+
+    def fake(self, sleep=0):
+        p = os.path.join(TMP, "fake-claude")
+        with open(p, "w") as fh:
+            fh.write(FAKE_CLAUDE.replace("WS", self.emp["workspace"]).replace("SLEEP", "time.sleep(%d)" % sleep))
+        os.chmod(p, 0o755)
+        engine.resolve_claude = lambda: p
+
+    def test_describe(self):
+        import steps
+        ws = "/w"
+        self.assertEqual(steps.describe("WebSearch", {"query": "harbor   roast"}, ws), 'Searching the web: "harbor roast"')
+        self.assertEqual(steps.describe("Bash", {"command": "staff-apify run tiktok '{\"profiles\": [\"x\"]}' --max-items 10"}, ws), "Running the TikTok scraper")
+        self.assertEqual(steps.describe("Bash", {"command": "staff-browse https://www.tiktok.com/@x --scroll 5"}, ws), "Opening tiktok.com in the browser and scrolling through it")
+        self.assertEqual(steps.describe("Bash", {"command": "staff-bus ask omar \"which page?\""}, ws), "Asking Omar")
+        self.assertEqual(steps.describe("Read", {"file_path": "/w/STATE.md"}, ws), "Checking my notes")
+        self.assertEqual(steps.describe("Edit", {"file_path": "/w/LESSONS.md"}, ws), "Updating my notes (LESSONS.md)")
+        self.assertEqual(steps.describe("Write", {"file_path": "/w/research/a.md"}, ws), "Writing research/a.md")
+        self.assertEqual(steps.describe("Read", {"file_path": "/w/state/inbox/x.pdf"}, ws), "Reading the file you sent")
+        self.assertIsNone(steps.describe("Read", {"file_path": "/w/state/runs.jsonl"}, ws))
+        self.assertIsNone(steps.describe("Bash", {"command": "ls -la"}, ws))
+        self.assertIsNone(steps.describe("Bash", {"command": "git status"}, ws))
+        self.assertEqual(steps.describe("Bash", {"command": "python3 /w/tools/price_check.py"}, ws), "Running my tool tools/price_check.py")
+        self.assertIsNone(steps.describe("SomethingNew", {}, ws))
+
+    def test_run_streams_steps_and_keeps_a_receipt(self):
+        self.fake()
+        seen = []
+        res = engine.run(self.emp, "hi", job="chat", on_step=lambda s, all_: seen.append(s["text"]))
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["text"], "Done.")
+        want = ['Searching the web: "coffee prices"', "Reading example.com", "Looking through my files", "Writing research/prices.md"]
+        self.assertEqual(seen, want)
+        self.assertEqual([s["text"] for s in res["steps"]], want)
+        with open(os.path.join(self.emp["workspace"], "state", "runs.jsonl")) as fh:
+            rec = json.loads(fh.read().splitlines()[-1])
+        self.assertEqual((rec["ok"], rec["cost_usd"], len(rec["steps"])), (True, 0.0123, 4))
+
+    def test_timeout(self):
+        self.fake(sleep=5)
+        res = engine.run(self.emp, "hi", job="brief", timeout=1)
+        self.assertFalse(res["ok"])
+        self.assertIn("timed out", res["error"])
+
+
+class Onboarding(unittest.TestCase):
+    def setUp(self):
+        shutil.rmtree(TMP, ignore_errors=True)
+        os.makedirs(os.path.join(TMP, "team"))
+        engine.save_registry({"team_name": "My team", "owners": {}, "employees": {}, "panel": {"port": 7398}})
+        import panel
+        self.panel = panel
+
+    def test_welcome_hire_connect_pair(self):
+        import channels
+        import staffd
+        p = self.panel
+        self.assertTrue(p.setup_state([])["welcome"])
+        with self.assertRaises(orders.OrderError):
+            p.welcome({"name": " "}, "Owner")
+        p.welcome({"name": "Sam", "team_name": "Acme Coffee", "about": "We roast coffee."}, "Owner")
+        reg = engine.registry()
+        self.assertEqual(reg["owners"], {"local-sam": {"name": "Sam", "aliases": [], "local": True}})
+        with open(os.path.join(TMP, "team", "ABOUT.md")) as fh:
+            self.assertIn("We roast coffee.", fh.read())
+        del RUNS[:]
+        orders.execute("Sam", "hire", {"name": "Sara", "role": "Market researcher", "scope": "prices", "abilities": ["web", "fetch"]})
+        (a, k), = RUNS
+        self.assertEqual((a[0], a[2]), ("sara", "first_day"))                 # she starts with real work
+        self.assertIn("First day", a[1])
+        self.assertIn("Try next", a[1])
+        with self.assertRaises(orders.OrderError):
+            p.welcome({"name": "Sam"}, "Sam")                                    # once only
+        self.assertFalse(p.setup_state([{"id": "sara"}])["welcome"])
+
+        sent = []
+
+        class Fake:
+            NAME, LIMIT = "telegram", 3900
+            ok = True
+            def token(self): return engine.secret("telegram_bot_token")
+            def check(self): return (True, "@acme_team_bot") if self.ok else (False, "Unauthorized")
+            def send(self, cid, text): sent.append((cid, text)); return True
+            def send_file(self, *a, **k): return True
+            def typing(self, cid): pass
+            def dm_chat(self, uid): return uid
+            def download(self, *a): return None
+            def mention(self, h): return "/" + h
+        fake = Fake()
+        real_get = channels.get
+        channels.get = lambda n: fake if n == "telegram" else real_get(n)
+        try:
+            with self.assertRaises(orders.OrderError):
+                p.connect({"kind": "telegram", "token": "not a token"}, "Sam")
+            fake.ok = False
+            with self.assertRaises(orders.OrderError):
+                p.connect({"kind": "telegram", "token": "123456789:" + "A" * 35}, "Sam")
+            self.assertIsNone(engine.secret("telegram_bot_token"))            # a refused token isn't kept
+            fake.ok = True
+            r = p.connect({"kind": "telegram", "token": "123456789:" + "B" * 35}, "Sam")
+            code = r["code"]
+            self.assertRegex(code, r"^\d{6}$")
+            self.assertEqual(r["link"], "https://t.me/acme_team_bot?start=" + code)
+            self.assertEqual(oct(os.stat(os.path.join(engine.SECRETS, "telegram_bot_token")).st_mode & 0o777), "0o600")
+            msg = {"channel": "telegram", "sender": "telegram:555", "sender_name": "Mallory", "username": "m", "chat": "telegram:555",
+                   "is_group": False, "chat_title": None, "text": "/start 000000", "reply_to_text": "", "attachments": []}
+            self.assertFalse(staffd.try_pair(msg))                             # wrong code
+            self.assertIsNone(engine.owner_key("telegram:555"))
+            staffd.handle({**msg, "sender": "telegram:777", "chat": "telegram:777", "text": "/start " + code})
+            reg = engine.registry()
+            self.assertEqual(list(reg["owners"]), ["telegram:777"])            # the local owner is now reachable
+            self.assertEqual(reg["owners"]["telegram:777"]["name"], "Sam")
+            self.assertNotIn("local", reg["owners"]["telegram:777"])
+            self.assertEqual(sent[-1][0], "777")
+            self.assertIn("Connected. Hi Sam", sent[-1][1])
+            self.assertTrue(p.pairing_view()["paired"])
+            self.assertIsNone(p.pairing_view()["code"])
+            self.assertEqual(team.to_people(engine.employee("sara"), "supervisor"), ["telegram:777"])
+            v = p.new_pairing("telegram", "telegram:777")                       # a second device for the same owner
+            for _ in range(5):
+                staffd.try_pair({**msg, "text": "111111"})
+            self.assertIsNone(p.pairing_view()["code"])                         # five wrong tries: void
+            self.assertFalse(staffd.try_pair({**msg, "text": v["code"]}))
+        finally:
+            channels.get = real_get
+
+    def test_apify_token(self):
+        p = self.panel
+        with self.assertRaises(orders.OrderError):
+            p.connect({"kind": "apify", "token": "nope"}, "Sam")
+        r = p.connect({"kind": "apify", "token": "apify_api_" + "x" * 30}, "Sam")
+        self.assertTrue(r["ok"])
+        self.assertEqual(engine.secret("apify_token"), "apify_api_" + "x" * 30)
 
 
 class Skills(unittest.TestCase):

@@ -156,9 +156,9 @@ def needs_you(emps, ords, pending, usage):
                         "href": "/e/%s" % e["id"], "emp": e["id"]})
         if e["failures_today"]:
             out.append({"kind": "failed", "title": "%s: %d run%s failed today" % (e["name"], e["failures_today"], "" if e["failures_today"] == 1 else "s"),
-                        "detail": "See Activity for the reason.", "href": "/e/%s/activity" % e["id"], "emp": e["id"]})
+                        "detail": "See Work → Activity for the reason.", "href": "/e/%s/work?v=activity" % e["id"], "emp": e["id"]})
         for line in waiting_lines(e["id"]):
-            out.append({"kind": "waiting", "title": line, "detail": "%s is waiting on you" % e["name"], "href": "/e/%s/memory" % e["id"], "emp": e["id"]})
+            out.append({"kind": "waiting", "title": line, "detail": "%s is waiting on you" % e["name"], "href": "/e/%s/knowledge?f=note:TASKS.md" % e["id"], "emp": e["id"]})
         ws = engine.employee(e["id"])["workspace"]
         for r in reminders_for(e["id"], ws):
             if r.get("to") != "me" and r.get("at", "")[:10] <= today:
@@ -170,26 +170,119 @@ def needs_you(emps, ords, pending, usage):
 
 
 def checklist(emps, feed):
+    """What's left to set up, in plain words. Each item either has a button in the panel (href) or says
+    what to ask Claude; no Terminal commands."""
     reg = engine.registry()
     auth = claude_auth()
     model = os.path.join(engine.HOME, "models", "ggml-large-v3-turbo-q5_0.bin")
-    emp_ids = {e["id"] for e in emps}
     if DEMO:
         return [{"id": "demo", "done": True, "title": "Demo team", "how": ""}]
     return [
-        {"id": "claude", "done": bool(auth["ok"]), "title": "Claude Code signed in", "how": "Run `claude` in Terminal and sign in with your Claude account."},
-        {"id": "service", "done": daemon_online(), "title": "The team service is running", "how": "Run `staff start` in Terminal. It starts at login from then on."},
-        {"id": "channel", "done": bool(channels.configured()), "title": "A chat channel connected (Telegram, Slack or Discord)",
-         "how": "Telegram: a bot from @BotFather, then `staff secret telegram`. Slack: `staff secret slack`. Discord: `staff secret discord`. Steps in docs/channels.md."},
-        {"id": "owner", "done": any(not o.get("local") for o in reg.get("owners", {}).values()), "title": "You're paired with your bot",
-         "how": "Message your bot once, then approve yourself under Access in Settings."},
-        {"id": "hire", "done": bool(emps), "title": "First employee hired", "how": "Pick a role on the Hire page."},
-        {"id": "hello", "done": any(r.get("from_id") in emp_ids for r in feed), "title": "First conversation", "how": "Open an employee and say hello."},
-        {"id": "apify", "done": bool(engine.secret("apify_token")), "optional": True, "title": "Apify connected (social media and Maps research)",
-         "how": "Free account at apify.com, then `staff secret apify`."},
-        {"id": "voice", "done": os.path.exists(model), "optional": True, "title": "Voice notes on this Mac",
-         "how": "`brew install ffmpeg whisper-cpp`, then `staff doctor --get-voice-model`."},
+        {"id": "claude", "done": bool(auth["ok"]), "title": "Signed in to Claude",
+         "how": "Ask Claude (in the Claude app, Code tab): “Sign in Claude Code for my Staffroom.”"},
+        {"id": "hire", "done": bool(emps), "title": "Your first employee", "how": "Pick what they should do.", "href": "/welcome", "cta": "Hire"},
+        {"id": "phone", "done": any(not o.get("local") for o in reg.get("owners", {}).values()), "title": "Your team on your phone",
+         "how": "Telegram, Slack or Discord, through a bot of your own. About two minutes.", "href": "/connect", "cta": "Connect"},
+        {"id": "apify", "done": bool(engine.secret("apify_token")), "optional": True, "title": "TikTok, Instagram, Facebook and Maps research",
+         "how": "A free Apify account; paste its token in Settings. Paid per use, inside the budget you set.", "href": "/settings#research", "cta": "Add"},
+        {"id": "voice", "done": os.path.exists(model), "optional": True, "title": "Voice notes, transcribed on this Mac",
+         "how": "Ask Claude: “Set up voice notes for my Staffroom.”"},
     ]
+
+
+def setup_state(emps):
+    owners = engine.registry().get("owners", {})
+    return {"owner": bool(owners), "employees": len(emps), "paired": any(not o.get("local") for o in owners.values()),
+            "channels": channels.configured(), "welcome": not DEMO and (not owners or not emps)}
+
+
+def welcome(f, me):
+    """The first screen in the browser: who you are and what the business does. Owners set up on this
+    Mac start "local"; pairing a phone (connect) makes them reachable."""
+    name = " ".join(str(f.get("name") or "").split())[:40]
+    if not name:
+        raise orders.OrderError("Your first name, please")
+    reg = engine.registry()
+    if any(e.get("status") != "retired" for e in reg.get("employees", {}).values()):
+        raise orders.OrderError("Already set up: change these in Settings")
+    owners = reg.setdefault("owners", {})
+    if owners:
+        owners[next(iter(owners))]["name"] = name
+    else:
+        owners["local-%s" % (hire.handle_for(name) or "owner")] = {"name": name, "aliases": [], "local": True}
+    reg["team_name"] = (" ".join(str(f.get("team_name") or "").split()) or reg.get("team_name") or "My team")[:60]
+    engine.save_registry(reg, "welcome: %s" % name)
+    about = str(f.get("about") or "").strip()[:6000]
+    os.makedirs(team.TEAM, exist_ok=True)
+    with open(ABOUT, "w", encoding="utf-8") as fh:
+        fh.write("# %s\n\n%s\n\nOwner: %s.\n" % (reg["team_name"], about or "(not described yet: add it in Settings)", name))
+    hire.directory(reg)
+    team.order_log(name, "welcome", "Set up %s" % reg["team_name"], "done", name)
+    return "Welcome, %s" % name
+
+
+TOKEN_RE = {"telegram": r"\d{6,12}:[A-Za-z0-9_-]{30,}", "slack": r"xoxb-[A-Za-z0-9-]{20,}", "slack_app": r"xapp-[A-Za-z0-9-]{20,}",
+            "discord": r"[A-Za-z0-9_.-]{50,}", "apify": r"apify_api_[A-Za-z0-9]{20,}"}
+SECRET_OF = {"telegram": ["telegram_bot_token"], "slack": ["slack_bot_token", "slack_app_token"],
+             "discord": ["discord_bot_token"], "apify": ["apify_token"]}
+
+
+BOTS = os.path.join(team.TEAM, "bots.json")           # {channel: the bot's name}, for links and labels
+
+
+def new_pairing(channel, me_key):
+    """A fresh one-time code (valid 30 minutes) linking the next private chat that sends it to me_key."""
+    code = "%06d" % secrets.randbelow(1000000)
+    team.jsave(team.PAIRING, {"code": code, "channel": channel, "owner": me_key, "expires": time.time() + 1800, "tries": 0,
+                              "bot": team.jload(BOTS, {}).get(channel, "")})
+    return pairing_view()
+
+
+def connect(f, me):
+    """Save a bot token (or the Apify token) typed in the browser: it goes to ~/Staff/.secrets on this Mac,
+    never into a chat. For a bot: check the token with the service, then hand back a pairing code."""
+    kind = str(f.get("kind") or "")
+    if kind not in SECRET_OF:
+        raise orders.OrderError("Unknown connection")
+    vals = [str(f.get("token") or "").strip()] + ([str(f.get("app_token") or "").strip()] if kind == "slack" else [])
+    pats = [TOKEN_RE[kind]] + ([TOKEN_RE["slack_app"]] if kind == "slack" else [])
+    for v, pat in zip(vals, pats):
+        if not re.fullmatch(pat, v):
+            raise orders.OrderError("That doesn't look like a %s token. Copy it again, the whole line." % ("Slack app" if pat == TOKEN_RE["slack_app"] else kind.capitalize()))
+    old = {n: engine.secret(n) for n in SECRET_OF[kind]}
+    for n, v in zip(SECRET_OF[kind], vals):
+        engine.save_secret(n, v)
+    if kind == "apify":
+        team.order_log(me, "connect", "Apify token added", "done", "")
+        return {"ok": True, "message": "Apify connected. Social media and Maps research are on for employees with that ability."}
+    try:
+        ok, note = channels.get(kind).check()
+    except Exception as ex:  # noqa: BLE001
+        ok, note = False, str(ex)
+    if not ok:
+        for n in SECRET_OF[kind]:                         # put back what worked before, if anything
+            if old[n]:
+                engine.save_secret(n, old[n])
+            else:
+                engine.drop_secret(n)
+        why = "it's not a valid bot token" if re.search(r"401|unauthori[sz]ed|invalid_auth|not_authed", str(note), re.I) else str(note)[:120]
+        raise orders.OrderError("%s didn't accept that token (%s). Copy it again, the whole line, and paste it here." % (channels.LABELS[kind], why))
+    bots = team.jload(BOTS, {})
+    bots[kind] = note
+    team.jsave(BOTS, bots)
+    owners = engine.registry().get("owners", {})
+    view = new_pairing(kind, next(iter(owners), None))
+    team.order_log(me, "connect", "%s connected (%s)" % (channels.LABELS[kind], note), "done", "")
+    return {"ok": True, "message": "Connected to %s" % note, **view}
+
+
+def pairing_view():
+    p = team.jload(team.PAIRING, {})
+    live = bool(p.get("code")) and time.time() < p.get("expires", 0)
+    bot = p.get("bot") or ""
+    link = "https://t.me/%s?start=%s" % (bot.lstrip("@"), p["code"]) if live and p.get("channel") == "telegram" and bot.startswith("@") else ""
+    return {"code": p.get("code") if live else None, "channel": p.get("channel"), "bot": bot, "link": link,
+            "paired": bool(p.get("paired_at")), "who": p.get("who"), "expires_in": max(0, int(p.get("expires", 0) - time.time())) if live else 0}
 
 
 def state():
@@ -207,7 +300,8 @@ def state():
             "employees": emps, "feed": feed, "orders": ords,
             "pending": [{"id": i, **p} for i, p in pending.items()],
             "needs": needs_you(emps, ords, pending, usage), "checklist": checklist(emps, feed),
-            "working": dict(team.DOING), "jobs": team.JOBS,
+            "working": dict(team.DOING), "jobs": team.JOBS, "labels": team.LABELS, "setup": setup_state(emps),
+            "live": {k: {**v, "steps": list(v.get("steps", []))} for k, v in list(team.LIVE.items())},
             "team_skills": [{k: v for k, v in s.items() if k != "path"} for s in skillbook.listing(skillbook.TEAM_DIR, "team")]}
 
 
@@ -257,15 +351,30 @@ def employee_detail(emp_id):
     dms = [r for r in team.tail(team.CHATLOG, 400) if r.get("employee") == emp_id and r.get("channel") in channels.NAMES]
     chat = [{"ts": r.get("ts", ""), "from_id": "owner", "from_name": r.get("who", "Owner"), "to_id": emp_id, "body": r.get("text", ""), "channel": r.get("channel")}
             for r in dms]
-    chat += [{"ts": r.get("ts", "") + " ", "from_id": emp_id, "from_name": m["name"], "to_id": "owner", "body": r.get("answer", ""), "channel": r.get("channel")}
+    chat += [{"ts": r.get("ts", "") + " ", "from_id": emp_id, "from_name": m["name"], "to_id": "owner", "body": r.get("answer", ""), "channel": r.get("channel"),
+              **({"receipt": r["receipt"]} if r.get("receipt") else {})}
              for r in dms if r.get("answer")]
     chat += [r for r in team.tail(team.FEED, 400) if r.get("from_id") == emp_id or r.get("to_id") == emp_id]
     chat.sort(key=lambda r: r.get("ts", ""))
     sk = skillbook.overview(emp_id)
     skills = {k: [{a: b for a, b in s.items() if a != "path"} for s in v] for k, v in sk.items()}
+    role = role_of(m)
     return {**m, "abilities": sorted(abilities.effective(emp_id)), "chosen": abilities.chosen(emp_id), "memory": memory,
             "runs": list(reversed(runs)), "files": files, "reminders": reminders_for(emp_id, ws), "chat": chat[-120:],
-            "workspace": ws, "network_domains": emp.get("network_domains", []), "skills": skills}
+            "workspace": ws, "network_domains": emp.get("network_domains", []), "skills": skills,
+            "can": [a["can"] for a in abilities.catalog() if a.get("can") and a["id"] in abilities.effective(emp_id)],
+            "try": role.get("try", []) if role else []}
+
+
+def role_of(m):
+    """The hire template an employee most likely came from (by role title), for its suggestions."""
+    try:
+        with open(ROLES_F, encoding="utf-8") as fh:
+            roles = json.load(fh)["roles"]
+    except (OSError, ValueError, KeyError):
+        return None
+    low = (m.get("role") or "").lower()
+    return next((r for r in roles if r["role"].lower() == low), None) or next((r for r in roles if r["id"] == "blank"), None)
 
 
 def skill_action(f, me):
@@ -503,6 +612,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, json.load(fh))
         if path == "/api/settings":
             return self._json(200, settings_view())
+        if path == "/api/pairing":
+            return self._json(200, pairing_view())
         m = re.fullmatch(r"/api/employee/([a-z0-9-]+)", path)
         if m:
             d = employee_detail(m.group(1))
@@ -545,6 +656,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "message": approve_owner(f, me)})
             if path == "/api/skill":
                 return self._json(200, {"ok": True, "message": skill_action(f, me)})
+            if path == "/api/welcome":
+                return self._json(200, {"ok": True, "message": welcome(f, me)})
+            if path == "/api/connect":
+                return self._json(200, connect(f, me))
+            if path == "/api/pairing" and f.get("channel") in channels.NAMES:
+                if f["channel"] not in channels.configured():
+                    raise orders.OrderError("Connect that channel first")
+                return self._json(200, {"ok": True, **new_pairing(f["channel"], next(iter(engine.registry().get("owners", {})), None))})
             m = re.fullmatch(r"/api/employee/([a-z0-9-]+)/rules", path)
             if m and m.group(1) in engine.registry().get("employees", {}):
                 return self._json(200, {"ok": True, "message": set_rules(m.group(1), me, str(f.get("text") or ""))})

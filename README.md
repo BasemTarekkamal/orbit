@@ -4,15 +4,31 @@
 schedule, learn what you teach them, talk to each other, and report to you on Telegram, Slack or
 Discord. Everything runs on your Mac, signed in with your own Claude account.
 
+## Get started
+
+**You need:** a Mac and a paid Claude plan (Pro or Max). That's what your employees run on; nothing
+else is billed.
+
+**The easy way, no Terminal.** Open the Claude app on your Mac, go to **Code**, and paste:
+
+> Set up Staffroom for me: clone https://github.com/BasemTarekkamal/staffroom into ~/staffroom, then read ~/staffroom/SETUP.md and follow it.
+
+Claude installs everything, says what each step does, and opens your control panel. There you answer
+two questions (your name, what your business does), pick what your first employee should do, and
+watch them start: within a minute they introduce themselves with a first piece of real work for your
+business. Then you put them on your phone in about two minutes.
+
+**In Terminal instead:**
+
 ```bash
 git clone https://github.com/BasemTarekkamal/staffroom ~/staffroom && ~/staffroom/install.sh
 ```
 
-Setup takes about five minutes: it checks Claude Code, asks about your business, connects your chat
-bot, and hires your first employee.
+**Just want to look around first?** After cloning, `~/staffroom/staff demo` opens the control panel
+with a pretend team (invented business, canned replies, no bot, no Claude run). `staff demo --stop`
+ends it.
 
-**Just want to look around?** `staff demo` opens the control panel with a pretend team (invented
-business, canned replies, no bot, no Claude run, nothing to set up). `staff demo --stop` ends it.
+![Watching an employee work](docs/screens/live-dark.jpg)
 
 ---
 
@@ -66,22 +82,26 @@ and claim comes with a source link.
 
 ![Today](docs/screens/today-dark.jpg)
 
-`staff panel` opens a small app on your Mac (no account, no cloud, light and dark) with:
+`staff panel` opens a small app on your Mac (no account, no cloud, light and dark), built for people
+who don't live in Terminal: every setting is a button or a form.
 
-- **Today:** what needs you (approvals, reminders, failed runs, people who messaged your bot),
-  what the team said today, a setup checklist until everything is connected, and your plan use.
-- **Team:** who is working on what, their next routine, runs and plan use today.
-- **An employee's page:** a **chat** with them, their **memory** (state, tasks, goals, lessons,
-  instructions, and a box for rules you set), their **work** (every file they wrote, readable in
-  place), their **activity** (every run, with duration and plan use), their **skills** (what they
-  learned, what you taught, what the team shares; teach one here) and their **abilities**.
-- **Hire:** pick a role (personal assistant, market researcher, social media analyst, lead finder,
-  competitor watcher, document analyst, content researcher, or from scratch); the scope, abilities
-  and model come pre-filled, and the first message to send is suggested.
-- **Abilities:** a checkbox for every ability, per employee. **Default** is a capable, low-cost
-  setup. **Super agent** ticks everything.
-- **Settings:** your business description (every employee reads it), workdays, routine times, the
-  Apify budget, who may direct the team, and the sites their own scripts may reach.
+- **Watch them work.** While an employee works you see each step as it happens ("Searching the web",
+  "Opening tiktok.com in the browser", "Asking Omar", "Writing research/prices.md"), and every answer
+  keeps a **How I did it** receipt: the steps, the time, the plan use.
+- **First run in the browser:** your name and business, then "What should your first employee do?"
+  (be my right hand, research my market, tell me what's said on TikTok, find leads, watch my
+  competitors, read my documents, or describe the job yourself). They start with a real first task.
+- **Your phone in two minutes:** paste your bot's token in the panel, tap "Open Telegram and press
+  Start" (or send a 6-digit code on Slack or Discord), done. The token never goes through a chat.
+- **Today:** who's working on what right now, what needs you, what the team said, plan use.
+- **An employee's page:** **Chat** (with suggestions to try, what they can and can never do),
+  **Knowledge** (the notes they keep, skills they learned or you taught, rules you set), **Work**
+  (every file they wrote, and every run with its steps) and **Manage** (pause, model, abilities,
+  run a routine now).
+- **Settings:** your business, workdays, routine times, the research budget and Apify token, chat
+  channels, who may direct the team.
+
+![An employee's first day](docs/screens/first-day-dark.jpg)
 
 ## Safe by design
 

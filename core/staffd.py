@@ -81,7 +81,60 @@ def help_text(mod):
     return "\n".join(lines) if len(lines) > 2 else "Nobody works here yet. Hire someone in the control panel."
 
 
+def try_pair(msg) -> bool:
+    """The control panel's one-time code (team/pairing.json), sent to the bot in a private chat (Telegram's
+    "Open in Telegram" link sends "/start <code>"), links that chat to the owner who asked for it. A wrong
+    code counts against the code; five wrong tries and it's void."""
+    p = jload(team.PAIRING, {})
+    if not p.get("code") or p.get("paired_at") or msg.get("is_group") or time.time() > p.get("expires", 0):
+        return False
+    m = re.fullmatch(r"(?:/start\s+)?(\d{3})[\s-]?(\d{3})", (msg.get("text") or "").strip())
+    if not m:
+        return False
+    if m.group(1) + m.group(2) != p["code"]:
+        p["tries"] = p.get("tries", 0) + 1
+        if p["tries"] >= 5:
+            p["code"] = None
+            log("pairing code voided after 5 wrong tries")
+        jsave(team.PAIRING, p)
+        return False
+    import hire
+    reg = engine.registry()
+    owners = reg.setdefault("owners", {})
+    sender, chat = channels.norm(msg["sender"]), channels.norm(msg["chat"])
+    key = engine.owner_key(sender)
+    want = p.get("owner") if p.get("owner") in owners else None
+    if key:
+        pass                                              # already theirs: nothing to add
+    elif want and not owners[want].get("local"):
+        owners[want].setdefault("addresses", []).append(sender)   # an owner adds another channel
+        key = want
+    else:                                                 # the first pairing: the owner set up in the browser
+        local = want or next((k for k, o in owners.items() if o.get("local")), None)
+        if local:
+            reg["owners"] = {(sender if k == local else k): ({k2: v2 for k2, v2 in o.items() if k2 != "local"} if k == local else o)
+                             for k, o in owners.items()}
+        else:
+            reg["owners"][sender] = {"name": (msg.get("sender_name") or "Owner")[:40], "aliases": []}
+        key = sender
+    engine.save_registry(reg, "paired %s on %s" % (reg["owners"][key]["name"], msg["channel"]))
+    hire.directory(reg)
+    p.update({"code": None, "paired_at": time.strftime("%Y-%m-%d %H:%M:%S"), "who": reg["owners"][key]["name"], "chat": chat})
+    jsave(team.PAIRING, p)
+    team.remember_dm(chat, key)
+    emps = team.active()
+    mod = channels.get(msg["channel"])
+    first = next(iter(emps), None)
+    hello = ("Connected. Hi %s: this is your team's chat. Just type (or send a voice note) and %s answers here." %
+             (reg["owners"][key]["name"], emps[first]["name"])) if len(emps) == 1 else \
+        "Connected. Hi %s: this is your team's chat.\n\n%s" % (reg["owners"][key]["name"], help_text(mod))
+    send(chat, hello)
+    return True
+
+
 def handle(msg):
+    if try_pair(msg):
+        return
     reg = engine.registry()
     key = engine.owner_key(msg.get("sender"))
     if not key:

@@ -91,12 +91,45 @@ UPDATES = [
 ]
 
 
+FIRST_DAY = ("Hi %s, I'm %s, your %s. I research, remember what you tell me, and report back here or on your phone.\n\n"
+             "Already done: I read about Northwind Coffee and checked your three competitors. Harbor Roast cut its 1 kg bag to $34 "
+             "this week (you're at $37), and Kettle & Co lowered its wholesale minimum to 10 kg. Sources: "
+             "https://harborroast.example/pricing, https://kettleandco.example/wholesale (demo data).\n\n"
+             "What I can't do: spend money, post anywhere, or message anyone but you.\n\n"
+             "Try next:\n→ What are my competitors posting on TikTok?\n→ Remind me Friday at 10 to review prices\n"
+             "→ From now on, keep every answer under 100 words")
+STEPS = [   # what a real run shows in the live view, per kind of request (same wording as core/steps.py)
+    (r"first day", ["Checking my notes", "Reading about the business", 'Searching the web: "Harbor Roast coffee prices"',
+                    "Reading harborroast.example", "Reading kettleandco.example", "Updating my notes (STATE.md)"]),
+    (r"tiktok|instagram|social|post", ["Checking my notes", "Using the social-media playbook", "Running the TikTok scraper",
+                                       "Writing research/tiktok-harbor-roast.md", "Updating my notes (STATE.md)"]),
+    (r"price|cost|cheap|expensive|\$", ["Checking my notes", 'Searching the web: "Harbor Roast 1 kg bag price"', "Reading harborroast.example",
+                                        "Reading bluebirdbeans.example", "Opening kettleandco.example in the browser",
+                                        "Writing research/prices-%s.md" % time.strftime("%Y-%m")]),
+    (r"remind|tomorrow|next week", ["Checking my notes", "Setting a reminder", "Updating my notes (TASKS.md)"]),
+    (r"from now on|always|never|next time", ["Checking my notes", "Writing down a new skill", "Updating my notes (LESSONS.md)"]),
+    (r"digest|weekly|monday", ["Using the monday-competitor-digest skill", "Asking Omar", "Reading research/competitors.md",
+                               "Writing research/digest-this-week.md"]),
+    (r"minutes|meeting", ["Reading the file you sent", "Writing research/minutes-latest.md", "Setting a reminder"]),
+    (r".", ["Checking my notes", "Reading about the business", "Updating my notes (STATE.md)"]),
+]
+
+
+def said_of(prompt):
+    said = prompt.split("\n", 1)[1] if "\n" in prompt else prompt
+    return re.split(r"\n\nFollow CLAUDE\.md", said)[0].strip()
+
+
 def canned(emp, prompt, job):
     if job in JOB_TEXT:
         return JOB_TEXT[job]
-    said = prompt.split("\n", 1)[1] if "\n" in prompt else prompt
-    said = re.split(r"\n\nFollow CLAUDE\.md", said)[0].strip()
+    if job == "first_day":
+        return FIRST_DAY % (OWNER, emp["name"], emp["role"].lower())
+    said = said_of(prompt)
     low = said.lower()
+    if re.search(r"from now on|always|never|next time", low):
+        return ("Got it, and written down as a skill so I do it every time from now on: \"%s\". You can read or change it in my "
+                "Knowledge tab." % said[:120]) + DEMO_NOTE
     for pat, text in REPLIES:
         if re.search(pat, low):
             if "%s" in text:
@@ -105,19 +138,29 @@ def canned(emp, prompt, job):
     return REPLIES[-1][1] + DEMO_NOTE
 
 
-def fake_run(emp, prompt, job="chat", session_key=None):
-    """Stands in for engine.run: takes a few seconds (so the panel shows 'working'), answers from the script."""
+def fake_run(emp, prompt, job="chat", session_key=None, on_step=None):
+    """Stands in for engine.run: works through plausible steps for a few seconds (so the panel shows the
+    live view), then answers from the script."""
     t0 = time.time()
-    time.sleep(random.uniform(4, 8))
+    key = "first day" if job == "first_day" else ("brief" if job in JOB_TEXT else said_of(prompt).lower())
+    plan = next(s for pat, s in STEPS if re.search(pat, key)) if job not in JOB_TEXT else \
+        ["Checking my notes", "Checking my watchers", "Updating my notes (STATE.md)"]
+    steps = []
+    for text in plan:
+        time.sleep(random.uniform(0.9, 1.8))
+        steps.append({"t": round(time.time() - t0), "text": text})
+        if on_step:
+            on_step(steps[-1], steps)
+    time.sleep(random.uniform(0.6, 1.2))
     text = canned(emp, prompt, job)
     ws = emp["workspace"]
     rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "employee": emp["id"], "job": job, "ok": True,
            "secs": round(time.time() - t0), "model": emp.get("model", "sonnet"), "turns": random.randint(3, 9),
-           "cost_usd": round(random.uniform(0.03, 0.22), 3), "error": None}
+           "cost_usd": round(random.uniform(0.03, 0.22), 3), "error": None, "steps": steps}
     os.makedirs(os.path.join(ws, "state"), exist_ok=True)
     with open(os.path.join(ws, "state", "runs.jsonl"), "a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec) + "\n")
-    return {"ok": True, "text": text, "error": "", "model": rec["model"]}
+    return {"ok": True, "text": text, "error": "", "model": rec["model"], "steps": steps, "secs": rec["secs"], "cost_usd": rec["cost_usd"]}
 
 
 def animate():

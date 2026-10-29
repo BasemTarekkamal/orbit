@@ -5,12 +5,19 @@ only to the bots whose tokens you saved; nobody else can reach your bots, and yo
 Only approved owners can direct the team. A stranger who messages one of your bots gets no answer and is
 listed in the control panel under Settings → Access, where you decide.
 
+The quickest way for every channel is the control panel: **Today → Connect** (or Settings → Chat
+channels). It walks you through creating the bot, takes the token in the page (it goes to this Mac's
+private folder, never through a chat), then gives you a one-time code: on Telegram you just tap
+**Open Telegram and press Start**; on Slack or Discord you send the 6-digit code to your bot. That
+links the bot to you. The steps below are the same thing by hand, for Terminal users.
+
 ## Telegram
 
 1. In Telegram, open **@BotFather**, send `/newbot`, follow the two questions and copy the token it gives you.
-2. On the Mac: `staff secret telegram` (paste the token; it is typed hidden and stored only on this Mac).
-3. Message your bot once (anything), then approve yourself in the control panel: `staff panel` →
-   Settings → Access.
+2. Paste it in the control panel (Today → Connect), or on the Mac: `staff secret telegram` (typed
+   hidden, stored only on this Mac).
+3. In the panel: tap **Open Telegram and press Start**. By hand: message your bot once (anything),
+   then approve yourself in the control panel: Settings → Access.
 
 **Team group.** Add the bot to a Telegram group as an admin (so it can read the messages), send any
 message there, then read the chat id from `staff logs` (a line like "unregistered telegram chat

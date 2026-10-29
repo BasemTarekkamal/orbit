@@ -66,6 +66,9 @@ def execute(by, kind, p):
             e = engine.registry()["employees"][new]
             team.feed("staff", "Staffroom", "team", "%s joined as %s, reporting to %s. Message them here, or /%s (@%s on "
                       "Slack and Discord) in your chat." % (e["name"], e["role"], e["supervisor"], new, new), "panel")
+            if p.get("first_day", True):                  # they start with real work, not an empty chat
+                team.run_async(new, team.job_prompt(new, engine.employee(new), "first_day"), "first_day", None, [],
+                               who=sup, on_done=team.to_room(new, e["name"], e["supervisor"], "panel"))
             summary, res = "Hire %s (%s)" % (e["name"], e["role"]), "Hired: handle /%s" % new
         elif kind in ("pause", "resume", "retire"):
             e = _emp(eid, want_active=False)

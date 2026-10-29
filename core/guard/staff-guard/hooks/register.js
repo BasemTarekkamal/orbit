@@ -101,7 +101,9 @@ export function verdict(e, c) {
   if (tool === 'Bash') {
     for (const [re, why] of BLOCKED_COMMANDS) if (re.test(text)) return why + ' is blocked'
     const harness = touches(text, c.harness, c.home)
-    if (harness && WRITE_WORDS.test(text)) return 'the harness file ' + harness + ' is read-only'
+    // Error-output plumbing (2>&1, 2>/dev/null) writes nothing anywhere; reading the kit with it is fine.
+    const writes = text.replace(/\d*>&\d|&?\d*>\s*\/dev\/null/g, '')
+    if (harness && WRITE_WORDS.test(writes)) return 'the harness file ' + harness + ' is read-only'
   }
   if (tool === 'Write' || tool === 'Edit' || tool === 'NotebookEdit') {
     const target = String(e.file_path || e.notebook_path || '')

@@ -28,11 +28,16 @@ CHATLOG = os.path.join(TEAM, "chatlog.jsonl")
 DAYS = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
 JOBS = {"brief": "Morning brief", "standup": "Standup", "eod": "End of day", "scout": "Self-improvement",
         "evals": "Weekly self-test"}
+LABELS = {**JOBS, "first_day": "First day", "minutes": "Meeting minutes", "followup": "a follow-up",
+          "bus": "a colleague's question"}
+PAIRING = os.path.join(TEAM, "pairing.json")     # the one-time code that links an owner's phone to the team
 DEFAULT_JOBS = {"brief": {"at": "08:30", "days": "work"}, "standup": {"at": "09:00", "days": "work"},
                 "eod": {"at": "17:00", "days": "work"}, "scout": {"at": "19:00", "days": "daily"},
                 "evals": {"at": "10:00", "days": "Fri"}}
 LOCKS = {}                 # one run at a time per employee
 DOING = {}                 # employee id → what they're running now
+LIVE = {}                  # employee id → {"doing", "started", "steps"}: the live work view
+LAST = {}                  # employee id → the finished run's receipt {"steps", "secs", "cost_usd"}
 _io = threading.Lock()
 
 
@@ -79,10 +84,14 @@ def tail(p, n=200):
     return out
 
 
-def feed(from_id, from_name, to_id, body, channel):
-    """One line in the team room. channel: bus | telegram | panel | job."""
-    append(FEED, {"id": uuid.uuid4().hex[:12], "ts": time.strftime("%Y-%m-%d %H:%M:%S"), "from_id": from_id,
-                  "from_name": from_name, "to_id": to_id, "body": str(body)[:8000], "channel": channel})
+def feed(from_id, from_name, to_id, body, channel, receipt=None):
+    """One line in the team room. channel: bus | telegram | slack | discord | group | panel | job | skill.
+    receipt: how an employee's answer was made ({"steps", "secs", "cost_usd"}), shown under it."""
+    rec = {"id": uuid.uuid4().hex[:12], "ts": time.strftime("%Y-%m-%d %H:%M:%S"), "from_id": from_id,
+           "from_name": from_name, "to_id": to_id, "body": str(body)[:8000], "channel": channel}
+    if receipt and receipt.get("steps"):
+        rec["receipt"] = receipt
+    append(FEED, rec)
 
 
 def order_log(by, kind, summary, status, result=""):
@@ -225,14 +234,20 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
         lock = LOCKS.setdefault(emp_id, threading.Lock())
         with lock:
             emp = engine.employee(emp_id)
-            DOING[emp_id] = ("Talking with %s" % who) if job == "chat" and who else "Running %s" % JOBS.get(job, job)
+            DOING[emp_id] = ("Talking with %s" % who) if job == "chat" and who else "Working on %s" % LABELS.get(job, job)
+            LIVE[emp_id] = {"doing": DOING[emp_id], "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "steps": []}
+
+            def on_step(step, steps):
+                LIVE[emp_id] = {**LIVE.get(emp_id, {}), "steps": [dict(s) for s in steps[-8:]], "count": len(steps)}
             try:
-                res = engine.run(emp, prompt, job=job, session_key=session_key, extra_env=extra_env)
+                res = engine.run(emp, prompt, job=job, session_key=session_key, extra_env=extra_env, on_step=on_step)
             except Exception:  # noqa: BLE001
                 log("run error %s/%s: %s" % (emp_id, job, traceback.format_exc()[-400:]))
                 res = {"ok": False, "text": "Something went wrong on my side (logged).", "error": "crash"}
             finally:
                 DOING.pop(emp_id, None)
+                LIVE.pop(emp_id, None)
+            LAST[emp_id] = {"steps": res.get("steps") or [], "secs": res.get("secs"), "cost_usd": res.get("cost_usd")}
             out = res["text"]
             if on_done:
                 try:
@@ -243,8 +258,11 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
                 for c in deliver_to:
                     send(c, out, emp)
             if job == "chat":
-                append(CHATLOG, {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "who": who, "employee": emp_id, "channel": channel,
-                                 "text": (said if said is not None else prompt)[:4000], "answer": out[:8000]})
+                row = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "who": who, "employee": emp_id, "channel": channel,
+                       "text": (said if said is not None else prompt)[:4000], "answer": out[:8000]}
+                if LAST[emp_id]["steps"]:
+                    row["receipt"] = LAST[emp_id]
+                append(CHATLOG, row)
             if not res["ok"] and job != "chat":
                 st = jload(STATEF, {})
                 k = "alert:%s:%s:%s" % (emp_id, job, time.strftime("%F"))
@@ -261,10 +279,10 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
 
 
 def to_room(emp_id, name, to, channel):
-    """on_done callback: post an employee's reply in the team room (skips SILENT)."""
+    """on_done callback: post an employee's reply in the team room (skips SILENT), with how it was made."""
     def post(out):
         if out and not out.strip().upper().startswith("SILENT"):
-            feed(emp_id, name, to, out, channel)
+            feed(emp_id, name, to, out, channel, receipt=LAST.get(emp_id))
     return post
 
 

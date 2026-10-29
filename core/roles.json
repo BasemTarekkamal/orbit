@@ -4,85 +4,267 @@
       "id": "assistant",
       "title": "Personal assistant",
       "role": "Personal assistant",
-      "names": ["Sara", "Noah", "Lina"],
+      "names": [
+        "Sara",
+        "Noah",
+        "Lina"
+      ],
       "blurb": "Runs your day: reminders, the research you ask for, documents you send, minutes from recordings, a brief every morning.",
       "scope": "Everything the owner asks for day to day: research questions, reading documents and photos they send, reminders and follow-ups, minutes from meeting recordings, and a short morning brief of what needs them today.",
-      "abilities": ["telegram", "team_room", "voice", "files", "reminders", "meetings", "web", "fetch", "browser", "documents", "build_tools", "brief"],
+      "abilities": [
+        "telegram",
+        "team_room",
+        "voice",
+        "files",
+        "reminders",
+        "meetings",
+        "web",
+        "fetch",
+        "browser",
+        "documents",
+        "build_tools",
+        "brief"
+      ],
       "model": "sonnet",
-      "gets": ["Morning brief at 08:30 on workdays", "Voice notes and PDFs over chat", "Reminders it sets for you and for itself"],
-      "first": "Hi. Read what you know about me and the business, then tell me in three lines what you'd watch for me this week."
+      "gets": [
+        "Morning brief at 08:30 on workdays",
+        "Voice notes and PDFs over chat",
+        "Reminders it sets for you and for itself"
+      ],
+      "first": "Hi. Read what you know about me and the business, then tell me in three lines what you'd watch for me this week.",
+      "outcome": "Be my right hand: reminders, quick research, documents, call minutes",
+      "try": [
+        "Remind me tomorrow at 9 to call the supplier",
+        "Summarize this PDF for me (send it here)",
+        "What should I prepare for this week?"
+      ]
     },
     {
       "id": "researcher",
       "title": "Market researcher",
       "role": "Market researcher",
-      "names": ["Maya", "Omar", "Elena"],
+      "names": [
+        "Maya",
+        "Omar",
+        "Elena"
+      ],
       "blurb": "Competitors, prices, demand and trends in your market, with every claim sourced. Uses the scrapers when the open web isn't enough.",
       "scope": "Our market: competitors (products, prices, launches, funding), customer demand and trends, suppliers and partners. Keeps a sourced profile of each competitor in research/ and flags anything that changes a decision.",
-      "abilities": ["telegram", "team_room", "voice", "files", "reminders", "web", "fetch", "browser", "apify", "watchers", "documents", "build_tools", "brief"],
+      "abilities": [
+        "telegram",
+        "team_room",
+        "voice",
+        "files",
+        "reminders",
+        "web",
+        "fetch",
+        "browser",
+        "apify",
+        "watchers",
+        "documents",
+        "build_tools",
+        "brief"
+      ],
       "model": "sonnet",
-      "gets": ["Sourced competitor profiles in its folder", "Watchers on competitor sites and feeds", "Google Trends, News, Maps and social scrapers when needed"],
-      "first": "Name our three closest competitors and, for each, one thing they changed in the last month, with links."
+      "gets": [
+        "Sourced competitor profiles in its folder",
+        "Watchers on competitor sites and feeds",
+        "Google Trends, News, Maps and social scrapers when needed"
+      ],
+      "first": "Name our three closest competitors and, for each, one thing they changed in the last month, with links.",
+      "outcome": "Research my market: competitors, prices, demand, every claim sourced",
+      "try": [
+        "Who are my top 3 competitors and what do they charge?",
+        "How big is this market, with sources?",
+        "Watch my competitors' prices every week"
+      ]
     },
     {
       "id": "social",
       "title": "Social media analyst",
       "role": "Social media analyst",
-      "names": ["Zara", "Leo", "Nour"],
+      "names": [
+        "Zara",
+        "Leo",
+        "Nour"
+      ],
       "blurb": "What competitors and creators post on TikTok, Instagram, Facebook, X and YouTube, and what people say in the comments.",
       "scope": "Competitors' and creators' public social media: what they post, what works, what people ask and complain about in comments, which ads run in the Meta Ad Library. Weekly summary with examples and links.",
-      "abilities": ["telegram", "team_room", "voice", "files", "reminders", "web", "fetch", "browser", "apify", "watchers", "build_tools", "brief"],
+      "abilities": [
+        "telegram",
+        "team_room",
+        "voice",
+        "files",
+        "reminders",
+        "web",
+        "fetch",
+        "browser",
+        "apify",
+        "watchers",
+        "build_tools",
+        "brief"
+      ],
       "model": "sonnet",
-      "gets": ["TikTok, Instagram, Facebook, X, YouTube and Threads scrapers", "Comments read as demand signals", "Meta Ad Library: who advertises what"],
-      "first": "Take our two biggest competitors: what did they post this week, which post did best, and what did people ask in the comments?"
+      "gets": [
+        "TikTok, Instagram, Facebook, X, YouTube and Threads scrapers",
+        "Comments read as demand signals",
+        "Meta Ad Library: who advertises what"
+      ],
+      "first": "Take our two biggest competitors: what did they post this week, which post did best, and what did people ask in the comments?",
+      "outcome": "Tell me what's said about us and our rivals on TikTok, Instagram, YouTube",
+      "try": [
+        "What did my competitors post on TikTok this week?",
+        "What are people asking in the comments?",
+        "Summarize this YouTube video: <link>"
+      ]
     },
     {
       "id": "leads",
       "title": "Lead finder",
       "role": "Lead researcher",
-      "names": ["Adam", "Yara", "Mia"],
+      "names": [
+        "Adam",
+        "Yara",
+        "Mia"
+      ],
       "blurb": "Builds lists of businesses, suppliers or buyers from Google Maps and their own websites: who, why them, how to reach them through public channels.",
       "scope": "Finding and qualifying leads, suppliers and partners: Google Maps places and reviews, their websites and public pages, contact routes from official channels only. Maintains research/leads.md with who / why them / how to reach them.",
-      "abilities": ["telegram", "team_room", "voice", "files", "reminders", "web", "fetch", "browser", "apify", "documents", "build_tools"],
+      "abilities": [
+        "telegram",
+        "team_room",
+        "voice",
+        "files",
+        "reminders",
+        "web",
+        "fetch",
+        "browser",
+        "apify",
+        "documents",
+        "build_tools"
+      ],
       "model": "sonnet",
-      "gets": ["Google Maps places with phone and website", "Contact details from official pages, never guessed", "A lead list it keeps current"],
-      "first": "Find ten wholesale buyers for us in one city I'll name, with website, phone from their site, and one line on why they fit."
+      "gets": [
+        "Google Maps places with phone and website",
+        "Contact details from official pages, never guessed",
+        "A lead list it keeps current"
+      ],
+      "first": "Find ten wholesale buyers for us in one city I'll name, with website, phone from their site, and one line on why they fit.",
+      "outcome": "Find leads, suppliers or partners, with a real way to reach each",
+      "try": [
+        "Find 10 cafés in Cairo that could stock our product",
+        "Who supplies packaging near us?",
+        "Which of these leads should I call first?"
+      ]
     },
     {
       "id": "watcher",
       "title": "Competitor watcher",
       "role": "Competitor watcher",
-      "names": ["Finn", "Hana", "Ivy"],
+      "names": [
+        "Finn",
+        "Hana",
+        "Ivy"
+      ],
       "blurb": "Watches competitor sites, feeds and pages and speaks only when something changes. Cheap to run.",
       "scope": "Watching named competitor websites, pricing pages, blogs and feeds, and our market's regulators or news sources. Reports only what changed, with a link and what it means for us. Stays silent otherwise.",
-      "abilities": ["telegram", "team_room", "reminders", "web", "fetch", "browser", "watchers", "brief"],
+      "abilities": [
+        "telegram",
+        "team_room",
+        "reminders",
+        "web",
+        "fetch",
+        "browser",
+        "watchers",
+        "brief"
+      ],
       "model": "haiku",
-      "gets": ["Watchers on pages and feeds, checked every morning", "Silence unless something changed", "Runs on the light model"],
-      "first": "Set watchers on these three pages I'll paste, then tell me what you'll report and when."
+      "gets": [
+        "Watchers on pages and feeds, checked every morning",
+        "Silence unless something changed",
+        "Runs on the light model"
+      ],
+      "first": "Set watchers on these three pages I'll paste, then tell me what you'll report and when.",
+      "outcome": "Watch my competitors and tell me only when something changes",
+      "try": [
+        "Watch these 3 competitors' websites",
+        "Tell me when their prices change",
+        "What changed this week?"
+      ]
     },
     {
       "id": "reader",
       "title": "Document analyst",
       "role": "Document analyst",
-      "names": ["Iris", "Karim", "Ava"],
+      "names": [
+        "Iris",
+        "Karim",
+        "Ava"
+      ],
       "blurb": "Reads contracts, reports, scans and long PDFs; quotes the original wording; prepares questions for your lawyer or accountant.",
       "scope": "Documents the owner sends or points to: contracts, reports, regulations, scanned papers. Summaries with the original wording quoted, tables extracted, risks and questions listed for the professional. Never gives legal or tax advice.",
-      "abilities": ["telegram", "team_room", "voice", "files", "reminders", "meetings", "web", "fetch", "documents", "build_tools"],
+      "abilities": [
+        "telegram",
+        "team_room",
+        "voice",
+        "files",
+        "reminders",
+        "meetings",
+        "web",
+        "fetch",
+        "documents",
+        "build_tools"
+      ],
       "model": "sonnet",
-      "gets": ["PDF, scan and photo reading on your Mac (OCR)", "Original-language quotes with page numbers", "A question list for the professional"],
-      "first": "I'll send a contract. Summarise it in ten lines, quote the three clauses I should worry about, and list the questions for my lawyer."
+      "gets": [
+        "PDF, scan and photo reading on your Mac (OCR)",
+        "Original-language quotes with page numbers",
+        "A question list for the professional"
+      ],
+      "first": "I'll send a contract. Summarise it in ten lines, quote the three clauses I should worry about, and list the questions for my lawyer.",
+      "outcome": "Read contracts, reports, statements and scans for me",
+      "try": [
+        "What should I watch out for in this contract?",
+        "Pull the numbers out of this statement",
+        "Compare these two offers"
+      ]
     },
     {
       "id": "content",
       "title": "Content researcher",
       "role": "Content researcher",
-      "names": ["Dana", "Sam", "Rania"],
+      "names": [
+        "Dana",
+        "Sam",
+        "Rania"
+      ],
       "blurb": "Finds what's being said about a topic across the web, YouTube, Reddit and TikTok, with quotes and links you can use.",
       "scope": "Research for content and positioning: what people say and ask about our topics on the web, YouTube, Reddit, TikTok and X; sources, quotes and examples with links; a weekly list of content ideas backed by evidence.",
-      "abilities": ["telegram", "team_room", "voice", "files", "reminders", "web", "fetch", "browser", "apify", "documents", "build_tools"],
+      "abilities": [
+        "telegram",
+        "team_room",
+        "voice",
+        "files",
+        "reminders",
+        "web",
+        "fetch",
+        "browser",
+        "apify",
+        "documents",
+        "build_tools"
+      ],
       "model": "sonnet",
-      "gets": ["YouTube transcripts, Reddit threads and TikTok comments", "Quotes with timestamps and links", "Weekly content ideas with evidence"],
-      "first": "Pick one topic we care about and bring me five things real people said about it this month, with links."
+      "gets": [
+        "YouTube transcripts, Reddit threads and TikTok comments",
+        "Quotes with timestamps and links",
+        "Weekly content ideas with evidence"
+      ],
+      "first": "Pick one topic we care about and bring me five things real people said about it this month, with links.",
+      "outcome": "Find what's being said about a topic, with quotes and links",
+      "try": [
+        "What are people saying about <topic> this month?",
+        "Find 5 videos explaining <topic>, with the key points",
+        "What questions do people ask about it?"
+      ]
     },
     {
       "id": "blank",
@@ -93,8 +275,18 @@
       "scope": "",
       "abilities": null,
       "model": "",
-      "gets": ["The whole toolbelt from day one", "Default or super-agent abilities", "You set the scope and rules"],
-      "first": ""
+      "gets": [
+        "The whole toolbelt from day one",
+        "Default or super-agent abilities",
+        "You set the scope and rules"
+      ],
+      "first": "",
+      "outcome": "Something else: describe the job in your own words",
+      "try": [
+        "What can you do for me?",
+        "Here's how I want you to work: …",
+        "Start with the most useful thing in your scope"
+      ]
     }
   ]
 }
