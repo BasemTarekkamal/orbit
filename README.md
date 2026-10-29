@@ -52,6 +52,8 @@ and claim comes with a source link.
 
 ## The control panel
 
+![Today](docs/screens/today-dark.jpg)
+
 `staff panel` opens a small app on your Mac (no account, no cloud, light and dark) with:
 
 - **Today:** what needs you (approvals, reminders, failed runs, people who messaged your bot),
