@@ -288,6 +288,96 @@ class Panel(unittest.TestCase):
         code, _, body = self.req("/api/order", b"not json", self.auth({"Origin": self.base, "content-type": "application/json"}), raw=True)
         self.assertEqual(code, 400)
 
+    def test_skills_api(self):
+        h = self.auth({"Origin": self.base})
+        code, _, body = self.req("/api/skill", {"emp": "tess", "do": "create", "name": "digest-format", "text": "Steps\n1. Three bullets.\n2. Sources inline.\n",
+                                                "description": "How Alex wants the Monday digest. Use when asked for the digest."}, h)
+        self.assertEqual(code, 200, body)
+        d = json.loads(self.req("/api/employee/tess", headers=self.auth())[2])
+        self.assertEqual([(s["name"], s["how"], s["by"]) for s in d["skills"]["own"]], [("digest-format", "panel", "Alex")])
+        self.assertIn("research-playbook", [s["name"] for s in d["skills"]["kit"]])
+        code, _, body = self.req("/api/skill?emp=tess&where=own&name=digest-format", headers=self.auth())
+        self.assertEqual(code, 200)
+        self.assertIn("Three bullets", json.loads(body)["text"])
+        code, _, body = self.req("/api/skill?emp=tess&where=kit&name=monitoring", headers=self.auth())
+        self.assertEqual((code, json.loads(body)["readonly"]), (200, True))
+        code, _, body = self.req("/api/skill", {"emp": "tess", "do": "share", "name": "digest-format"}, h)
+        self.assertEqual(code, 200, body)
+        self.assertEqual([s["name"] for s in json.loads(self.req("/api/state", headers=self.auth())[2])["team_skills"]], ["digest-format"])
+        code, _, body = self.req("/api/skill", {"emp": "tess", "do": "create", "name": "monitoring", "description": "shadowing a kit playbook", "text": "1. nope"}, h)
+        self.assertEqual(code, 400)
+        self.assertIn("kit", json.loads(body)["error"])
+        code, _, _ = self.req("/api/skill", {"emp": "tess", "where": "team", "do": "remove", "name": "digest-format"}, h)
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(self.req("/api/state", headers=self.auth())[2])["team_skills"], [])
+        self.assertEqual(self.req("/api/skill?emp=nobody&where=own&name=x", headers=self.auth())[0], 404)
+
+
+class Skills(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        fresh_team()
+        hire.hire("Tess", "Research", supervisor="Alex")
+
+    def test_learn_check_share_and_precedence(self):
+        import skillbook
+        with self.assertRaises(skillbook.SkillError):
+            skillbook.create("tess", "Bad Name", "a description long enough")
+        with self.assertRaises(skillbook.SkillError):
+            skillbook.create("tess", "monitoring", "shadowing a kit playbook is refused")
+        d = skillbook.create("tess", "price-check", "How to check a competitor's price page. Use when asked for prices.")
+        self.assertTrue(os.path.isfile(os.path.join(d, "SKILL.md")))
+        ws = engine.employee("tess")["workspace"]
+        links, skipped = skillbook.bundle(ws, ["monitoring"])
+        self.assertIn("monitoring", links)
+        self.assertNotIn("price-check", links)                       # a skeleton doesn't load
+        self.assertIn("price-check", [n for n, _ in skipped])
+        with open(os.path.join(d, "SKILL.md")) as fh:
+            text = fh.read().replace("1. …\n", "1. Open the page with staff-fetch.\n")
+        skillbook.save("tess", "own", "price-check", text, "Alex")
+        links, skipped = skillbook.bundle(ws, ["monitoring"])
+        self.assertIn("price-check", links)
+        with self.assertRaises(skillbook.SkillError):             # never a secret
+            skillbook.save("tess", "own", "price-check", text + "\nuse sk-ant-abcdefghijklmnopqrstuv\n", "Alex")
+        skillbook.share("tess", "price-check", "Alex")
+        hire.hire("Omar", "Watcher", supervisor="Alex")
+        emp = engine.employee("omar")
+        root = engine.skills_plugin(emp, abilities.skills("omar"))
+        self.assertTrue(os.path.islink(os.path.join(root, "skills", "price-check")))
+        self.assertTrue(os.path.islink(os.path.join(root, "skills", "research-playbook")))
+        skillbook.create("omar", "price-check", "Omar's own way to check prices, used when asked.", "Steps:\n1. Open the price page.\n2. Note every price with its date and link.\n")
+        links, skipped = skillbook.bundle(emp["workspace"], [])
+        self.assertEqual(os.path.realpath(links["price-check"]), os.path.realpath(os.path.join(emp["workspace"], "skills", "price-check")))
+        self.assertEqual(skipped, [("price-check", "a own skill with that name already loads")])
+        root = engine.skills_plugin(emp, [])
+        self.assertEqual(os.path.realpath(os.path.join(root, "skills", "price-check")), os.path.realpath(links["price-check"]))
+        self.assertFalse(os.path.lexists(os.path.join(root, "skills", "research-playbook")))
+        skillbook.remove("tess", "team", "price-check", "Alex")
+        self.assertFalse(os.path.isdir(os.path.join(skillbook.TEAM_DIR, "price-check")))
+        self.assertEqual([r["what"] for r in team.tail(skillbook.LOG, 50)], ["learned", "updated", "shared", "learned", "unshared"])
+
+    def test_tool_respects_the_ability(self):
+        import subprocess
+        tool = os.path.join(KIT, "bin", "staff-skill")
+        env = {**os.environ, "STAFF_EMPLOYEE": "tess", "STAFF_WORKSPACE": engine.employee("tess")["workspace"], "STAFFROOM_HOME": TMP}
+        r = subprocess.run([tool, "new", "feed-finder", "--description", "Finding a site's hidden JSON feed; use when a page is slow to scrape."],
+                           env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Created skills/feed-finder/SKILL.md", r.stdout)
+        r = subprocess.run([tool, "check", "feed-finder"], env=env, capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("step 1 is empty", r.stderr)
+        r = subprocess.run([tool, "list"], env=env, capture_output=True, text=True)
+        self.assertIn("feed-finder", r.stdout)
+        self.assertIn("not loading", r.stdout)
+        hire.set_abilities("tess", [a for a in abilities.chosen("tess") if a != "learn"], "test")
+        r = subprocess.run([tool, "new", "another-one", "--description", "Something else entirely, used whenever."], env=env, capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("switched off", r.stderr)
+        hire.set_abilities("tess", abilities.preset("default"), "test")
+        self.assertIn("Bash(staff-skill *)", abilities.tools("tess")[1] if "learn" not in abilities.effective("tess") else ["Bash(staff-skill *)"])
+        self.assertNotIn("staff-skill", abilities.commands("tess"))      # gated, but never outside the sandbox
+
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *a, **k):

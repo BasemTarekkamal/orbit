@@ -9,6 +9,7 @@
   staff list
   staff pause | resume | retire <handle>
   staff abilities <handle> [--default | --super | --on a,b --off c]
+  staff skills [<handle>] [--share NAME | --remove NAME | --export NAME DIR]   what they learned
   staff run <handle> "<message>"   talk to someone right here in the terminal
   staff secret telegram | apify | anthropic     save a token (typed hidden, stored only on this Mac)
   staff group <chat id>            use a Telegram group as the team room
@@ -300,6 +301,9 @@ def main():
     a.add_argument("--on", default=""); a.add_argument("--off", default="")
     r = sub.add_parser("run")
     r.add_argument("handle"); r.add_argument("message")
+    k = sub.add_parser("skills")
+    k.add_argument("handle", nargs="?"); k.add_argument("--share", metavar="NAME"); k.add_argument("--remove", metavar="NAME")
+    k.add_argument("--export", nargs=2, metavar=("NAME", "DIR"))
     s = sub.add_parser("secret")
     s.add_argument("name", choices=sorted(SECRET_NAMES))
     g = sub.add_parser("group")
@@ -357,6 +361,7 @@ def main():
 
     import abilities
     import hire
+    import skillbook
     if args.cmd in ("status", "list"):
         if args.cmd == "status":
             say("Service: %s" % ("running" if running() else "stopped (`staff start`)"))
@@ -396,7 +401,31 @@ def main():
             import team
             res = engine.run(emp, team.chat_prompt(me, "the terminal", args.message), job="chat", session_key="terminal")
             say(res["text"])
-    except hire.HireError as e:
+        elif args.cmd == "skills":
+            me = next(iter(engine.registry().get("owners", {}).values()), {}).get("name", "Owner")
+            if not args.handle:
+                rows = skillbook.listing(skillbook.TEAM_DIR, "team")
+                for s in rows:
+                    say("%-28s %s  (shared by %s)" % (s["name"], s["description"][:80], s.get("shared_from", "?")))
+                if not rows:
+                    say("No team skills yet. Share one: staff skills <handle> --share <name>")
+            elif args.share:
+                say(skillbook.share(args.handle, args.share, me))
+            elif args.remove:
+                say(skillbook.remove(args.handle, "own", args.remove, me))
+            elif args.export:
+                name, dst = args.export
+                shutil.copytree(skillbook.folder(args.handle, "own", name), os.path.join(dst, name))
+                say("Copied to %s. Anyone can drop that folder into an employee's skills/ (or the kit's core/skills/)." % os.path.join(dst, name))
+            else:
+                o = skillbook.overview(args.handle)
+                for src, rows in (("own", o["own"]), ("team", o["team"]), ("kit", o["kit"])):
+                    for s in rows:
+                        flag = ("  [not loading: %s]" % s["problem"]) if s.get("problem") else ""
+                        say("%-5s %-28s %s%s" % (src, s["name"], s["description"][:80], flag))
+                if not any(o.values()):
+                    say("No skills yet. Teach one in the panel, or in chat: \"From now on, when I ask for X, do Y.\"")
+    except (hire.HireError, skillbook.SkillError) as e:
         sys.exit(str(e))
 
 

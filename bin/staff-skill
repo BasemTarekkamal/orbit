@@ -1,0 +1,4 @@
+#!/bin/sh
+# Skills an employee learns and keeps. See core/tools/skill.py.
+D=$(cd "$(dirname "$0")/.." && pwd -P)
+exec /usr/bin/env python3 "$D/core/tools/skill.py" "$@"

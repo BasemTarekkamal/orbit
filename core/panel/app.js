@@ -57,7 +57,7 @@ function sortedByTs(rows) { return rows.slice().sort((a, b) => String(a.ts).loca
 
 // ---------------------------------------------------------------- state & api
 const S = { data: null, detail: null, detailId: null, detailAt: 0, cat: null, roles: null, settings: null, file: null, fileLoading: '',
-  theme: localStorage.getItem('theme') || '', lastHtml: '', vals: {}, hireRole: null, busy: new Set() };
+  skill: null, skillLoading: '', theme: localStorage.getItem('theme') || '', lastHtml: '', vals: {}, hireRole: null, busy: new Set() };
 
 async function api(path, body) {
   const opt = body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {};
@@ -102,7 +102,7 @@ function route() {
   if (p === '/hire') return { page: 'hire', role: q.get('role') };
   if (p === '/abilities') return { page: 'abilities' };
   if (p === '/settings') return { page: 'settings' };
-  const m = p.match(/^\/e\/([a-z0-9-]+)(?:\/(chat|memory|work|activity|abilities))?$/);
+  const m = p.match(/^\/e\/([a-z0-9-]+)(?:\/(chat|memory|work|activity|skills|abilities))?$/);
   if (m) return { page: 'employee', id: m[1], tab: m[2] || 'chat', say: q.get('say') || '', f: q.get('f') || '' };
   return { page: 'missing' };
 }
@@ -185,6 +185,7 @@ function afterRender(r, nav) {
     if (ta && nav) { if (r.say && !ta.value) { ta.value = r.say; grow(ta); } if (r.say) ta.focus(); }
   }
   if (r.page === 'employee' && r.tab === 'work' && r.f) ensureFile(r.id, r.f);
+  if (r.page === 'employee' && r.tab === 'skills' && r.f && r.f !== 'teach') { const i = r.f.indexOf(':'); if (i > 0) ensureSkill(r.id, r.f.slice(0, i), r.f.slice(i + 1)); }
 }
 function grow(ta) { ta.style.height = 'auto'; ta.style.height = Math.min(240, ta.scrollHeight + 2) + 'px'; }
 function v(form, name, dflt) { const f = S.vals[form]; return f && name in f ? f[name] : dflt; }
@@ -255,7 +256,7 @@ function statusHtml(e) {
   return `<span class="status"><i class="dot active"></i>Idle</span>`;
 }
 function nameOf(id) { if (id === 'team') return 'Team'; const e = S.data.employees.find((x) => x.id === id); return e ? e.name : id; }
-function channelBadge(c) { return c && c !== 'bus' ? `<span class="badge">${{ panel: 'Panel', telegram: 'Telegram', job: 'Routine', hq: 'Panel' }[c] || esc(c)}</span>` : ''; }
+function channelBadge(c) { return c && c !== 'bus' ? `<span class="badge">${{ panel: 'Panel', telegram: 'Telegram', slack: 'Slack', discord: 'Discord', group: 'Team chat', job: 'Routine', skill: 'Skill', hq: 'Panel' }[c] || esc(c)}</span>` : ''; }
 function withDays(rows, fn, skipToday) {
   let last = ''; let out = '';
   for (const r of rows) {
@@ -280,9 +281,13 @@ PAGES.team = () => {
     <div class="c-next small muted">${esc(empNow(e))}</div>
     <div class="c-today small muted num">${e.runs_today ? `${plural(e.runs_today, 'run')} · ≈${money(e.use_today)}` : 'No runs today'}${e.failures_today ? ` · <span class="badge danger">${e.failures_today} failed</span>` : ''}</div>
     <div class="c-model small muted">${esc(e.model)}</div>${icon('chev').replace('<svg', '<svg class="chev"')}</a>`).join('');
+  const ts = d.team_skills || [];
+  const skills = emps.length ? `<section class="mt-lg"><div class="sec-head"><h2>Team skills</h2><span class="meta">${ts.length ? `${ts.length} shared · every employee loads them` : 'shared by employees, loaded by all'}</span></div>
+    ${ts.length ? `<div class="list">${ts.map((s) => `<a class="row row-2" href="/e/${esc(s.shared_from || emps[0].id)}/skills?f=team:${esc(s.name)}"><div><div class="title">${esc(s.name)}</div><div class="meta">${esc(s.description)}</div></div><span class="meta">shared by ${esc(nameOf(s.shared_from || ''))}</span></a>`).join('')}</div>`
+      : `<p class="quiet">None yet. When an employee learns something every colleague should know, they share it here (or you do, from their Skills tab).</p>`}</section>` : '';
   return `<header class="page-head"><div><h1>Team</h1><p class="sub">${emps.length ? `${plural(emps.length, 'employee')}${working ? ` · ${working} working` : ''}` : 'Nobody works here yet.'}</p></div>
     <div class="actions"><a class="btn btn-primary" href="/hire">${icon('plus')}Hire someone</a></div></header>
-    ${emps.length ? `<div class="list">${rows}</div>` : `<div class="empty"><b>Your first employee is one click away.</b><p>Pick a role on the Hire page: they come with the whole toolbelt, a memory, and a morning brief.</p></div>`}`;
+    ${emps.length ? `<div class="list">${rows}</div>` : `<div class="empty"><b>Your first employee is one click away.</b><p>Pick a role on the Hire page: they come with the whole toolbelt, a memory, and a morning brief.</p></div>`}${skills}`;
 };
 
 // ---------------------------------------------------------------- employee
@@ -293,8 +298,9 @@ PAGES.employee = (r) => {
   const paused = e.status === 'paused';
   const jobs = Object.entries(JOB_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
   const models = MODELS.map((m) => `<option ${m === e.model ? 'selected' : ''}>${m}</option>`).join('');
-  const tabs = [['chat', 'Chat', ''], ['memory', 'Memory', ''], ['work', 'Work', dt ? dt.files.length : ''], ['activity', 'Activity', e.runs_today || ''], ['abilities', 'Abilities', `${e.abilities_on}/${e.abilities_total}`]];
-  const body = { chat: tabChat, memory: tabMemory, work: tabWork, activity: tabActivity, abilities: tabAbilities }[r.tab](e, dt, r);
+  const nSkills = dt ? dt.skills.own.length + dt.skills.team.length : '';
+  const tabs = [['chat', 'Chat', ''], ['memory', 'Memory', ''], ['work', 'Work', dt ? dt.files.length : ''], ['activity', 'Activity', e.runs_today || ''], ['skills', 'Skills', nSkills], ['abilities', 'Abilities', `${e.abilities_on}/${e.abilities_total}`]];
+  const body = { chat: tabChat, memory: tabMemory, work: tabWork, activity: tabActivity, skills: tabSkills, abilities: tabAbilities }[r.tab](e, dt, r);
   return `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span>·</span><span>reports to ${esc(e.supervisor)}</span><span>·</span>${statusHtml(e)}</div></div>
     <div class="actions">
       <button class="btn" data-act="order" data-kind="${paused ? 'resume' : 'pause'}" data-emp="${e.id}">${icon(paused ? 'play' : 'pause')}${paused ? 'Resume' : 'Pause'}</button>
@@ -356,6 +362,58 @@ async function ensureFile(emp, path) {
   try { S.file = { key, data: await api(`/api/file?emp=${encodeURIComponent(emp)}&path=${encodeURIComponent(path)}`) }; }
   catch (e) { S.file = { key, data: { text: 'Could not open: ' + e.message, truncated: false } }; }
   S.fileLoading = '';
+  render(false);
+}
+
+// ---------------------------------------------------------------- skills
+function skillWho(s) {
+  if (s.how === 'panel' || s.how === 'taught') return `taught by ${esc(s.by || 'an owner')}`;
+  if (s.source === 'team') return `shared by ${esc(nameOf(s.shared_from || ''))}`;
+  if (s.source === 'kit') return 'kit playbook';
+  return 'worked out on their own';
+}
+function tabSkills(e, dt, r) {
+  if (!dt) return `<p class="quiet">Loading…</p>`;
+  const sk = dt.skills, sel = r.f || '';
+  const group = (title, rows, where) => rows.length ? `<h3>${title}</h3>${rows.map((s) => `<a href="/e/${e.id}/skills?f=${where}:${esc(s.name)}" class="${sel === where + ':' + s.name ? 'on' : ''}" title="${esc(s.description)}">${icon('file')}<span>${esc(s.name)}${s.problem ? '<i class="dot paused" title="not loading"></i>' : ''}</span></a>`).join('')}` : '';
+  const list = group('Their own', sk.own, 'own') + group('Team', sk.team, 'team') + group('Kit playbooks', sk.kit, 'kit');
+  let preview;
+  if (sel === 'teach') preview = teachForm(e);
+  else if (sel.includes(':')) {
+    const i = sel.indexOf(':'), where = sel.slice(0, i), name = sel.slice(i + 1);
+    const key = e.id + ':' + where + ':' + name;
+    if (!(S.skill && S.skill.key === key)) preview = `<p class="quiet">Loading ${esc(name)}…</p>`;
+    else if (S.skill.data.error) preview = `<div class="empty"><b>Couldn't open it.</b><p>${esc(S.skill.data.error)}</p></div>`;
+    else {
+      const d = S.skill.data;
+      const meta = [skillWho({ ...d, source: where }), d.at ? fmtTime(d.at) : '', d.updated ? 'edited ' + fmtTime(d.updated) : ''].filter(Boolean).join(' · ');
+      if (where === 'kit') preview = `<div class="path"><span>${esc(name)}</span><span>kit playbook · read-only</span></div><div class="md">${md(d.text)}</div>`;
+      else preview = `<form class="form" data-form="skill" data-emp="${e.id}" data-where="${where}" data-name="${esc(name)}">
+        <div class="path"><span>${esc(name)}</span><span>${meta}</span></div>
+        ${d.problem ? `<p class="err small">Not loading until fixed: ${esc(d.problem)}</p>` : ''}
+        <div class="field"><textarea class="textarea mono" name="text" rows="18" aria-label="Skill text">${esc(v('skill:' + key, 'text', d.text))}</textarea><span class="hint">Front matter (name, description), then when to use it, the steps, the checks before answering, an example. They read it on every run where it applies.</span></div>
+        <div class="save-bar"><button class="btn btn-primary" type="submit">Save</button>${where === 'own' ? `<button class="btn" type="button" data-act="skill" data-do="share" data-emp="${e.id}" data-where="own" data-name="${esc(name)}">Share with team</button>` : ''}<button class="btn btn-ghost btn-danger" type="button" data-act="skill" data-do="remove" data-emp="${e.id}" data-where="${where}" data-name="${esc(name)}">${where === 'team' ? 'Remove from team' : 'Remove'}</button></div></form>`;
+    }
+  } else preview = `<div class="empty"><b>What ${esc(e.name)} knows how to do.</b><p>Skills are procedures they keep and load on every run: what you teach them, what they work out themselves, what colleagues share. Pick one to read or edit it.</p>
+    <p class="mt">Teach one here, or in chat: “From now on, when I ask for X, do Y.” They write it down themselves.</p></div>`;
+  return `<div class="ab-bar"><a class="btn btn-primary" href="/e/${e.id}/skills?f=teach">${icon('plus')}Teach a skill</a><span class="meta">${sk.own.length ? plural(sk.own.length, 'of their own') + ' · ' : ''}${sk.team.length ? plural(sk.team.length, 'team skill') + ' · ' : ''}${plural(sk.kit.length, 'kit playbook')} for their abilities</span></div>
+    <div class="work"><div class="files">${list || '<p class="quiet">Nothing yet.</p>'}</div><div class="preview">${preview}</div></div>`;
+}
+function teachForm(e) {
+  return `<form class="form" data-form="teach" data-emp="${e.id}">
+    <div class="path"><span>Teach ${esc(e.name)} a skill</span></div>
+    <div class="form-row"><div class="field"><label for="sk-name">Name</label><input id="sk-name" class="input" name="name" required pattern="[a-z0-9][a-z0-9-]{1,63}" maxlength="64" placeholder="monday-competitor-digest" value="${esc(v('teach:' + e.id, 'name', ''))}"><span class="hint">Lowercase, digits, dashes.</span></div>
+    <div class="field"><label for="sk-desc">What it does and when to use it</label><input id="sk-desc" class="input" name="description" required minlength="12" maxlength="1024" placeholder="How I want the Monday competitor digest. Use when I ask for the digest." value="${esc(v('teach:' + e.id, 'description', ''))}"></div></div>
+    <div class="field"><label for="sk-text">How to do it</label><textarea id="sk-text" class="textarea" name="text" rows="12" required placeholder="When to use it&#10;…&#10;&#10;Steps&#10;1. …&#10;2. …&#10;&#10;Checks before answering&#10;- …&#10;&#10;Example&#10;…">${esc(v('teach:' + e.id, 'text', ''))}</textarea><span class="hint">Plain words are fine. Never put a password or token in a skill.</span></div>
+    <div class="save-bar"><button class="btn btn-primary" type="submit">Teach ${esc(e.name)}</button><span class="meta">It loads on their next run. Edit or remove it here any time.</span></div></form>`;
+}
+async function ensureSkill(emp, where, name) {
+  const key = emp + ':' + where + ':' + name;
+  if ((S.skill && S.skill.key === key) || S.skillLoading === key) return;
+  S.skillLoading = key;
+  try { S.skill = { key, data: await api(`/api/skill?emp=${encodeURIComponent(emp)}&where=${encodeURIComponent(where)}&name=${encodeURIComponent(name)}`) }; }
+  catch (e) { S.skill = { key, data: { error: e.message } }; }
+  S.skillLoading = '';
   render(false);
 }
 
@@ -541,6 +599,15 @@ document.addEventListener('click', async (ev) => {
   else if (act === 'retire') {
     if (confirm(`Retire ${b.dataset.name}? They stop working; their folder and memory are kept on this Mac.`)) { await order({ kind: 'retire', employee_id: b.dataset.emp }); go('/team'); }
   }
+  else if (act === 'skill') {
+    const { emp, where, name } = b.dataset;
+    if (b.dataset.do === 'remove' && !confirm(`Remove the skill “${name}”${where === 'team' ? ' from the team' : ''}? They stop using it on their next run.`)) return;
+    try {
+      const r = await api('/api/skill', { emp, where, name, do: b.dataset.do }); toast(r.message);
+      S.skill = null; await loadDetail(emp); S.data = await api('/api/state');
+      go(b.dataset.do === 'remove' ? `/e/${emp}/skills` : `/e/${emp}/skills?f=${where}:${name}`);
+    } catch (e) { toast(e.message, 'err'); }
+  }
   else if (act === 'owner') {
     const name = b.dataset.do === 'approve' ? (prompt('Their name, as employees will call them:', b.dataset.name || '') || '').trim() : '';
     if (b.dataset.do === 'approve' && !name) return;
@@ -587,6 +654,14 @@ document.addEventListener('submit', async (ev) => {
       const abilities = fd.getAll('abilities');
       const r = await api('/api/order', { kind: 'set_abilities', employee_id: emp, abilities });
       toast(r.message); await loadDetail(emp); await refresh(true);
+    } else if (kind === 'skill') {
+      const r = await api('/api/skill', { emp, where: f.dataset.where, name: f.dataset.name, do: 'save', text: fd.get('text') || '' });
+      toast(r.message); delete S.vals['skill:' + emp + ':' + f.dataset.where + ':' + f.dataset.name]; S.skill = null; await loadDetail(emp); render(true);
+    } else if (kind === 'teach') {
+      const name = String(fd.get('name') || '').trim().toLowerCase();
+      const r = await api('/api/skill', { emp, do: 'create', name, description: fd.get('description') || '', text: fd.get('text') || '' });
+      toast(r.message); delete S.vals['teach:' + emp]; await loadDetail(emp); S.data = await api('/api/state');
+      go(`/e/${emp}/skills?f=own:${name}`);
     } else if (kind === 'rules') {
       const r = await api(`/api/employee/${emp}/rules`, { text: fd.get('text') || '' });
       toast(r.message); delete S.vals['rules:' + emp]; await loadDetail(emp); render(true);

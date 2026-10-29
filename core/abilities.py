@@ -70,9 +70,10 @@ def tools(emp_id: str):
 
 
 def commands(emp_id: str) -> list:
-    """Gateway commands this employee may run outside the sandbox (they enforce their own limits)."""
+    """Gateway commands this employee may run outside the sandbox (they enforce their own limits).
+    An ability marked "sandboxed" keeps its command inside the sandbox; it's only gated, not excluded."""
     on = effective(emp_id)
-    return sorted({c for a in catalog() if a["id"] in on for c in a.get("commands", [])})
+    return sorted({c for a in catalog() if a["id"] in on and not a.get("sandboxed") for c in a.get("commands", [])})
 
 
 def skills(emp_id: str) -> list:

@@ -33,6 +33,7 @@ import abilities  # noqa: E402
 import engine  # noqa: E402
 import hire  # noqa: E402
 import orders  # noqa: E402
+import skillbook  # noqa: E402
 import team  # noqa: E402
 
 STATIC = os.path.join(CORE, "panel")
@@ -197,7 +198,8 @@ def state():
             "employees": emps, "feed": feed, "orders": ords,
             "pending": [{"id": i, **p} for i, p in pending.items()],
             "needs": needs_you(emps, ords, pending, usage), "checklist": checklist(emps, feed),
-            "working": dict(team.DOING), "jobs": team.JOBS}
+            "working": dict(team.DOING), "jobs": team.JOBS,
+            "team_skills": [{k: v for k, v in s.items() if k != "path"} for s in skillbook.listing(skillbook.TEAM_DIR, "team")]}
 
 
 def employee_detail(emp_id):
@@ -250,9 +252,38 @@ def employee_detail(emp_id):
              for r in dms if r.get("answer")]
     chat += [r for r in team.tail(team.FEED, 400) if r.get("from_id") == emp_id or r.get("to_id") == emp_id]
     chat.sort(key=lambda r: r.get("ts", ""))
+    sk = skillbook.overview(emp_id)
+    skills = {k: [{a: b for a, b in s.items() if a != "path"} for s in v] for k, v in sk.items()}
     return {**m, "abilities": sorted(abilities.effective(emp_id)), "chosen": abilities.chosen(emp_id), "memory": memory,
             "runs": list(reversed(runs)), "files": files, "reminders": reminders_for(emp_id, ws), "chat": chat[-120:],
-            "workspace": ws, "network_domains": emp.get("network_domains", [])}
+            "workspace": ws, "network_domains": emp.get("network_domains", []), "skills": skills}
+
+
+def skill_action(f, me):
+    """Owners teach, edit, share and remove skills from the panel. Logged like every order."""
+    emp = str(f.get("emp") or "")
+    where = "team" if f.get("where") == "team" else "own"
+    name, do = str(f.get("name") or "").strip().lower(), str(f.get("do") or "")
+    reg = engine.registry().get("employees", {})
+    if emp not in reg or reg[emp].get("status") == "retired":
+        raise orders.OrderError("No such employee")
+    try:
+        if do == "create":
+            skillbook.create(emp, name, str(f.get("description") or ""), str(f.get("text") or ""), by=me, how="panel")
+            res = "Taught. %s uses it from their next run." % reg[emp]["name"]
+        elif do == "save":
+            res = skillbook.save(emp, where, name, str(f.get("text") or ""), me)
+        elif do == "share":
+            res = skillbook.share(emp, name, me)
+        elif do == "remove":
+            res = skillbook.remove(emp, where, name, me)
+        else:
+            raise orders.OrderError("Unknown action")
+    except skillbook.SkillError as ex:
+        team.order_log(me, "skill", "%s skill %s" % (do.capitalize(), name), "failed", str(ex))
+        raise orders.OrderError(str(ex))
+    team.order_log(me, "skill", "%s skill %s (%s)" % (do.capitalize(), name, reg[emp]["name"]), "done", res)
+    return res
 
 
 def read_file(emp_id, rel):
@@ -457,6 +488,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, d) if d else self._json(404, {"error": "No such employee"})
         if path == "/api/file":
             return self._json(200, read_file(q.get("emp", [""])[0], q.get("path", [""])[0]))
+        if path == "/api/skill":
+            emp = q.get("emp", [""])[0]
+            if emp not in engine.registry().get("employees", {}):
+                return self._json(404, {"error": "No such employee"})
+            where = q.get("where", [""])[0]
+            try:
+                return self._json(200, skillbook.read(emp, where if where in ("team", "kit") else "own", q.get("name", [""])[0]))
+            except skillbook.SkillError as ex:
+                return self._json(404, {"error": str(ex)})
         return self._json(404, {"error": "Not found"})
 
     # -- POST
@@ -482,6 +522,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "message": save_settings(f, me)})
             if path == "/api/owner":
                 return self._json(200, {"ok": True, "message": approve_owner(f, me)})
+            if path == "/api/skill":
+                return self._json(200, {"ok": True, "message": skill_action(f, me)})
             m = re.fullmatch(r"/api/employee/([a-z0-9-]+)/rules", path)
             if m and m.group(1) in engine.registry().get("employees", {}):
                 return self._json(200, {"ok": True, "message": set_rules(m.group(1), me, str(f.get("text") or ""))})

@@ -42,6 +42,9 @@
     {"id": "build_tools", "name": "Builds its own tools", "group": "Building", "default": true,
      "skills": ["web-scraping"],
      "description": "Writes and runs its own scripts in its folder when a task needs one. Their internet access stays limited to the sites you approved."},
+    {"id": "learn", "name": "Learns skills", "group": "Building", "default": true,
+     "commands": ["staff-skill"], "sandboxed": true,
+     "description": "Keeps what you teach it, and what it works out, as skills that load on every run; can share one with the whole team. Off: it still uses the skills you give it, but writes no new ones."},
 
     {"id": "brief", "name": "Morning brief", "group": "Routines", "default": true, "job": "brief",
      "description": "Workdays at 08:30: what changed in its scope and what needs you today."},

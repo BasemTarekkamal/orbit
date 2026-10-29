@@ -31,6 +31,7 @@ sys.path.insert(0, CORE)
 sys.path.insert(0, os.path.join(CORE, "tools"))
 import abilities  # noqa: E402
 import engine  # noqa: E402
+import skillbook  # noqa: E402
 import team  # noqa: E402
 from team import api, jload, jsave, log, run_async, send, to_people  # noqa: E402
 
@@ -289,6 +290,28 @@ def tick_bus():
     jsave(team.STATEF, st)
 
 
+def tick_skills():
+    """New skills (learned, taught, shared, dropped) show up in the team room."""
+    st = jload(team.STATEF, {})
+    done = set(st.get("skills_done", []))
+    emps = engine.registry().get("employees", {})
+    new = False
+    for r in team.tail(skillbook.LOG, 500):
+        if r.get("id") in done:
+            continue
+        done.add(r["id"])
+        new = True
+        e = emps.get(r.get("emp"), {})
+        what = skillbook.HOW.get(r.get("what"), r.get("what", ""))
+        if r.get("what") in ("taught", "panel") and r.get("by"):
+            what += " by %s" % r["by"]
+        note = (": " + r["note"]) if r.get("note") else ""
+        team.feed(r.get("emp"), e.get("name", r.get("emp")), "team", "%s, %s%s" % (what, r.get("name"), note), "skill")
+    if new:
+        st["skills_done"] = list(done)[-2000:]
+        jsave(team.STATEF, st)
+
+
 def bus_answer(target, prompt, r):
     def write(out):
         team.append(team.BUS, {"id": "%x" % int(time.time() * 1e6), "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -312,7 +335,8 @@ def main():
     while True:
         with open(os.path.join(team.TEAM, "staffd_alive"), "w") as fh:
             fh.write(str(int(time.time())))
-        for name, fn, every in (("jobs", tick_jobs, 60), ("reminders", tick_reminders, 60), ("bus", tick_bus, 10)):
+        for name, fn, every in (("jobs", tick_jobs, 60), ("reminders", tick_reminders, 60), ("bus", tick_bus, 10),
+                                ("skills", tick_skills, 30)):
             if time.time() - last.get(name, 0) >= every:
                 last[name] = time.time()
                 try:

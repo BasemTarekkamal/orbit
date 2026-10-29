@@ -187,9 +187,11 @@ def settings_json(emp: dict, unsandboxed: list) -> str:
 
 
 def skills_plugin(emp: dict, wanted: list) -> str:
-    """A read-only skills bundle for this employee (~/Staff/.runtime/<id>/skills): links to the kit's
-    skills for its abilities. It lives outside the employee's folder, so the employee can't edit the
-    kit's skills; skills it writes itself go in its own .claude/skills and load as usual."""
+    """The employee's skills bundle (~/Staff/.runtime/<id>/skills): links to the kit's playbooks for its
+    abilities, its own learned skills (<workspace>/skills) and the team's shared ones (team/skills).
+    Rebuilt before every run, so a new skill loads on the next run. The bundle lives outside the
+    employee's folder, so it can't edit the kit's playbooks; its own skills it edits in place."""
+    import skillbook
     root = os.path.join(HOME, ".runtime", emp["id"], "skills")
     sk = os.path.join(root, "skills")
     os.makedirs(os.path.join(root, ".claude-plugin"), exist_ok=True)
@@ -198,13 +200,15 @@ def skills_plugin(emp: dict, wanted: list) -> str:
     if not os.path.exists(manifest):
         with open(manifest, "w") as fh:
             json.dump({"name": "staffroom-skills", "version": "1.0.0",
-                       "description": "The kit's research and work playbooks, per ability"}, fh)
+                       "description": "The kit's playbooks, this employee's own skills and the team's shared ones"}, fh)
+    links, _ = skillbook.bundle(emp["workspace"], wanted)
     for name in os.listdir(sk):
-        if name not in wanted:
-            os.unlink(os.path.join(sk, name))
-    for name in wanted:
-        src, p = os.path.join(SKILLS, name), os.path.join(sk, name)
-        if os.path.isdir(src) and not os.path.lexists(p):
+        p = os.path.join(sk, name)
+        if name not in links or os.path.realpath(p) != os.path.realpath(links[name]):
+            os.unlink(p)
+    for name, src in links.items():
+        p = os.path.join(sk, name)
+        if not os.path.lexists(p):
             os.symlink(src, p)
     return root
 

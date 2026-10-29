@@ -306,6 +306,9 @@ a.row:hover, .row.click:hover { background: var(--bg-2); cursor: pointer; }
 .files a.on { background: var(--bg-4); color: var(--ink); }
 .files a span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .preview { min-height: 200px; }
+.preview p.err { color: var(--danger-text); font-size: 12.5px; margin-bottom: 10px; }
+.textarea.mono { font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.files a .dot { margin-left: 6px; vertical-align: middle; }
 .preview .path { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-3); margin-bottom: 12px; display: flex; justify-content: space-between; gap: 10px; }
 pre.raw { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
