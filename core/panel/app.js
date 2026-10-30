@@ -1,4 +1,4 @@
-/* Staffroom control panel. Plain JavaScript, no build step: it reads the JSON API in core/panel.py and
+/* Orbit Mission Control (the control panel). Plain JavaScript, no build step: it reads the JSON API in core/panel.py and
    renders each page as HTML. Polls every 8 seconds, every 2 while someone is working so you can watch
    them; never re-renders a form you're typing in, but keeps the live work view moving. */
 'use strict';
@@ -30,14 +30,14 @@ const ACCESS = [
 const COMING = ['Your own browser, acting as you', 'Email inbox', 'Google Docs and Notion', 'GitHub (private)', 'Live calls'];
 const ALWAYS = ['telegram', 'team_room'];
 const SLACK_MANIFEST = `display_information:
-  name: Staffroom
+  name: Orbit
   description: My AI team
 features:
   app_home:
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
   bot_user:
-    display_name: Staffroom
+    display_name: Orbit
     always_online: true
 oauth_config:
   scopes:
@@ -220,7 +220,7 @@ async function render(nav) {
 function titleFor(r) {
   const t = S.data.team_name;
   if (r.page === 'employee') { const e = S.data.employees.find((x) => x.id === r.id); return (e ? e.name : 'Employee') + ' · ' + t; }
-  return ({ today: 'Today', team: 'Team', hire: 'Hire', abilities: 'Abilities', settings: 'Settings', welcome: 'Welcome', connect: 'Your phone' }[r.page] || 'Staffroom') + ' · ' + t;
+  return ({ today: 'Mission Control', team: 'Crew', hire: 'Add crew', abilities: 'Abilities', settings: 'Settings', welcome: 'Welcome', connect: 'Your phone' }[r.page] || 'Orbit') + ' · ' + t;
 }
 function followChat() {          // the end of the conversation (latest message, live work, the box) at the bottom of the window
   const cm = $('.chat-main', main);
@@ -255,12 +255,12 @@ function renderSide(r) {
   side.innerHTML = `
     <div class="brand"><img src="/icon.svg" alt=""><div><b>${esc(d.team_name)}${d.demo ? ' <span class="badge accent">demo</span>' : ''}</b><span class="meta"><i class="dot ${d.online ? 'active' : 'off'}"></i>${d.online ? 'Running' : 'Service stopped'}</span></div></div>
     <nav class="nav">
-      <a href="/" class="${on('today')}">${icon('home')}Today</a>
-      <a href="/team" class="${on('team') || on('abilities')}">${icon('users')}Team</a>
+      <a href="/" class="${on('today')}">${icon('home')}Mission Control</a>
+      <a href="/team" class="${on('team') || on('abilities')}">${icon('users')}Crew</a>
       <a href="/settings" class="${on('settings') || on('connect')}">${icon('sliders')}Settings</a>
     </nav>
-    <a class="btn btn-primary hire" href="/hire">${icon('plus')}Hire someone</a>
-    <h3>Employees</h3>
+    <a class="btn btn-primary hire" href="/hire">${icon('plus')}Add crew</a>
+    <h3>Crew</h3>
     <nav class="nav emps">${emps || '<span class="faint small pad">None yet</span>'}</nav>
     <div class="spacer"></div>
     <div class="use">${meters}<div class="row"><span>Plan use today</span><span class="num">≈${money(today)}</span></div></div>
@@ -348,10 +348,10 @@ PAGES.welcome = () => {
   const st = S.data.setup || {};
   const step = st.owner ? 2 : 1;
   const steps = `<ol class="w-steps"><li class="${step > 1 ? 'done' : 'on'}">You</li><li class="${step === 2 ? 'on' : ''}">Their job</li><li>Your phone</li></ol>`;
-  const brand = `<div class="w-brand"><img src="/icon.svg" alt=""><span>Staffroom</span></div>`;
+  const brand = `<div class="w-brand"><img src="/icon.svg" alt=""><span>Orbit</span></div>`;
   if (step === 1) {
-    return `<div class="welcome">${brand}<h1>Build your first AI employee.</h1>
-      <p class="lede">Your AI team. Your work, handled. On the Claude plan you already have, on this Mac.</p>${steps}
+    return `<div class="welcome">${brand}<h1>Build your crew.</h1>
+      <p class="lede">Your AI workforce. In motion. Build your team, assign missions, get things done, on the Claude plan you already have.</p>${steps}
       <form class="form w-card" data-form="welcome">
         <div class="field"><label for="w-name">Your first name</label><input id="w-name" class="input lg" name="name" required maxlength="40" autocomplete="given-name" placeholder="Alex" value="${esc(v('welcome', 'name', ''))}"></div>
         <div class="field"><label for="w-team">Your business or your work</label><input id="w-team" class="input lg" name="team_name" maxlength="60" placeholder="Northwind Coffee" value="${esc(v('welcome', 'team_name', ''))}"></div>
@@ -396,7 +396,7 @@ function jobPicker(from) {
         <div class="field"><label for="h-scope">What they own</label><textarea id="h-scope" class="textarea" name="scope" rows="3" maxlength="2000">${esc(v('hire', 'scope', sel.scope))}</textarea></div>`}
         <div class="field"><label for="h-model">Model</label><select id="h-model" class="select auto" name="model">${MODELS.map((m) => `<option value="${m}" ${m === model ? 'selected' : ''}>${m}${m === 'sonnet' ? ' (balanced)' : m === 'haiku' ? ' (lightest on your plan)' : ' (strongest, heaviest)'}</option>`).join('')}</select></div>
       </div></details>
-      <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit" data-hire-label>${icon('plus')}Hire ${esc(name || 'them')}</button><span class="meta">They start with a real first task, in about a minute.</span></div>
+      <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit" data-hire-label>${icon('plus')}Launch ${esc(name || 'them')}</button><span class="meta">They start with a real first task, in about a minute.</span></div>
     </form>`;
   return back + `<div class="jobs">${cards}</div>${form}`;
 }
@@ -471,7 +471,7 @@ PAGES.today = () => {
   const date = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
   let sub = date;
   if (!emps.length) sub += ' · no employees yet';
-  else sub += ` · ${plural(emps.length, 'employee')} · ${live.length ? live.length + ' working' : 'all idle'}`;
+  else sub += ` · ${plural(emps.length, 'crew member')} · ${live.length ? live.length + ' working' : 'all idle'}`;
   if (!d.online) sub += ' · <span class="badge danger">service stopped</span>';
   const demo = d.demo ? `<div class="demo-bar"><b>A pretend team, to look around.</b> The business, the people and their findings are invented (links end in .example) and the replies are canned: no Claude run, no bot. Chat with someone anyway, teach a skill, change abilities. Your own team: paste the one line from the README into the Claude app, or run <code>install.sh</code>.</div>` : '';
   const todo = d.checklist.filter((c) => !c.done && !c.optional);
@@ -489,9 +489,9 @@ PAGES.today = () => {
   let feed = sortedByTs(d.feed).filter((f) => { const t = parseTs(f.ts); return t && sameDay(t, now); });
   if (feed.length < 4) { const y = new Date(now); y.setDate(now.getDate() - 1); feed = sortedByTs(d.feed).filter((f) => { const t = parseTs(f.ts); return t && (sameDay(t, now) || sameDay(t, y)); }); }
   const timeline = feed.length ? `<div class="timeline">${withDays(feed.slice(-40), tlItem, true)}</div>`
-    : `<div class="empty"><b>Quiet so far.</b><p>${emps.length ? 'What your team says to you and to each other shows up here.' : 'Hire your first employee and their work shows up here.'}</p></div>`;
+    : `<div class="empty"><b>Quiet so far.</b><p>${emps.length ? 'What your team says to you and to each other shows up here.' : 'Add your first crew member and their missions show up here.'}</p></div>`;
   const mini = emps.length ? `<div class="list mini">${emps.map((e) => `<a class="row" href="/e/${e.id}">${avatar(e.id, e.name)}<div><div class="title">${esc(e.name)}</div><div class="meta">${esc(empNow(e))}</div></div>${statusHtml(e)}</a>`).join('')}</div>`
-    : `<p class="quiet">No employees yet. <a class="link" href="/hire">Hire someone</a>.</p>`;
+    : `<p class="quiet">No crew yet. <a class="link" href="/hire">Add your first</a>.</p>`;
   const useToday = emps.reduce((a, e) => a + e.use_today, 0), use7 = emps.reduce((a, e) => a + e.use_7d, 0);
   const u = d.usage || {};
   const usage = `<div class="usage-box"><div class="row2"><span>Today</span><b class="num">≈${money(useToday)}</b></div><div class="row2"><span>Last 7 days</span><b class="num">≈${money(use7)}</b></div>
@@ -502,7 +502,7 @@ PAGES.today = () => {
       <section><div class="sec-head"><h2>Needs you</h2>${d.needs.length ? `<span class="meta">${d.needs.length}</span>` : ''}</div>${needs}</section>
       <section><div class="sec-head"><h2>Today</h2><span class="meta">the team room</span></div>${timeline}</section>
     </div><aside>
-      <section><div class="sec-head"><h2>Team</h2><a class="link small" href="/team">All</a></div>${mini}</section>
+      <section><div class="sec-head"><h2>Crew</h2><a class="link small" href="/team">All</a></div>${mini}</section>
       <section><div class="sec-head"><h2>Plan use</h2></div>${usage}</section>
     </aside></div>`;
 };
@@ -526,9 +526,9 @@ PAGES.team = () => {
   const skills = emps.length ? `<section class="mt-lg"><div class="sec-head"><h2>Team skills</h2><span class="meta">${ts.length ? `${ts.length} shared · every employee uses them` : 'shared by employees, used by all'}</span></div>
     ${ts.length ? `<div class="list">${ts.map((s) => `<a class="row row-2" href="/e/${esc(s.shared_from || emps[0].id)}/knowledge?f=team:${esc(s.name)}"><div><div class="title">${esc(s.name)}</div><div class="meta">${esc(s.description)}</div></div><span class="meta">shared by ${esc(nameOf(s.shared_from || ''))}</span></a>`).join('')}</div>`
       : `<p class="quiet">None yet. When an employee learns something every colleague should know, they share it here (or you do, from their Knowledge tab).</p>`}</section>` : '';
-  return `<header class="page-head"><div><h1>Team</h1><p class="sub">${emps.length ? `${plural(emps.length, 'employee')}${working ? ` · ${working} working` : ''}` : 'Nobody works here yet.'}</p></div>
-    <div class="actions">${emps.length ? `<a class="btn" href="/abilities">${icon('grid')}Compare abilities</a>` : ''}<a class="btn btn-primary" href="/hire">${icon('plus')}Hire someone</a></div></header>
-    ${emps.length ? `<div class="list">${rows}</div>` : `<div class="empty"><b>Your first employee is one click away.</b><p><a class="link" href="/hire">Pick what they should do</a>: they come with the whole toolbelt, a memory, and a morning brief.</p></div>`}${skills}`;
+  return `<header class="page-head"><div><h1>Crew</h1><p class="sub">${emps.length ? `${plural(emps.length, 'crew member')}${working ? ` · ${working} working` : ''}` : 'Nobody works here yet.'}</p></div>
+    <div class="actions">${emps.length ? `<a class="btn" href="/abilities">${icon('grid')}Compare abilities</a>` : ''}<a class="btn btn-primary" href="/hire">${icon('plus')}Add crew</a></div></header>
+    ${emps.length ? `<div class="list">${rows}</div>` : `<div class="empty"><b>Your first crew member is one click away.</b><p><a class="link" href="/hire">Pick what they should do</a>: they come with the whole toolbelt, a memory, and a morning brief.</p></div>`}${skills}`;
 };
 
 // ---- employee
@@ -701,7 +701,7 @@ function tabManage(e, dt) {
     <section><h2>Status</h2><p class="desc">${paused ? `${esc(e.name)} is paused: no chats or routines until you resume.` : `${esc(e.name)} is working normally.`}</p>
       <div class="save-bar"><button class="btn" data-act="order" data-kind="${paused ? 'resume' : 'pause'}" data-emp="${e.id}">${icon(paused ? 'play' : 'pause')}${paused ? 'Resume' : 'Pause'}</button></div></section>
     <section><h2>Run a routine now</h2><p class="desc">The result shows up in the chat and the team room.</p>
-      <div class="save-bar"><select class="select auto" id="run-job" aria-label="Routine">${jobs}</select><button class="btn" data-act="order" data-kind="run_job" data-emp="${e.id}" data-from="#run-job" ${paused ? 'disabled' : ''}>Run now</button></div></section>
+      <div class="save-bar"><select class="select auto" id="run-job" aria-label="Routine">${jobs}</select><button class="btn" data-act="order" data-kind="run_job" data-emp="${e.id}" data-from="#run-job" ${paused ? 'disabled' : ''}>Launch now</button></div></section>
     <section><h2>Model</h2><p class="desc">${esc(e.name)} switches to the lightest model on their own when your plan is nearly used up.</p><div><select class="select auto" data-field="model" data-emp="${e.id}" aria-label="Model">${models}</select></div></section>
     <section><h2>Abilities</h2><p class="desc">What ${esc(e.name)} may do. These are locks: anything off is blocked, whatever anyone says in chat. Changes apply on their next run.</p>
       <form id="ab-${e.id}" data-form="abilities" data-emp="${e.id}"><div class="ab-bar"><button class="btn btn-primary" type="submit">Save</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="default">Default</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="super">Super agent</button><span class="meta">${on.size} of ${S.cat.abilities.length} on</span></div></form>
@@ -714,7 +714,7 @@ function tabManage(e, dt) {
 PAGES.abilities = () => {
   const d = S.data, emps = d.employees;
   if (!S.cat) return loading;
-  if (!emps.length) return `<header class="page-head"><div><h1>Abilities</h1></div></header><div class="empty"><b>Hire someone first.</b><p>Their abilities appear here as a column of checkboxes.</p></div>`;
+  if (!emps.length) return `<header class="page-head"><div><h1>Abilities</h1></div></header><div class="empty"><b>Add a crew member first.</b><p>Their abilities appear here as a column of checkboxes.</p></div>`;
   const head = emps.map((e) => `<th><div>${esc(e.name)}</div><div class="acts"><button class="btn btn-sm btn-primary" type="submit" form="mx-${e.id}">Save</button><button class="btn btn-sm" type="button" data-act="preset" data-emp="${e.id}" data-preset="default">Default</button><button class="btn btn-sm" type="button" data-act="preset" data-emp="${e.id}" data-preset="super">Super</button></div></th>`).join('');
   const rows = S.cat.groups.map((g) => {
     const items = S.cat.abilities.filter((a) => a.group === g);
@@ -774,7 +774,7 @@ PAGES.settings = () => {
     ${pending ? `<h3>Messaged your bot</h3>${pending}` : `<p class="meta">Nobody is waiting for approval.</p>`}</section>
   <section><h2>Appearance</h2><div class="seg" role="group" aria-label="Appearance"><button data-act="theme" data-v="" class="${S.theme === '' ? 'on' : ''}">Match the Mac</button><button data-act="theme" data-v="light" class="${S.theme === 'light' ? 'on' : ''}">Light</button><button data-act="theme" data-v="dark" class="${S.theme === 'dark' ? 'on' : ''}">Dark</button></div></section>
   <section><h2>About this install</h2>
-    <dl class="kv"><dt>Claude</dt><dd>${s.claude.ok ? `signed in (${esc(s.claude.note)})` : '<span class="badge danger">not signed in</span> ask Claude: “Sign in Claude Code for my Staffroom.”'} · runs on ${s.auth === 'api_key' ? 'your API key' : 'your subscription'}</dd>
+    <dl class="kv"><dt>Claude</dt><dd>${s.claude.ok ? `signed in (${esc(s.claude.note)})` : '<span class="badge danger">not signed in</span> ask Claude: “Sign in Claude Code for my Orbit.”'} · runs on ${s.auth === 'api_key' ? 'your API key' : 'your subscription'}</dd>
       <dt>Service</dt><dd>${d.online ? 'running' : '<span class="badge danger">stopped</span>'} · panel on port ${s.port}</dd>
       <dt>Team folder</dt><dd><code>${esc(s.home)}</code></dd><dt>Kit</dt><dd><code>${esc(s.kit)}</code></dd></dl></section>
   <section><h2>History</h2>${orders.length ? `<div class="list mini">${orders.map((o) => `<div class="row row-2"><div><div class="small">${esc(o.summary)}</div><div class="meta">${esc(o.by)} · ${fmtTime(o.ts)}${o.result ? ' · ' + esc(o.result) : ''}</div></div><span class="badge ${o.status === 'failed' ? 'danger' : ''}">${esc(o.status)}</span></div>`).join('')}</div>` : '<p class="quiet">Nothing yet.</p>'}</section>

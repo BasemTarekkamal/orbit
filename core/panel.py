@@ -179,14 +179,14 @@ def checklist(emps, feed):
         return [{"id": "demo", "done": True, "title": "Demo team", "how": ""}]
     return [
         {"id": "claude", "done": bool(auth["ok"]), "title": "Signed in to Claude",
-         "how": "Ask Claude (in the Claude app, Code tab): “Sign in Claude Code for my Staffroom.”"},
+         "how": "Ask Claude (in the Claude app, Code tab): “Sign in Claude Code for my Orbit.”"},
         {"id": "hire", "done": bool(emps), "title": "Your first employee", "how": "Pick what they should do.", "href": "/welcome", "cta": "Hire"},
         {"id": "phone", "done": any(not o.get("local") for o in reg.get("owners", {}).values()), "title": "Your team on your phone",
          "how": "Telegram, Slack or Discord, through a bot of your own. About two minutes.", "href": "/connect", "cta": "Connect"},
         {"id": "apify", "done": bool(engine.secret("apify_token")), "optional": True, "title": "TikTok, Instagram, Facebook and Maps research",
          "how": "A free Apify account; paste its token in Settings. Paid per use, inside the budget you set.", "href": "/settings#research", "cta": "Add"},
         {"id": "voice", "done": os.path.exists(model), "optional": True, "title": "Voice notes, transcribed on this Mac",
-         "how": "Ask Claude: “Set up voice notes for my Staffroom.”"},
+         "how": "Ask Claude: “Set up voice notes for my Orbit.”"},
     ]
 
 
@@ -293,7 +293,7 @@ def state():
     pending = team.jload(PENDING, {})
     usage = engine.usage()
     me = next(iter(reg.get("owners", {}).values()), {}).get("name", "Owner")
-    return {"team_name": reg.get("team_name", "Staffroom"), "me": me, "online": daemon_online(), "now": time.strftime("%Y-%m-%dT%H:%M:%S"), "demo": DEMO,
+    return {"team_name": reg.get("team_name", "Orbit"), "me": me, "online": daemon_online(), "now": time.strftime("%Y-%m-%dT%H:%M:%S"), "demo": DEMO,
             "usage": usage, "owners": [{"id": i, "name": o["name"], "local": bool(o.get("local")),
                                         "addresses": [channels.label(i)] + [channels.label(a) for a in o.get("addresses", [])]}
                                        for i, o in reg.get("owners", {}).items()],
@@ -437,7 +437,7 @@ def set_rules(emp_id, by, text):
 
 def save_settings(f, by):
     reg = engine.registry()
-    reg["team_name"] = (str(f.get("team_name") or "").strip() or "Staffroom")[:60]
+    reg["team_name"] = (str(f.get("team_name") or "").strip() or "Orbit")[:60]
     wd = [d for d in (f.get("workdays") or []) if d in team.DAYS]
     reg["workdays"] = wd or ["Mon", "Tue", "Wed", "Thu", "Fri"]
     doms = []
@@ -516,7 +516,7 @@ def settings_view():
 
 # ------------------------------------------------------------------ HTTP
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Staffroom"
+    server_version = "Orbit"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):  # quiet; errors go to staffd.log

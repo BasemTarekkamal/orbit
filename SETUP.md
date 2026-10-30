@@ -1,6 +1,6 @@
-# Setting up Staffroom (instructions for Claude)
+# Setting up Orbit (instructions for Claude)
 
-Someone asked you to set up Staffroom on their Mac: a team of AI employees that runs on this Mac and
+Someone asked you to set up Orbit on their Mac: a crew of AI employees that runs on this Mac and
 on their own Claude plan. They may not be technical. Do every step yourself. Before each step, say in
 one plain sentence what it does and why; after it, say what happened. Keep it calm and short.
 
@@ -10,7 +10,7 @@ and the Apify token are typed into the control panel, a page on this Mac, never 
 If a step fails twice, stop and tell them plainly what failed and what you'd try next.
 
 ## 1. Check the Mac
-- `sw_vers -productName` must say macOS. If not, stop: Staffroom runs on macOS for now.
+- `sw_vers -productName` must say macOS. If not, stop: Orbit runs on macOS for now.
 - `python3 --version` and `git --version`. If either is missing, macOS offers to install its developer
   tools in a dialog: tell them to click **Install**, wait for it to finish (a few minutes), then go on.
 
@@ -20,7 +20,7 @@ If a step fails twice, stop and tell them plainly what failed and what you'd try
 
 ## 3. Claude Code for the employees
 The employees run on the `claude` command-line tool, signed in with the person's own Claude account
-(the plan they already pay for). It is Anthropic's own program; Staffroom never sees their login.
+(the plan they already pay for). It is Anthropic's own program; Orbit never sees their login.
 - `claude --version` (also try `~/.local/bin/claude --version`). If it isn't there, install it with
   Anthropic's official installer: `curl -fsSL https://claude.ai/install.sh | bash`.
 - `claude auth status`. If it's signed in, go on. If not, tell them: "A page from Anthropic will open in
@@ -46,7 +46,7 @@ Stay available for questions; that's the whole setup.
   the command on https://brew.sh. Then `brew install ffmpeg whisper-cpp` and
   `~/staffroom/staff doctor --get-voice-model` (a 550 MB download from Hugging Face).
 - **Sign Claude Code in again:** `claude auth login`.
-- **Update Staffroom:** `git -C ~/staffroom pull --ff-only && ~/staffroom/staff restart`.
+- **Update Orbit:** `git -C ~/staffroom pull --ff-only && ~/staffroom/staff restart`.
 - **Something's wrong:** `~/staffroom/staff doctor`, then `~/staffroom/staff logs`.
 - **Stop it:** `~/staffroom/staff stop`. Their team's folder (`~/Staff`) stays unless they ask you to
   delete it; confirm before you do, it holds everything their employees learned.

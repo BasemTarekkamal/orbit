@@ -1,8 +1,11 @@
-# Staffroom
+<p align="center"><img src="docs/brand/orbit-logo.png" alt="Orbit" width="360"></p>
 
-**Your AI team. Your work, handled.**
+# Orbit
 
-Build your first AI employee in two minutes and watch it do a real piece of your work. It runs on
+**Your AI workforce. In motion.**
+Build your team. Assign missions. Get things done.
+
+Add your first AI crew member in two minutes and watch it do a real piece of your work. It runs on
 your Mac, on the Claude plan you already have (no API bill), and it can't spend, post or message
 anyone but you. Early: built in the open, tested by a few people; tell us what breaks.
 
@@ -21,6 +24,11 @@ Every job card says what works today and what's coming (email, docs, GitHub, you
 as you, live calls). Until an action can go out with your tap, your employee prepares it and you
 send it.
 
+## Words we use
+
+**Orbit** is the platform. **Mission Control** is your dashboard. Your AI employees are your **crew**;
+the work you give them are **missions**; **Launch** starts one.
+
 ## Get started
 
 **You need:** a Mac and a paid Claude plan (Pro or Max). That's what your employees run on; nothing
@@ -28,7 +36,7 @@ else is billed.
 
 **The easy way, no Terminal.** Open the Claude app on your Mac, go to **Code**, and paste:
 
-> Set up Staffroom for me: clone https://github.com/BasemTarekkamal/staffroom into ~/staffroom, then read ~/staffroom/SETUP.md and follow it.
+> Set up Orbit for me: clone https://github.com/BasemTarekkamal/staffroom into ~/staffroom, then read ~/staffroom/SETUP.md and follow it.
 
 Claude installs everything, says what each step does, and opens your control panel. There you answer
 two questions (your name, what your business does), pick what your first employee should do, and
@@ -51,7 +59,7 @@ ends it.
 
 ## What makes them different: they know *how* to find things
 
-Most AI assistants stop at "I searched the web". Every Staffroom employee carries a **toolbelt**
+Most AI assistants stop at "I searched the web". Every Orbit crew member carries a **toolbelt**
 and a set of **research playbooks** (Claude Code skills that load only when needed), so they pick
 the right method for each source, the way an experienced researcher would.
 
@@ -95,11 +103,11 @@ and claim comes with a source link.
 
 ![An employee's skills](docs/screens/skills-dark.jpg)
 
-## The control panel
+## Mission Control
 
 ![Today](docs/screens/today-dark.jpg)
 
-`staff panel` opens a small app on your Mac (no account, no cloud, light and dark), built for people
+`staff panel` opens Mission Control, a small app on your Mac (no account, no cloud, light and dark), built for people
 who don't live in Terminal: every setting is a button or a form.
 
 - **Watch them work.** While an employee works you see each step as it happens ("Searching the web",
