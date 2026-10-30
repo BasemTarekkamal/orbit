@@ -230,6 +230,10 @@ def to_people(emp, target):
 def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None, extra_env=None, said=None, channel=None):
     """Runs an employee in the background (one run at a time each). on_done(output) gets the final text.
     `said` is the owner's own words (for the chat log); the prompt wraps them."""
+    if job == "chat":
+        import calls                                      # on a live call: point them at the running transcript
+        prompt += calls.live_note(emp_id)
+
     def work():
         lock = LOCKS.setdefault(emp_id, threading.Lock())
         with lock:
@@ -302,6 +306,24 @@ def panel_prompt(who, text, team):
             "Update your memory files before you finish."
             % (who, "to the whole team " if team else "", now_str(), text,
                " Reply SILENT unless it's meant for you or you have something useful to add." if team else ""))
+
+
+def minutes(emp_id, info, who, title):
+    """Minutes from a transcript (a recording sent after the call, or a live call that just ended)."""
+    prompt = ("An owner ({who}) had a meeting; it was transcribed on the Mac to {t} ({m} min). Write {mn} in the "
+              "meeting's main language: summary, decisions, action items (owner, due; set a reminder with "
+              "staff-remind for each dated one), items in your scope, open questions, 'My view:' (2–4 honest "
+              "points). Flag numbers and names you rely on as (check). Then reply with a ≤ 15-line version for "
+              "chat. Title: {title}").format(who=who, t=info["transcript"], m=info.get("duration_min"),
+                                             mn=info["minutes"], title=title)
+    emp = engine.employee(emp_id)
+    run_async(emp_id, prompt, "minutes", None, to_people(emp, "all"),
+              on_done=to_room(emp_id, emp["name"], who, "job"))
+
+
+def call_ended(emp_id, info):
+    """calls.py hands a finished live call here."""
+    minutes(emp_id, info, info.get("by") or "the owner", info.get("title") or "Call")
 
 
 def recent_chat(emp_id, n=15):

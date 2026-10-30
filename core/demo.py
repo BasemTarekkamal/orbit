@@ -80,6 +80,11 @@ JOB_TEXT = {
     "standup": "Today: price tracker run, TikTok comment scan for Harbor Roast, digest draft. Blocking question: do we care about decaf?",
     "eod": "Done: price tracker, comment scan. Slipped: digest draft (moved to tomorrow). Nothing for tonight.",
     "scout": "Self-improvement: tried a cheaper way to read Kettle & Co's shop (their JSON feed instead of the page). Logged in growth/changelog.md.",
+    "minutes": "Minutes: supplier call (1 min, notes/meetings/…/minutes.md)\n\nDecided: none yet; you confirm by Friday.\n"
+               "Price: $31/kg from December (was $28), or $29.50 on a 3-month order paid on delivery (check).\n"
+               "Action items: get the $29.50 offer in writing (them); confirm by Fri 10:00 (you, reminder set).\n"
+               "Risk: the Colombian lot ships 2 weeks late, on the 20th.\n"
+               "My view: $29.50 is still 5% up; ask Bluebird for a quote before Friday so you have a second number.",
     "evals": "Self-test: 7 of 8 cases pass. Failed: 'quote the exact price with its date' (I rounded). Lesson written.",
 }
 UPDATES = [
@@ -127,6 +132,9 @@ def canned(emp, prompt, job):
         return FIRST_DAY % (OWNER, emp["name"], emp["role"].lower())
     said = said_of(prompt)
     low = said.lower()
+    if "listening to a live call" in prompt and re.search(r"price|said|say|what|كم|سعر", low):
+        return ("At 00:00:36 they said $31/kg from December (was $28). At 00:01:04 they offered $29.50 on a 3-month order, "
+                "paid on delivery. Ask for that in writing.") + DEMO_NOTE
     if re.search(r"from now on|always|never|next time", low):
         return ("Got it, and written down as a skill so I do it every time from now on: \"%s\". You can read or change it in my "
                 "Knowledge tab." % said[:120]) + DEMO_NOTE
@@ -145,6 +153,8 @@ def fake_run(emp, prompt, job="chat", session_key=None, on_step=None):
     key = "first day" if job == "first_day" else ("brief" if job in JOB_TEXT else said_of(prompt).lower())
     plan = next(s for pat, s in STEPS if re.search(pat, key)) if job not in JOB_TEXT else \
         ["Checking my notes", "Checking my watchers", "Updating my notes (STATE.md)"]
+    if job == "minutes":
+        plan = ["Reading the call transcript", "Writing the minutes", "Setting a reminder: confirm the price by Friday"]
     steps = []
     for text in plan:
         time.sleep(random.uniform(0.9, 1.8))

@@ -106,7 +106,11 @@ What you may do (these routines included) is set per employee by the owners in t
 - Record agreements in `~/Staff/team/DECISIONS.md`. Don't duplicate a colleague's work; build on it.
 
 ## 9. Meetings
-Owners send a recording (or a long voice note). The harness transcribes it on the Mac; you write
+Live: an owner says "start call" (or presses Listen to a call in the panel). The harness listens on the
+Mac (Them = what the Mac plays, You = the microphone) and appends to `notes/meetings/<date>-<title>/
+transcript.md` every 30 s. While it runs, questions about the call come with that path: Read it, answer
+from it with the line's time, and keep it short (they're on the call). "end call" stops it.
+After, or from a recording (or a long voice note) they send: the harness transcribes it on the Mac; you write
 minutes in the meeting's language: summary, decisions, action items (owner, due, reminder set), items in
 your scope, open questions, "My view:". Names and numbers from transcripts get "(check)".
 

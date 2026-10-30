@@ -18,10 +18,10 @@ drowning in reviews and threads, agencies and recruiters. You say what you do; i
 - Review designs against the PRD; keep you posted on PRD and commit changes
 - Handle your clients' questions in your voice (you send), chase deadlines and invoices
 - Find candidates and leads, screen them, draft the outreach; find jobs and tailor applications
-- Turn your calls into minutes with action items and reminders
+- Sit in on your calls live and turn them into minutes with action items and reminders
 
 Every job card says what works today and what's coming (email, docs, GitHub, your own browser acting
-as you, live calls). Until an action can go out with your tap, your employee prepares it and you
+as you). Until an action can go out with your tap, your employee prepares it and you
 send it.
 
 ## Words we use
@@ -98,8 +98,14 @@ and claim comes with a source link.
   only you switch; skills (what they *know how* to do) grow.
 - **Your chat, your bots:** Telegram, Slack or Discord, through bots you create
   (`/sara what did our competitors post this week?`), voice notes (transcribed on your Mac), photos
-  and PDFs, meeting recordings turned into minutes, and a team channel. Each install talks only to
+  and PDFs, calls turned into minutes, and a team channel. Each install talks only to
   the bots whose tokens you saved; only the owners you approve can direct the team.
+- **Live calls:** say "start call" (or press Listen to a call) and your crew member listens on your
+  Mac during Zoom, Meet, Teams, WhatsApp or FaceTime. Ask "what did they just say about the price?"
+  mid-call; say "end call" and the minutes arrive with action items and reminders set. No bot joins the
+  call: it hears what your Mac plays and your microphone, transcribes on the Mac, and deletes the audio
+  once it's written down. The first time, macOS asks you to allow "Orbit Listener" (Screen & System
+  Audio Recording, and Microphone). Needs macOS 15 or newer. Tell the people on the call you're taking notes.
 
 ![An employee's skills](docs/screens/skills-dark.jpg)
 

@@ -10,7 +10,7 @@ import engine
 import hire
 import team
 
-KINDS = ("message", "hire", "pause", "resume", "retire", "run_job", "set_abilities", "set_field")
+KINDS = ("message", "hire", "pause", "resume", "retire", "run_job", "set_abilities", "set_field", "call_start", "call_stop")
 
 
 class OrderError(ValueError):
@@ -84,6 +84,23 @@ def execute(by, kind, p):
             team.run_async(eid, team.job_prompt(eid, emp, job, " Run now on request from %s." % by), job, None,
                            team.to_people(emp, "supervisor"), on_done=team.to_room(eid, e["name"], e.get("supervisor", ""), "job"))
             summary, res = "Run %s for %s now" % (team.JOBS[job], e["name"]), "Started; the result goes to the team room"
+        elif kind == "call_start":
+            import calls
+            e = _emp(eid)
+            if not abilities.has(eid, "meetings"):
+                raise OrderError("%s's Meetings ability is off: turn it on in Abilities first" % e["name"])
+            try:
+                calls.start(eid, by, p.get("title", ""), on_end=team.call_ended)
+            except calls.CallError as err:
+                raise OrderError(str(err))
+            summary, res = "Listen to a call with %s" % e["name"], "Listening. Minutes come when you end it"
+        elif kind == "call_stop":
+            import calls
+            e = _emp(eid, want_active=False)
+            st = calls.stop(eid)
+            if not st:
+                raise OrderError("%s isn't listening to a call" % e["name"])
+            summary, res = "End the call with %s" % e["name"], "Ended after %s min; writing the minutes" % st["minutes"]
         elif kind == "set_abilities":
             e = _emp(eid, want_active=False)
             preset = p.get("preset")

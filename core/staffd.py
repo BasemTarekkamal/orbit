@@ -8,7 +8,7 @@ Each loop (about every second):
       private chat: "/sara <msg>" (Telegram) or "@sara <msg>" talks to Sara and makes her your
              default; "talk sara"; "team" / "help"; plain text goes to your current default; voice
              notes transcribed on this Mac; photos and files saved into the employee's folder; long
-             recordings → meeting minutes.
+             recordings → meeting minutes; "start call" / "end call" → a live call, minutes at the end.
       team chat (staff.json team_chats): mention "@sara" / "Sara" or reply to her.
       Owners only. Anyone else is ignored (and listed in the control panel for the owner to approve).
   * The team bus (team/bus.jsonl): colleagues asking and answering each other, mirrored to the team room.
@@ -78,6 +78,7 @@ def help_text(mod):
     for k, e in team.active().items():
         lines.append("%s — %s, %s" % (mod.mention(k), e["name"], e["role"]))
     lines.append("talk <handle> — make them your default")
+    lines.append("start call / end call — they listen on the Mac and send minutes")
     return "\n".join(lines) if len(lines) > 2 else "Nobody works here yet. Hire someone in the control panel."
 
 
@@ -194,6 +195,12 @@ def handle(msg):
             return False
         send(chat, "%s can't take %s: it's switched off in the control panel (Abilities)." % (emp["name"], what), emp)
         return True
+    act = call_intent(body)
+    if act:
+        if off("meetings", "calls"):
+            return
+        threading.Thread(target=lambda: send(chat, call_reply(act, emp_id, who, body), emp), daemon=True).start()
+        return
     env_ws = dict(os.environ, STAFF_WORKSPACE=emp["workspace"], STAFF_EMPLOYEE=emp_id, STAFFROOM_HOME=engine.HOME)
     inbox = os.path.join(emp["workspace"], "state", "inbox")
     atts = msg.get("attachments") or []
@@ -263,14 +270,43 @@ def handle(msg):
               channel="group" if is_group else ch)
 
 
+CALL_START = re.compile(r"^/call\b|^(please )?(start|begin|join)( the| a| my)? (call|meeting)( notes| minutes)?\b|"
+                        r"^(listen|listen in|take notes)( to| on)?( the| this| my)? (call|meeting)\b|"
+                        r"^(ابدأ|ابدا|اسمع|سجل|سجّل)\s*(ال)?(مكالمة|اجتماع|الاجتماع|المكالمه)")
+CALL_STOP = re.compile(r"^/endcall\b|^(please )?(stop|end|finish)( the| this| my)? (call|meeting|listening)\b|"
+                       r"^(call|meeting) (is )?(over|done|ended|finished)\b|^(i'?m )?done with the (call|meeting)|^hung up\b|"
+                       r"^(انهي|أنهي|انهِ|وقف|أوقف|اوقف|خلصت|خلص)\s*(ال)?(مكالمة|اجتماع|الاجتماع|المكالمه|التسجيل)")
+
+
+def call_intent(text):
+    t = (text or "").strip().lower()
+    if not t or len(t.split()) > 12:
+        return None
+    return "start" if CALL_START.search(t) else "stop" if CALL_STOP.search(t) else None
+
+
+def call_title(text):
+    m = re.search(r"(?:[:\-–]|\babout\b|\bwith\b|\bre\b|عن|مع)\s*(.+)$", text or "")
+    return m.group(1).strip()[:80] if m else ""
+
+
+def call_reply(act, emp_id, who, text):
+    import calls
+    if act == "stop":
+        st = calls.stop(emp_id) or calls.stop()
+        if not st:
+            return "I'm not listening to a call right now. Say \"start call\" when the next one begins."
+        return "Call ended after %s min. Writing the minutes now; they'll land here in a few minutes." % st["minutes"]
+    try:
+        calls.start(emp_id, who, call_title(text), on_end=team.call_ended)
+    except calls.CallError as e:
+        return str(e)
+    return ("Listening to your call on this Mac. Ask me anything during it, like \"what did they say about price?\". "
+            "Say \"end call\" when you hang up and I'll send the minutes. Tell the others you're taking notes.")
+
+
 def minutes(emp_id, info, who, title):
-    prompt = ("An owner ({who}) had a meeting; it was transcribed on the Mac to {t} ({m} min). Write {mn} in the "
-              "meeting's main language: summary, decisions, action items (owner, due; set a reminder with "
-              "staff-remind for each dated one), items in your scope, open questions, 'My view:' (2–4 honest "
-              "points). Flag numbers and names you rely on as (check). Then reply with a ≤ 15-line version for "
-              "chat. Title: {title}").format(who=who, t=info["transcript"], m=info.get("duration_min"),
-                                             mn=info["minutes"], title=title)
-    run_async(emp_id, prompt, "minutes", None, to_people(engine.employee(emp_id), "all"))
+    team.minutes(emp_id, info, who, title)
 
 
 # ------------------------------------------------------------------ routines, reminders, bus, skills
@@ -415,6 +451,11 @@ def main():
         threading.Thread(target=panel.serve, daemon=True).start()
     except Exception:  # noqa: BLE001
         log("panel failed to start: %s" % traceback.format_exc()[-400:])
+    try:
+        import calls
+        calls.recover(on_end=team.call_ended)            # a listener left over from before a restart
+    except Exception:  # noqa: BLE001
+        log("call recovery failed: %s" % traceback.format_exc()[-300:])
     last = {}
     while True:
         with open(os.path.join(team.TEAM, "staffd_alive"), "w") as fh:

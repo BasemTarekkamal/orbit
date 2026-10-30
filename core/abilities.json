@@ -67,10 +67,10 @@
     },
     {
       "id": "meetings",
-      "name": "Meeting recordings",
+      "name": "Calls and recordings",
       "group": "Meetings",
-      "description": "Turns a long voice note or recording into minutes, transcribed on this Mac.",
-      "can": "Turn call recordings into minutes and action items"
+      "description": "Listens to a call on this Mac when you say start call, or takes a recording after, and writes minutes. Transcribed on this Mac; no bot joins the call.",
+      "can": "Listen in on your calls and turn them into minutes and action items"
     },
     {
       "id": "web",

@@ -262,7 +262,7 @@
       ],
       "blurb": "Be my right hand: reminders, documents, quick research, minutes",
       "outcome": "Be my right hand: reminders, documents, quick research, minutes",
-      "scope": "The owner's requests: reminders and follow-ups, quick research, documents and PDFs they send, minutes from call recordings, and a morning note on what needs them today.",
+      "scope": "The owner's requests: reminders and follow-ups, quick research, documents and PDFs they send, minutes from calls (live or recorded), and a morning note on what needs them today.",
       "abilities": [
         "telegram",
         "team_room",
@@ -469,7 +469,7 @@
       ],
       "blurb": "Attend my calls and give me the notes",
       "outcome": "Attend my calls and give me the notes",
-      "scope": "Turns call recordings into minutes: summary, decisions, action items with reminders set, open questions, and its own view. Knows the business, so it can tell what matters.",
+      "scope": "Listens to your calls live on this Mac (say \"start call\") or takes a recording after, then writes minutes: summary, decisions, action items with reminders set, open questions, and its own view. Answers questions about the call while it's still going. Knows the business, so it can tell what matters.",
       "abilities": [
         "telegram",
         "team_room",
@@ -485,12 +485,13 @@
       "model": "sonnet",
       "gets": [],
       "try": [
-        "Here's today's call recording: minutes please",
+        "Start call: supplier pricing",
+        "What did they just say about the price?",
         "What did we decide with the supplier last week?",
         "Set reminders for every action item"
       ],
-      "today": "Works now, after the call, from the recording you send.",
-      "soon": "Joins live and sends notes mid-call.",
+      "today": "Works now, live: it listens on your Mac during Zoom, Meet, Teams, WhatsApp or FaceTime, and answers mid-call. Or send a recording after.",
+      "soon": "Takes notes on calls you're not on yourself.",
       "first": ""
     },
     {

@@ -133,6 +133,9 @@ def checks():
         out.append((bool(found), "%s (%s)%s" % (b, why, "" if found else ": brew install ffmpeg whisper-cpp"), False))
     model = os.path.join(engine.HOME, "models", "ggml-large-v3-turbo-q5_0.bin")
     out.append((os.path.exists(model), "speech model%s" % ("" if os.path.exists(model) else ": `orbit doctor --get-voice-model` (~550 MB)"), False))
+    import calls
+    ok, why = calls.ready()
+    out.append((ok, "live calls%s" % ("" if ok else ": " + why), False))
     import channels
     conf = channels.configured()
     out.append((bool(conf), "chat channel%s" % ((": " + ", ".join(conf)) if conf else " (none yet): `orbit secret telegram|slack|discord`"), False))

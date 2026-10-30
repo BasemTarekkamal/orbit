@@ -21,13 +21,13 @@ const ACCESS = [
   ['browser', 'Headless browser for hard pages', ['browser']],
   ['docs', 'Documents, scans and photos you send', ['documents', 'files']],
   ['watch', 'Watchers on pages and feeds', ['watchers']],
-  ['calls', 'Call recordings and voice notes', ['meetings', 'voice']],
+  ['calls', 'Calls (live or recorded) and voice notes', ['meetings', 'voice']],
   ['remind', 'Reminders and follow-ups', ['reminders']],
   ['learn', 'Learns the skills you teach', ['learn']],
   ['tools', 'Builds its own small tools', ['build_tools']],
   ['brief', 'A brief every workday morning', ['brief']],
 ];
-const COMING = ['Your own browser, acting as you', 'Email inbox', 'Google Docs and Notion', 'GitHub (private)', 'Live calls'];
+const COMING = ['Your own browser, acting as you', 'Email inbox', 'Google Docs and Notion', 'GitHub (private)'];
 const ALWAYS = ['telegram', 'team_room'];
 const SLACK_MANIFEST = `display_information:
   name: Orbit
@@ -87,6 +87,7 @@ const I = {
   file: svg('<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/>'),
   send: svg('<path d="M4 12 20 4l-4 16-4-7z"/>', 1.9),
   list: svg('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>', 2),
+  mic: svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>'),
   phone: svg('<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>'),
   copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>'),
   manage: svg('<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>'),
@@ -293,6 +294,16 @@ function liveCard(id) {
   return `<div class="live"><div class="live-head"><i class="dot working"></i><b>${esc(e ? e.name : id)} is working</b><span class="meta">${esc(L.doing || '')} · <span class="num" data-since="${esc(L.started)}"></span></span></div>
     ${earlier > 0 ? `<p class="meta earlier">${plural(earlier, 'earlier step')}</p>` : ''}<ol class="steps">${items}</ol></div>`;
 }
+function callOf(id) { return (S.data.calls || {})[id] || null; }
+function callCard(id, compact) {             // a crew member listening to a live call: elapsed time, the latest line, end it
+  const c = callOf(id);
+  if (!c) return '';
+  const e = S.data.employees.find((x) => x.id === id);
+  const last = c.last ? c.last.replace(/^\[[^\]]+\]\s*/, '') : (c.ending ? 'Writing the minutes…' : 'Listening… the first lines appear within a minute.');
+  return `<div class="call${c.ending ? ' ending' : ''}"><div class="call-head"><i class="rec"></i><b>${esc(e ? e.name : id)} ${c.ending ? 'is writing the minutes' : 'is on your call'}</b><span class="meta">${esc(c.title)} · <span class="num" data-since="${esc(c.started)}"></span> · ${plural(c.lines, 'line')}</span>
+    ${c.ending ? '' : `<button class="btn btn-sm" data-act="order" data-kind="call_stop" data-emp="${id}">End call</button>`}</div>
+    <p class="call-last">${esc(last)}</p>${compact ? '' : `<p class="meta">Ask ${esc(e ? e.name : 'them')} anything about it while it runs. Heard on this Mac only: no bot joins, the audio is deleted once transcribed. <a class="link" href="/e/${id}/work?v=files&f=${encodeURIComponent(c.transcript)}">Read the transcript</a></p>`}</div>`;
+}
 function lastStep(id) { const L = (S.data.live || {})[id]; if (!L) return ''; const s = L.steps || []; return s.length ? s[s.length - 1].text : 'Getting started…'; }
 function receiptHtml(rc, key) {
   const steps = (rc && rc.steps) || [];
@@ -318,6 +329,7 @@ function bodyHtml(text, empId) {
 function statusHtml(e) {
   if (!S.data.online) return `<span class="status"><i class="dot off"></i>Offline</span>`;
   if (e.status === 'paused') return `<span class="status"><i class="dot paused"></i>Paused</span>`;
+  if (callOf(e.id)) return `<span class="status"><i class="rec"></i>On a call</span>`;
   if ((S.data.live || {})[e.id] || e.doing) return `<span class="status"><i class="dot working"></i>Working</span>`;
   return `<span class="status"><i class="dot active"></i>Idle</span>`;
 }
@@ -471,7 +483,7 @@ PAGES.today = () => {
   const date = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
   let sub = date;
   if (!emps.length) sub += ' · no employees yet';
-  else sub += ` · ${plural(emps.length, 'crew member')} · ${live.length ? live.length + ' working' : 'all idle'}`;
+  else sub += ` · ${plural(emps.length, 'crew member')} · ${Object.keys(d.calls || {}).length ? 'on a call · ' : ''}${live.length ? live.length + ' working' : 'all idle'}`;
   if (!d.online) sub += ' · <span class="badge danger">service stopped</span>';
   const demo = d.demo ? `<div class="demo-bar"><b>A pretend team, to look around.</b> The business, the people and their findings are invented (links end in .example) and the replies are canned: no Claude run, no bot. Chat with someone anyway, teach a skill, change abilities. Your own team: paste the one line from the README into the Claude app, or run <code>install.sh</code>.</div>` : '';
   const todo = d.checklist.filter((c) => !c.done && !c.optional);
@@ -497,8 +509,9 @@ PAGES.today = () => {
   const usage = `<div class="usage-box"><div class="row2"><span>Today</span><b class="num">≈${money(useToday)}</b></div><div class="row2"><span>Last 7 days</span><b class="num">≈${money(use7)}</b></div>
     ${['five_hour', 'seven_day'].filter((k) => k in u).map((k) => `<div class="row2"><span>${k === 'five_hour' ? '5-hour limit' : 'Weekly limit'}</span><b class="num">${Math.round(u[k])}% used</b></div>`).join('')}
     <p class="meta">What the runs would cost on the API. Nothing extra is billed: they use your Claude plan's limits.</p></div>`;
+  const calls = Object.keys(d.calls || {}).map((id) => callCard(id, true)).join('');
   return `${demo}<header class="greet"><h1>${greet}, ${esc(d.me)}.</h1><p class="sub">${sub}</p></header>${setup}
-    <div class="cols"><div>${nowSec}
+    <div class="cols"><div>${calls ? `<section>${calls}</section>` : ''}${nowSec}
       <section><div class="sec-head"><h2>Needs you</h2>${d.needs.length ? `<span class="meta">${d.needs.length}</span>` : ''}</div>${needs}</section>
       <section><div class="sec-head"><h2>Today</h2><span class="meta">the team room</span></div>${timeline}</section>
     </div><aside>
@@ -539,7 +552,10 @@ PAGES.employee = (r) => {
   const nKnow = dt ? dt.skills.own.length + dt.skills.team.length : '';
   const tabs = [['work', 'Work', ''], ['chat', 'Chat', ''], ['knowledge', 'Knowledge', nKnow || ''], ['manage', 'Manage', '']];
   const body = { chat: tabChat, knowledge: tabKnowledge, work: tabWork, manage: tabManage }[r.tab](e, dt, r);
-  return `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span>·</span><span>reports to ${esc(e.supervisor)}</span><span>·</span>${statusHtml(e)}</div></div></header>
+  const canCall = dt && dt.abilities.includes('meetings') && e.status !== 'paused';
+  const callBtn = callOf(e.id) ? '' : canCall && !Object.keys(S.data.calls || {}).length
+    ? `<div class="actions"><button class="btn" data-act="order" data-kind="call_start" data-emp="${e.id}" title="${esc(e.name)} listens on this Mac and takes notes. Tell the others you're taking notes.">${icon('mic')}Listen to a call</button></div>` : '';
+  return `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span>·</span><span>reports to ${esc(e.supervisor)}</span><span>·</span>${statusHtml(e)}</div></div>${callBtn}</header>${callCard(e.id)}
     <nav class="tabs">${tabs.map(([k, l, n]) => `<a href="/e/${e.id}/${k}" class="${r.tab === k ? 'on' : ''}">${l}${n !== '' ? `<small>${esc(n)}</small>` : ''}</a>`).join('')}</nav>${body}`;
 };
 
@@ -997,7 +1013,7 @@ let timer = null;
 function waitingToPair() { return route().page === 'connect' && S.pair && S.pair.code && !S.pair.paired; }
 function schedule() {
   clearTimeout(timer);
-  const fast = S.data && (Object.keys(S.data.live || {}).length || waitingToPair());
+  const fast = S.data && (Object.keys(S.data.live || {}).length || Object.keys(S.data.calls || {}).length || waitingToPair());
   timer = setTimeout(tick, document.hidden ? 15000 : fast ? 2000 : 8000);
 }
 async function tick() {

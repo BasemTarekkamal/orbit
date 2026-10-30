@@ -30,6 +30,7 @@ CORE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, CORE)
 sys.path.insert(0, os.path.join(CORE, "tools"))
 import abilities  # noqa: E402
+import calls  # noqa: E402
 import channels  # noqa: E402
 import engine  # noqa: E402
 import hire  # noqa: E402
@@ -302,6 +303,7 @@ def state():
             "needs": needs_you(emps, ords, pending, usage), "checklist": checklist(emps, feed),
             "working": dict(team.DOING), "jobs": team.JOBS, "labels": team.LABELS, "setup": setup_state(emps),
             "live": {k: {**v, "steps": list(v.get("steps", []))} for k, v in list(team.LIVE.items())},
+            "calls": calls.status(),
             "team_skills": [{k: v for k, v in s.items() if k != "path"} for s in skillbook.listing(skillbook.TEAM_DIR, "team")]}
 
 
