@@ -128,7 +128,7 @@ async function api(path, body) {
   const r = await fetch(path, opt);
   let j = {};
   try { j = await r.json(); } catch (e) { /* not json */ }
-  if (!r.ok) throw new Error(j.error || (r.status === 401 ? 'Signed out: run `staff panel` to open the panel again.' : 'HTTP ' + r.status));
+  if (!r.ok) throw new Error(j.error || (r.status === 401 ? 'Signed out: run `orbit panel` to open the panel again.' : 'HTTP ' + r.status));
   return j;
 }
 async function refresh(nav) {

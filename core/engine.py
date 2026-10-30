@@ -333,7 +333,7 @@ def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
         timeout: int = 1800, extra_env: dict = None, on_step=None) -> dict:
     """Run the employee headless in its folder. Chats resume one session per (employee, person).
     on_step(step, steps) is called live for every tool call; the steps also come back in the result."""
-    if os.environ.get("STAFFROOM_DEMO"):                  # `staff demo`: canned answers, no Claude run
+    if os.environ.get("STAFFROOM_DEMO"):                  # `orbit demo`: canned answers, no Claude run
         import demo
         return demo.fake_run(emp, prompt, job, session_key, on_step)
     if not os.path.isfile(os.path.join(GUARD, "hooks", "register.js")):

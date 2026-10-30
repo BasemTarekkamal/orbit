@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs the kit's few dependencies, puts `staff` on your PATH, starts the team's service and opens
+# Installs the kit's few dependencies, puts `orbit` on your PATH, starts the team's service and opens
 # the control panel, where you set up your team in the browser. Safe to run again. No sudo.
 #   ./install.sh          asks about the optional voice-notes tools
 #   ./install.sh --yes    asks nothing (how Claude runs it, from SETUP.md)
@@ -33,24 +33,25 @@ python3 -m playwright install chromium
 
 echo "3/4  Voice notes and call recordings, transcribed on this Mac (optional)…"
 if [ -n "$YES" ]; then
-  echo "     Skipped. Later: brew install ffmpeg whisper-cpp && staff doctor --get-voice-model"
+  echo "     Skipped. Later: brew install ffmpeg whisper-cpp && orbit doctor --get-voice-model"
 elif command -v brew >/dev/null 2>&1; then
   printf "     Install ffmpeg and whisper.cpp with Homebrew now? (y/N) "
   read -r a
-  case "$a" in y*|Y*) brew install ffmpeg whisper-cpp && "$KIT/staff" doctor --get-voice-model >/dev/null || true ;; esac
+  case "$a" in y*|Y*) brew install ffmpeg whisper-cpp && "$KIT/orbit" doctor --get-voice-model >/dev/null || true ;; esac
 else
-  echo "     Skipped (no Homebrew). Later: brew install ffmpeg whisper-cpp && staff doctor --get-voice-model"
+  echo "     Skipped (no Homebrew). Later: brew install ffmpeg whisper-cpp && orbit doctor --get-voice-model"
 fi
 
-echo "4/4  The staff command and the team's service…"
+echo "4/4  The orbit command and the team's service…"
 mkdir -p "$HOME/.local/bin"
-ln -sf "$KIT/staff" "$HOME/.local/bin/staff"
+ln -sf "$KIT/orbit" "$HOME/.local/bin/orbit"
+ln -sf "$KIT/staff" "$HOME/.local/bin/staff"   # the old name keeps working
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
-  *) echo "     Add this to your ~/.zshrc so 'staff' works everywhere:  export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
+  *) echo "     Add this to your ~/.zshrc so 'orbit' works everywhere:  export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
 esac
-"$KIT/staff" start
+"$KIT/orbit" start
 echo
 echo "Done. Your control panel is opening in your browser: it asks your name and what your business does,"
-echo "then you pick your first employee. Open it again any time with: staff panel"
-"$KIT/staff" panel
+echo "then you pick your first employee. Open it again any time with: orbit panel"
+"$KIT/orbit" panel

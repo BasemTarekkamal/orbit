@@ -64,7 +64,7 @@ def execute(by, kind, p):
             new = hire.hire(p.get("name", ""), p.get("role", ""), p.get("scope", ""), supervisor=sup, preset=preset,
                             picked=picked, model=p.get("model") or None)
             e = engine.registry()["employees"][new]
-            team.feed("staff", "Staffroom", "team", "%s joined as %s, reporting to %s. Message them here, or /%s (@%s on "
+            team.feed("staff", "Orbit", "team", "%s joined as %s, reporting to %s. Message them here, or /%s (@%s on "
                       "Slack and Discord) in your chat." % (e["name"], e["role"], e["supervisor"], new, new), "panel")
             if p.get("first_day", True):                  # they start with real work, not an empty chat
                 team.run_async(new, team.job_prompt(new, engine.employee(new), "first_day"), "first_day", None, [],

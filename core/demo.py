@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Demo mode: a pretend team to look around the control panel with. No bot, no Claude run, nothing
 to set up, and nothing real: the business, the people and the companies are invented (their links
-end in .example), and the employees' answers are canned. `staff demo` seeds ~/.staffroom-demo, runs
-the service on port 7318 with STAFFROOM_DEMO=1 and opens the panel; `staff demo --stop` ends it.
+end in .example), and the employees' answers are canned. `orbit demo` seeds ~/.staffroom-demo, runs
+the service on port 7318 with STAFFROOM_DEMO=1 and opens the panel; `orbit demo --stop` ends it.
 
 As a program:  STAFFROOM_HOME=<folder> STAFFROOM_DEMO=1 python3 core/demo.py   (seeds, then runs staffd)
 Harness-owned. Python 3.9 compatible.

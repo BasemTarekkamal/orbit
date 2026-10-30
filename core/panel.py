@@ -1,5 +1,5 @@
 """The control panel: a small web app on this Mac (http://127.0.0.1:7317) where owners see and run
-the team. No accounts, no cloud, nothing to build. Started by staffd in a thread; `staff panel`
+the team. No accounts, no cloud, nothing to build. Started by staffd in a thread; `orbit panel`
 opens it in the browser.
 
 The page (core/panel/) is plain HTML, CSS and JavaScript; it talks to the JSON API below. Every change
@@ -586,9 +586,9 @@ class Handler(BaseHTTPRequestHandler):
         if "t" in q:
             if hmac.compare_digest(q["t"][0], token()):
                 return self._redirect(u.path or "/", cookie=token())
-            return self._send(403, "Wrong link. Run `staff panel` in Terminal to open the panel.", "text/plain")
+            return self._send(403, "Wrong link. Run `orbit panel` in Terminal to open the panel.", "text/plain")
         if not self._authed():
-            return self._send(401, "Open the panel with `staff panel` in Terminal.", "text/plain")
+            return self._send(401, "Open the panel with `orbit panel` in Terminal.", "text/plain")
         path = u.path
         try:
             if path.startswith("/api/"):

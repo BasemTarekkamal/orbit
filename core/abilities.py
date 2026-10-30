@@ -1,5 +1,5 @@
 """Abilities: what each employee may do. The catalog is core/abilities.json; the ticks are in
-~/Staff/staff.json (employees.<id>.abilities), set in the control panel or with `staff abilities`.
+~/Staff/staff.json (employees.<id>.abilities), set in the control panel or with `orbit abilities`.
 
   effective = locked ∪ chosen        chosen missing → the catalog defaults
 

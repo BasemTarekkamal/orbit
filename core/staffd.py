@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""staffd: runs the whole team. One launchd service (`staff start`); reads ~/Staff/staff.json every
+"""staffd: runs the whole team. One launchd service (`orbit start`); reads ~/Staff/staff.json every
 loop, so a new hire is live within a minute with no restart. Harness-owned.
 
 Each loop (about every second):
@@ -147,7 +147,7 @@ def handle(msg):
     cid = channels.parse(chat)[1]
     is_group = bool(msg.get("is_group"))
     if is_group and chat not in team.team_addrs():
-        log("message from an unregistered %s chat %s (%s); `staff group %s --channel %s` to make it the team chat"
+        log("message from an unregistered %s chat %s (%s); `orbit group %s --channel %s` to make it the team chat"
             % (ch, cid, msg.get("chat_title"), cid, ch))
         return
     if not is_group:

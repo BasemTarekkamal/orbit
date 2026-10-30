@@ -36,7 +36,7 @@ else is billed.
 
 **The easy way, no Terminal.** Open the Claude app on your Mac, go to **Code**, and paste:
 
-> Set up Orbit for me: clone https://github.com/BasemTarekkamal/staffroom into ~/staffroom, then read ~/staffroom/SETUP.md and follow it.
+> Set up Orbit for me: clone https://github.com/BasemTarekkamal/orbit into ~/orbit, then read ~/orbit/SETUP.md and follow it.
 
 Claude installs everything, says what each step does, and opens your control panel. There you answer
 two questions (your name, what your business does), pick what your first employee should do, and
@@ -46,11 +46,11 @@ business. Then you put them on your phone in about two minutes.
 **In Terminal instead:**
 
 ```bash
-git clone https://github.com/BasemTarekkamal/staffroom ~/staffroom && ~/staffroom/install.sh
+git clone https://github.com/BasemTarekkamal/orbit ~/orbit && ~/orbit/install.sh
 ```
 
-**Just want to look around first?** After cloning, `~/staffroom/staff demo` opens the control panel
-with a pretend team (invented business, canned replies, no bot, no Claude run). `staff demo --stop`
+**Just want to look around first?** After cloning, `~/orbit/orbit demo` opens the control panel
+with a pretend team (invented business, canned replies, no bot, no Claude run). `orbit demo --stop`
 ends it.
 
 ![Watching an employee work](docs/screens/live-dark.jpg)
@@ -83,7 +83,7 @@ and claim comes with a source link.
 
 ## A team, not a chatbot
 
-- **Hire in one line:** `staff hire --name Sara --role "Market researcher" --scope "Competitors and prices in our market"`,
+- **Hire in one line:** `orbit hire --name Sara --role "Market researcher" --scope "Competitors and prices in our market"`,
   or use the control panel. A new hire has the full toolbelt from day one.
 - **Colleagues:** employees ask each other on the team bus (your researcher asks your finance
   assistant for last month's ad spend) and you see every exchange in the team room.
@@ -107,7 +107,7 @@ and claim comes with a source link.
 
 ![Today](docs/screens/today-dark.jpg)
 
-`staff panel` opens Mission Control, a small app on your Mac (no account, no cloud, light and dark), built for people
+`orbit panel` opens Mission Control, a small app on your Mac (no account, no cloud, light and dark), built for people
 who don't live in Terminal: every setting is a button or a form.
 
 - **Watch them work.** While an employee works you see each step as it happens ("Searching the web",
@@ -154,7 +154,7 @@ An autonomous agent that reads the open web needs locks, not promises. Every run
   runs use your plan's limits, which you share with your own Claude use. The panel shows "plan use"
   (what the runs would cost on the API) and your 5-hour and weekly limits. When usage is high,
   employees switch to a lighter model on their own. A busy team uses a lot, so start with one or two
-  employees on Sonnet or Haiku. You can also use your own API key (`staff secret anthropic`), billed
+  employees on Sonnet or Haiku. You can also use your own API key (`orbit secret anthropic`), billed
   to your Anthropic account.
 - **Apify** (optional, paid per use; the free plan includes monthly credit): only when you add a
   token, and never beyond the budget you set.
@@ -164,14 +164,14 @@ An autonomous agent that reads the open web needs locks, not promises. Every run
 ## Commands
 
 ```
-staff setup | start | stop | restart | status | panel | logs | doctor
-staff hire --name … --role … [--scope …] [--super] [--model opus|sonnet|haiku]
-staff list | pause <h> | resume <h> | retire <h>
-staff abilities <h> [--default | --super | --on a,b --off c]
-staff skills [<h>] [--share NAME | --remove NAME | --export NAME DIR]
-staff run <h> "message"          talk to an employee in the terminal
-staff secret telegram|slack|discord|apify|anthropic
-staff group <chat id> [--channel telegram|slack|discord]   the team chat
+orbit setup | start | stop | restart | status | panel | logs | doctor
+orbit hire --name … --role … [--scope …] [--super] [--model opus|sonnet|haiku]
+orbit list | pause <h> | resume <h> | retire <h>
+orbit abilities <h> [--default | --super | --on a,b --off c]
+orbit skills [<h>] [--share NAME | --remove NAME | --export NAME DIR]
+orbit run <h> "message"          talk to an employee in the terminal
+orbit secret telegram|slack|discord|apify|anthropic
+orbit group <chat id> [--channel telegram|slack|discord]   the team chat
 ```
 
 ## Requirements
@@ -184,8 +184,8 @@ an Apify token.
 ## How it fits together
 
 ```
-~/staffroom/                 the kit (this repository; update with git pull)
-  staff                      the command
+~/orbit/                 the kit (this repository; update with git pull)
+  orbit                      the command (`staff` still works)
   core/engine.py             runs one employee turn: claude -p + sandbox + guard + abilities
   core/staffd.py             the service: chat channels, routines, reminders, team bus, control panel
   core/channels/             one adapter per chat channel (telegram, slack, discord)

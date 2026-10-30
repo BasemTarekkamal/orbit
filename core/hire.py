@@ -1,4 +1,4 @@
-"""Hiring, pausing and retiring employees. Used by the `staff` command, the control panel and staffd.
+"""Hiring, pausing and retiring employees. Used by the `orbit` command, the control panel and staffd.
 
     import hire
     emp_id = hire.hire("Sara", "Legal researcher", "Company law and contracts", supervisor="Alex")
@@ -71,7 +71,7 @@ def hire(name: str, role: str, scope: str = "", supervisor: str = "", emp_id: st
         raise HireError("%s already works here" % emp_id)
     sup = engine.owner_name(supervisor) if supervisor else next(iter(reg.get("owners", {}).values()), {}).get("name")
     if not sup:
-        raise HireError("The supervisor must be an owner (%s). New here? Run `staff setup` first." % (", ".join(o["name"] for o in reg.get("owners", {}).values()) or "none yet"))
+        raise HireError("The supervisor must be an owner (%s). New here? Run `orbit setup` first." % (", ".join(o["name"] for o in reg.get("owners", {}).values()) or "none yet"))
     ws = os.path.join(engine.HOME, "employees", emp_id)
     today = dt.date.today().isoformat()
     fill = {"{name}": name, "{role}": role, "{scope}": scope or "(to be set by the supervisor)",

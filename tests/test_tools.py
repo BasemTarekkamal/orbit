@@ -1,6 +1,6 @@
 """Tests for the toolbelt (core/tools: fetch, browse, apify, watch, docs) and its bin/ shims.
 
-    cd ~/staffroom && python3 -m unittest tests.test_tools -v
+    cd ~/orbit && python3 -m unittest tests.test_tools -v
 
 Offline except the live smoke tests (example.com), which skip without internet. Nothing here
 starts an Apify run: the HTTP layer is mocked. Uses temporary STAFFROOM_HOME / STAFF_WORKSPACE

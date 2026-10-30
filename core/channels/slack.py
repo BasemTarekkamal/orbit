@@ -62,7 +62,7 @@ def api(tok, method, params=None, form=False, timeout=20):
 def check():
     for name, prefix in (("slack_bot_token", "xoxb-"), ("slack_app_token", "xapp-")):
         if not engine.secret(name):
-            return False, "no %s (%s…): `staff secret slack`" % (name.replace("_", " "), prefix)
+            return False, "no %s (%s…): `orbit secret slack`" % (name.replace("_", " "), prefix)
     r = api(engine.secret("slack_bot_token"), "auth.test")
     return (True, "@%s in %s" % (r.get("user"), r.get("team"))) if r.get("ok") else (False, r.get("error", "no answer"))
 

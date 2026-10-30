@@ -15,8 +15,8 @@ If a step fails twice, stop and tell them plainly what failed and what you'd try
   tools in a dialog: tell them to click **Install**, wait for it to finish (a few minutes), then go on.
 
 ## 2. Get the kit
-- If `~/staffroom` is already a checkout of this repository: `git -C ~/staffroom pull --ff-only`.
-- Otherwise: `git clone https://github.com/BasemTarekkamal/staffroom ~/staffroom`.
+- If `~/orbit` is already a checkout of this repository: `git -C ~/orbit pull --ff-only`.
+- Otherwise: `git clone https://github.com/BasemTarekkamal/orbit ~/orbit`.
 
 ## 3. Claude Code for the employees
 The employees run on the `claude` command-line tool, signed in with the person's own Claude account
@@ -29,24 +29,24 @@ The employees run on the `claude` command-line tool, signed in with the person's
   `claude auth login` there, and tell you when it says they're signed in. Never sign them out.
 
 ## 4. Install
-- `~/staffroom/install.sh --yes`. It installs a few Python packages for this user only, the headless
-  browser the employees research with (about 150 MB), and the `staff` command, then starts the team's
+- `~/orbit/install.sh --yes`. It installs a few Python packages for this user only, the headless
+  browser the employees research with (about 150 MB), and the `orbit` command, then starts the team's
   background service and opens the control panel in their browser. Takes two to five minutes.
-- If it reports a problem, run `~/staffroom/staff doctor` and fix what it lists, one item at a time.
+- If it reports a problem, run `~/orbit/orbit doctor` and fix what it lists, one item at a time.
 
 ## 5. Hand over
 Tell them, in your own words: "Your control panel is open in your browser. It asks your name and what
 your business does, then you pick what your first employee should do. They start working right away,
-and you can put them on your phone from there." If the page didn't open: `~/staffroom/staff panel`.
+and you can put them on your phone from there." If the page didn't open: `~/orbit/orbit panel`.
 Stay available for questions; that's the whole setup.
 
 ## Extras, only when they ask
 - **Voice notes** (transcribed on this Mac): needs Homebrew. If `brew --version` fails, explain that
   installing Homebrew asks for their Mac password, which they type themselves; with their yes, follow
   the command on https://brew.sh. Then `brew install ffmpeg whisper-cpp` and
-  `~/staffroom/staff doctor --get-voice-model` (a 550 MB download from Hugging Face).
+  `~/orbit/orbit doctor --get-voice-model` (a 550 MB download from Hugging Face).
 - **Sign Claude Code in again:** `claude auth login`.
-- **Update Orbit:** `git -C ~/staffroom pull --ff-only && ~/staffroom/staff restart`.
-- **Something's wrong:** `~/staffroom/staff doctor`, then `~/staffroom/staff logs`.
-- **Stop it:** `~/staffroom/staff stop`. Their team's folder (`~/Staff`) stays unless they ask you to
+- **Update Orbit:** `git -C ~/orbit pull --ff-only && ~/orbit/orbit restart`.
+- **Something's wrong:** `~/orbit/orbit doctor`, then `~/orbit/orbit logs`.
+- **Stop it:** `~/orbit/orbit stop`. Their team's folder (`~/Staff`) stays unless they ask you to
   delete it; confirm before you do, it holds everything their employees learned.

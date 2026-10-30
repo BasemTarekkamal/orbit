@@ -31,7 +31,7 @@ import skillbook  # noqa: E402
 def me() -> str:
     emp = _kit.employee_id()
     if not emp:
-        sys.exit("staff-skill runs as an employee. Owners: `staff skills <handle>` in Terminal, or the panel.")
+        sys.exit("staff-skill runs as an employee. Owners: `orbit skills <handle>` in Terminal, or the panel.")
     return emp
 
 

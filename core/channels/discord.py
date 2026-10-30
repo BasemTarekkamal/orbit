@@ -25,7 +25,7 @@ UA = "Staffroom (https://github.com, 0.1)"
 BACKOFF = 5                                               # seconds between gateway connections
 INTENTS = 1 | 512 | 4096 | 32768                          # GUILDS, GUILD_MESSAGES, DIRECT_MESSAGES, MESSAGE_CONTENT
 VOICE_MESSAGE = 1 << 13                                   # message flag: a recorded voice message
-FATAL = {4004: "the bot token was rejected: `staff secret discord`", 4010: "invalid shard", 4011: "sharding required",
+FATAL = {4004: "the bot token was rejected: `orbit secret discord`", 4010: "invalid shard", 4011: "sharding required",
          4012: "invalid gateway version", 4013: "invalid intents",
          4014: "Message Content Intent is off: enable it under Bot → Privileged Gateway Intents"}
 _dms = {}                                                 # user id → private channel id
@@ -66,7 +66,7 @@ def rest(path, body=None, data=None, ctype=None, timeout=20):
 
 def check():
     if not token():
-        return False, "no bot token: `staff secret discord`"
+        return False, "no bot token: `orbit secret discord`"
     s, d = rest("/users/@me")
     return (True, d.get("username", "?")) if s == 200 else (False, d.get("message") or "HTTP %s" % s)
 
