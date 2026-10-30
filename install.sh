@@ -23,6 +23,10 @@ fi
 
 echo "1/4  Python packages for the page reader, the browser, documents and chat (your user only)…"
 python3 -m pip install --user --quiet --upgrade requests beautifulsoup4 playwright pypdf websocket-client
+# Apple's Python links LibreSSL; urllib3 v2 warns about it on every run. Keep the quiet 1.x line there.
+if python3 -c 'import ssl,sys; sys.exit(0 if "LibreSSL" in ssl.OPENSSL_VERSION else 1)' 2>/dev/null; then
+  python3 -m pip install --user --quiet "urllib3<2"
+fi
 
 echo "2/4  The headless browser employees research with (Chromium, about 150 MB)…"
 python3 -m playwright install chromium
