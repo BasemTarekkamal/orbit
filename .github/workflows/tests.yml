@@ -102,6 +102,16 @@ jobs:
           lnk=$(powershell.exe -NoProfile -Command "Test-Path (Join-Path ([Environment]::GetFolderPath('Startup')) 'Orbit.lnk')" | tr -d '\r')
           echo "startup shortcut: $lnk"; [ "$lnk" = "True" ]
           orbit stop
+      - name: What went wrong (only when a step failed)
+        if: failure()
+        run: |
+          echo "WSL_DISTRO_NAME=$WSL_DISTRO_NAME"; id; echo "HOME=$HOME"
+          ls -la "$HOME/Staff/team" || true
+          tail -40 "$HOME/Staff/team/staffd.out" || true
+          tail -40 "$HOME/Staff/team/staffd.log" || true
+          cd "$HOME/orbit" && python3 -c "import sys; sys.argv=['orbit']; exec(open('orbit').read().split('def main():')[0]); print(wsl_script())"
+          powershell.exe -NoProfile -Command "Get-Process wsl* | Format-Table -AutoSize Id,ProcessName,StartTime" || true
+          powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='wsl.exe'\" | Select-Object -ExpandProperty CommandLine" || true
       - name: Python for Windows can load the call listener's packages
         shell: pwsh
         run: |

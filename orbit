@@ -380,7 +380,11 @@ def start_other():
             break
         time.sleep(1)
     if not running():
-        say("The service didn't come up. `orbit logs` shows why.")
+        if osinfo.KIND == "wsl" and not service_pid():
+            say("Windows didn't start the background service (nothing reached Linux). Try `orbit start` again; "
+                "if it keeps failing, run `orbit service-run` in this window and leave it open.")
+        else:
+            say("The service didn't come up. `orbit logs` shows why.")
         return False
     say(note)
     return True
