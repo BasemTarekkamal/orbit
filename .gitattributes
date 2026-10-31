@@ -1,0 +1,7 @@
+# Every file keeps Unix line endings, even when cloned with Git for Windows: the scripts run inside
+# WSL (Linux), where a Windows line ending breaks them.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.bin binary
