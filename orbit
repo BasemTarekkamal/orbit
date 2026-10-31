@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""orbit: set up and run your crew of AI employees on this Mac.
+"""orbit: set up and run your crew of AI employees on this computer (a Mac, Windows through WSL, or Linux).
 
   orbit demo [--stop]              look around first: a pretend team in the control panel, nothing to set up
   orbit setup                      first run: checks, your business, your chat bot, your first hire
-  orbit start | stop | restart     the background service (starts at login)
+  orbit start | stop | restart     the background service (starts when you log in)
   orbit status                     is it running, who works here
   orbit panel                      open the control panel in your browser
   orbit hire --name Sara --role "Market researcher" --scope "…" [--super] [--model sonnet]
@@ -12,9 +12,11 @@
   orbit abilities <handle> [--default | --super | --on a,b --off c]
   orbit skills [<handle>] [--share NAME | --remove NAME | --export NAME DIR]   what they learned
   orbit run <handle> "<message>"   talk to someone right here in the terminal
-  orbit secret telegram | slack | discord | apify | anthropic    save a token (typed hidden, stored only on this Mac)
+  orbit secret telegram | slack | discord | apify | anthropic    save a token (typed hidden, stored only on this computer)
   orbit group <chat id> [--channel telegram|slack|discord]      use a group or channel as the team chat
   orbit doctor                     check everything the team needs
+  orbit doctor --get-voice-model   download the speech model for voice notes and calls (~550 MB)
+  orbit doctor --get-whisper       Windows/Linux: build the speech engine (whisper.cpp) for this computer
   orbit logs                       the service log
 
 Your team's folder is ~/Staff (set STAFFROOM_HOME to move it). The kit itself is this folder.
@@ -26,6 +28,7 @@ import getpass
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -35,9 +38,12 @@ KIT = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(KIT, "core"))
 sys.path.insert(0, os.path.join(KIT, "core", "tools"))
 import engine  # noqa: E402
+import osinfo  # noqa: E402
 
 LABEL = "com.staffroom.staffd"
 PLIST = os.path.expanduser("~/Library/LaunchAgents/%s.plist" % LABEL)
+UNIT = os.path.expanduser("~/.config/systemd/user/orbit.service")         # Linux with systemd
+SERVICE_PID = os.path.join(engine.HOME, "team", "service.pid")             # Windows (WSL), Linux without systemd
 SECRET_NAMES = {"telegram": [("telegram_bot_token", "bot token from @BotFather")],
                 "slack": [("slack_bot_token", "Bot User OAuth Token (xoxb-…)"),
                           ("slack_app_token", "App-Level Token with connections:write (xapp-…)")],
@@ -118,7 +124,7 @@ def checks():
     out = []
     ok, msg = claude_status()
     out.append((ok, msg, True))
-    out.append((sys.platform == "darwin", "macOS (the sandbox and the service need it)", True))
+    out.extend(platform_checks())
     out.append((bool(shutil.which("git")), "git", True))
     for mod, why in (("requests", "page reader"), ("bs4", "page reader"), ("playwright", "headless browser")):
         try:
@@ -126,11 +132,13 @@ def checks():
             out.append((True, "python %s (%s)" % (mod, why), False))
         except ImportError:
             out.append((False, "python %s missing (%s): pip3 install --user requests beautifulsoup4 playwright" % (mod, why), False))
-    for b, why in (("ffmpeg", "voice notes"), ("whisper-cli", "voice notes"), ("node", "not required")):
-        if b == "node":
-            continue
-        found = shutil.which(b) or os.path.exists("/opt/homebrew/bin/" + b)
-        out.append((bool(found), "%s (%s)%s" % (b, why, "" if found else ": brew install ffmpeg whisper-cpp"), False))
+    for b, why in (("ffmpeg", "voice notes"), ("whisper-cli", "voice notes")):
+        found = osinfo.which(b)
+        if osinfo.KIND == "mac":
+            fix = "brew install ffmpeg whisper-cpp"
+        else:
+            fix = "sudo sh %s/setup-linux.sh" % KIT if b == "ffmpeg" else "orbit doctor --get-whisper"
+        out.append((bool(found), "%s (%s)%s" % (b, why, "" if found else ": " + fix), False))
     model = os.path.join(engine.HOME, "models", "ggml-large-v3-turbo-q5_0.bin")
     out.append((os.path.exists(model), "speech model%s" % ("" if os.path.exists(model) else ": `orbit doctor --get-voice-model` (~550 MB)"), False))
     import calls
@@ -146,6 +154,35 @@ def checks():
         except ImportError:
             out.append((False, "python websocket-client missing (Slack/Discord can't listen): pip3 install --user websocket-client", False))
     out.append((running(), "service running%s" % ("" if running() else ": `orbit start`"), False))
+    return out
+
+
+def platform_checks():
+    """The computer itself: macOS, or Windows/Linux with the sandbox's two helpers (bubblewrap, socat)."""
+    if osinfo.KIND == "mac":
+        return [(True, "macOS (the sandbox and the service)", True)]
+    if not osinfo.SUPPORTED:
+        return [(False, "%s isn't supported: Orbit runs on a Mac, on Windows (through WSL) or on Linux" % sys.platform, True)]
+    out = []
+    setup = "run once, it asks your password:  sudo sh %s/setup-linux.sh" % KIT
+    if osinfo.KIND == "wsl":
+        wsl1 = os.uname().release.endswith("-Microsoft")      # WSL 1's kernel name; WSL 2's says microsoft-standard
+        out.append((not wsl1, "Windows, through WSL 2%s" % (
+            (": this is WSL 1, which can't sandbox. In PowerShell run  wsl --set-version %s 2"
+             % (osinfo.distro() or "Ubuntu")) if wsl1 else ""), True))
+    else:
+        out.append((True, "Linux", True))
+    miss = [b for b in ("bwrap", "socat") if not osinfo.which(b)]
+    out.append((not miss, "the sandbox (bubblewrap, socat)%s" % ((": missing %s, %s" % (", ".join(miss), setup)) if miss else ""), True))
+    try:
+        with open("/proc/sys/kernel/apparmor_restrict_unprivileged_userns") as fh:
+            restricted = fh.read().strip() == "1"
+    except OSError:
+        restricted = False
+    if restricted and not os.path.exists("/etc/apparmor.d/bwrap"):
+        out.append((False, "the sandbox is blocked by AppArmor: " + setup, True))
+    found = osinfo.which("tesseract")
+    out.append((bool(found), "tesseract (reading scans and photos)%s" % ("" if found else ": " + setup), False))
     return out
 
 
@@ -181,6 +218,8 @@ def launchctl(*a):
 
 def start():
     ensure_home()
+    if osinfo.KIND != "mac":
+        return start_other()
     write_plist()
     uid = os.getuid()
     launchctl("bootout", "gui/%d/%s" % (uid, LABEL))
@@ -197,13 +236,193 @@ def start():
 
 
 def stop():
-    launchctl("bootout", "gui/%d/%s" % (os.getuid(), LABEL))
+    if osinfo.KIND == "mac":
+        launchctl("bootout", "gui/%d/%s" % (os.getuid(), LABEL))
+    elif os.path.exists(UNIT) and systemd_user():
+        subprocess.run(["systemctl", "--user", "stop", "orbit.service"], capture_output=True)
+    else:
+        stop_service_run()
     say("Stopped. `orbit start` to bring the team back.")
+
+
+# Windows (WSL) and Linux. Linux with systemd: a user service. Windows: WSL closes Linux soon after its
+# last window does, so the service is started from the Windows side (a hidden wsl.exe, which keeps Linux
+# running) now and from the Startup folder at every login. Otherwise: a background process.
+def systemd_user():
+    try:
+        return subprocess.run(["systemctl", "--user", "is-system-running"], capture_output=True, text=True,
+                              timeout=10).stdout.strip() in ("running", "degraded", "starting")
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def service_pid():
+    try:
+        with open(SERVICE_PID) as fh:
+            pid = int(fh.read().strip())
+        os.kill(pid, 0)
+        return pid
+    except (OSError, ValueError):
+        return None
+
+
+def stop_service_run():
+    pid = service_pid()
+    if not pid:
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return
+    for _ in range(20):
+        if not service_pid():
+            break
+        time.sleep(0.5)
+
+
+def service_cmd():
+    py = sys.executable if sys.executable and os.path.exists(sys.executable) else "/usr/bin/python3"
+    return ["/usr/bin/env", "STAFFROOM_HOME=" + engine.HOME, py, os.path.join(KIT, "orbit"), "service-run"]
+
+
+def service_run():
+    """The service on Windows (WSL) and Linux without systemd: keeps staffd running, restarts it if it stops."""
+    if service_pid():
+        return                                             # already running
+    os.makedirs(os.path.dirname(SERVICE_PID), exist_ok=True)
+    with open(SERVICE_PID, "w") as fh:
+        fh.write(str(os.getpid()))
+    child = []
+
+    def end(*_):
+        if child and child[0].poll() is None:
+            child[0].terminate()
+            try:
+                child[0].wait(10)
+            except subprocess.TimeoutExpired:
+                child[0].kill()
+        try:
+            os.remove(SERVICE_PID)
+        except OSError:
+            pass
+        os._exit(0)
+    signal.signal(signal.SIGTERM, end)
+    signal.signal(signal.SIGINT, end)
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    env = dict(os.environ, STAFFROOM_HOME=engine.HOME, PATH=":".join(osinfo.path_dirs()))
+    out = open(os.path.join(engine.HOME, "team", "staffd.out"), "ab")
+    while True:
+        child[:] = [subprocess.Popen([sys.executable, os.path.join(KIT, "core", "staffd.py")], env=env,
+                                     stdout=out, stderr=out, stdin=subprocess.DEVNULL)]
+        child[0].wait()
+        time.sleep(20)                                     # like launchd's ThrottleInterval
+
+
+def _ps(script):
+    """Runs a PowerShell script on the Windows side, passed encoded so no quoting can break it."""
+    import base64
+    exe = osinfo.which("powershell.exe") or "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+    enc = base64.b64encode(script.encode("utf-16-le")).decode()
+    return subprocess.run([exe, "-NoProfile", "-NonInteractive", "-EncodedCommand", enc], capture_output=True,
+                          text=True, timeout=60, cwd="/mnt/c" if os.path.isdir("/mnt/c") else None)
+
+
+def wsl_script():
+    """PowerShell that starts the service now (hidden) and at every Windows login (a Startup shortcut)."""
+    args = " ".join(["-d", '"%s"' % osinfo.distro(), "-e"] + ['"%s"' % a for a in service_cmd()]).replace("'", "''")
+    return ("$a = '%s'\n"
+            "Start-Process -WindowStyle Hidden -FilePath \"$env:WINDIR\\System32\\wsl.exe\" -ArgumentList $a\n"
+            "$lnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'Orbit.lnk'\n"
+            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)\n"
+            "$s.TargetPath = \"$env:WINDIR\\System32\\conhost.exe\"\n"
+            "$s.Arguments = '--headless wsl.exe ' + $a\n"
+            "$s.WindowStyle = 7\n"
+            "$s.Description = 'Orbit: your AI crew'\n"
+            "$s.Save()\n" % args)
+
+
+def start_other():
+    if osinfo.KIND == "linux" and systemd_user():
+        os.makedirs(os.path.dirname(UNIT), exist_ok=True)
+        py = sys.executable if sys.executable and os.path.exists(sys.executable) else "/usr/bin/python3"
+        log = os.path.join(engine.HOME, "team", "staffd.out")
+        with open(UNIT, "w") as fh:
+            fh.write("[Unit]\nDescription=Orbit: your AI crew\n\n[Service]\nExecStart=%s %s\n"
+                     "Environment=STAFFROOM_HOME=%s\nEnvironment=PATH=%s\nRestart=always\nRestartSec=20\n"
+                     "StandardOutput=append:%s\nStandardError=append:%s\n\n[Install]\nWantedBy=default.target\n"
+                     % (py, os.path.join(KIT, "core", "staffd.py"), engine.HOME, ":".join(osinfo.path_dirs()), log, log))
+        subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True)
+        r = subprocess.run(["systemctl", "--user", "enable", "orbit.service"], capture_output=True, text=True)
+        subprocess.run(["systemctl", "--user", "restart", "orbit.service"], capture_output=True)
+        if r.returncode != 0:
+            say("Couldn't start the service: %s" % (r.stderr.strip() or r.stdout.strip()))
+            return False
+        note = "Running. The team starts when you log in from now on. Control panel: `orbit panel`."
+    elif osinfo.KIND == "wsl":
+        stop_service_run()
+        try:
+            r = _ps(wsl_script())
+        except (OSError, subprocess.TimeoutExpired) as e:
+            say("Couldn't reach Windows to start the service (%s)." % e)
+            return False
+        if r.returncode != 0:
+            say("Couldn't start the service from Windows: %s" % (r.stderr.strip()[-300:] or r.stdout.strip()[-300:]))
+            return False
+        note = "Running. The team starts when you log in to Windows from now on. Control panel: `orbit panel`."
+    else:
+        stop_service_run()
+        subprocess.Popen(service_cmd(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        note = ("Running until you log out (this Linux has no systemd user session, so it can't start at login: run "
+                "`orbit start` again then). Control panel: `orbit panel`.")
+    for _ in range(30):
+        if running():
+            break
+        time.sleep(1)
+    if not running():
+        say("The service didn't come up. `orbit logs` shows why.")
+        return False
+    say(note)
+    return True
 
 
 def panel_url():
     import panel
     return panel.url()
+
+
+def get_whisper():
+    """Windows/Linux: builds whisper.cpp (the speech engine; Homebrew has it on a Mac) from its latest release
+    into ~/Staff/cache and links whisper-cli into ~/.local/bin. Needs git, cmake and a C++ compiler
+    (setup-linux.sh installs them). A few minutes, once."""
+    import re
+    if osinfo.KIND == "mac":
+        say("On a Mac: brew install whisper-cpp")
+        return
+    miss = [b for b in ("git", "cmake", "c++") if not osinfo.which(b)]
+    if miss:
+        sys.exit("Building the speech engine needs %s: sudo sh %s/setup-linux.sh" % (", ".join(miss), KIT))
+    src = os.path.join(engine.HOME, "cache", "whisper.cpp")
+    tags = subprocess.run(["git", "ls-remote", "--tags", "--refs", "https://github.com/ggml-org/whisper.cpp"],
+                          capture_output=True, text=True).stdout
+    vers = sorted({tuple(int(x) for x in m) for m in re.findall(r"refs/tags/v(\d+)\.(\d+)\.(\d+)$", tags, re.M)})
+    tag = "v%d.%d.%d" % vers[-1] if vers else None
+    shutil.rmtree(src, ignore_errors=True)
+    say("Downloading whisper.cpp %s from github.com/ggml-org/whisper.cpp…" % (tag or "(latest)"))
+    subprocess.run(["git", "clone", "-q", "--depth", "1"] + (["--branch", tag] if tag else []) +
+                   ["https://github.com/ggml-org/whisper.cpp", src], check=True)
+    say("Building it for this computer (a few minutes)…")
+    subprocess.run(["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release", "-DWHISPER_BUILD_TESTS=OFF",
+                    "-DWHISPER_BUILD_EXAMPLES=ON"], cwd=src, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["cmake", "--build", "build", "-j", str(os.cpu_count() or 2), "--config", "Release",
+                    "--target", "whisper-cli"], cwd=src, check=True, stdout=subprocess.DEVNULL)
+    exe = os.path.join(src, "build", "bin", "whisper-cli")
+    dst = os.path.expanduser("~/.local/bin/whisper-cli")
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    if os.path.lexists(dst):
+        os.remove(dst)
+    os.symlink(exe, dst)
+    say("✓ whisper-cli installed (%s)" % dst)
 
 
 # ------------------------------------------------------------------ setup
@@ -227,13 +446,14 @@ def pair_owner(tok):
 
 
 def setup(no_start=False):
-    say("Setting up your AI team. Your data stays in %s on this Mac.\n" % engine.HOME)
+    say(osinfo.local("Setting up your AI team. Your data stays in %s on this Mac.\n") % engine.HOME)
     ok, msg = claude_status()
     say(("✓ " if ok else "✗ ") + msg)
     if not ok:
         sys.exit(1)
-    if sys.platform != "darwin":
-        sys.exit("This kit runs on macOS for now (it relies on the macOS sandbox and launchd).")
+    bad = [m for ok, m, must in platform_checks() if must and not ok]
+    if bad:
+        sys.exit("Fix this first: " + "; ".join(bad))
     ensure_home()
     reg = engine.registry()
     reg["team_name"] = ask("\nYour team or business name", reg.get("team_name") or "My team")
@@ -294,7 +514,7 @@ def setup(no_start=False):
         return
     if start():
         say("\nControl panel: %s" % panel_url())
-        subprocess.run(["open", panel_url()], capture_output=True)
+        osinfo.open_url(panel_url())
     say("\nRun `orbit doctor` any time to check voice notes, the browser and the rest.")
 
 
@@ -325,7 +545,7 @@ def demo(stop=False):
             tok = fh.read().strip()
         u = "http://127.0.0.1:%d/?t=%s" % (port, tok)
         say("The demo is already running: %s" % u)
-        subprocess.run(["open", u], capture_output=True)
+        osinfo.open_url(u)
         return
     shutil.rmtree(home, ignore_errors=True)
     os.makedirs(os.path.join(home, ".secrets"), mode=0o700)
@@ -349,7 +569,7 @@ def demo(stop=False):
         sys.exit("The demo didn't start; see %s" % os.path.join(home, "team", "demo.out"))
     u = "http://127.0.0.1:%d/?t=%s" % (port, tok)
     say("Demo running: %s\nNothing in it is real. `orbit demo --stop` ends it; `orbit setup` starts your own team." % u)
-    subprocess.run(["open", u], capture_output=True)
+    osinfo.open_url(u)
 
 
 # ------------------------------------------------------------------ main
@@ -358,10 +578,11 @@ def main():
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("setup").add_argument("--no-start", action="store_true", help="don't install or start the service")
     sub.add_parser("demo").add_argument("--stop", action="store_true", help="end the demo")
-    for c in ("start", "stop", "restart", "status", "panel", "list", "logs"):
+    for c in ("start", "stop", "restart", "status", "panel", "list", "logs", "service-run"):
         sub.add_parser(c)
     d = sub.add_parser("doctor")
     d.add_argument("--get-voice-model", action="store_true")
+    d.add_argument("--get-whisper", action="store_true")
     h = sub.add_parser("hire")
     h.add_argument("--name", required=True); h.add_argument("--role", required=True); h.add_argument("--scope", default="")
     h.add_argument("--supervisor", default=""); h.add_argument("--handle"); h.add_argument("--super", action="store_true")
@@ -391,6 +612,8 @@ def main():
         return demo(stop=args.stop)
     if args.cmd == "start":
         return start()
+    if args.cmd == "service-run":
+        return service_run()
     if args.cmd == "stop":
         return stop()
     if args.cmd == "restart":
@@ -433,6 +656,8 @@ def main():
             subprocess.run(["curl", "-L", "--fail", "-o", dst + ".part",
                             "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin"], check=True)
             os.replace(dst + ".part", dst)
+        if args.get_whisper:
+            get_whisper()
         bad = 0
         for ok, msg, must in checks():
             say(("✓ " if ok else ("✗ " if must else "· ")) + msg)
@@ -443,7 +668,7 @@ def main():
         say(u)
         if not running():
             say("(the service isn't running: `orbit start`)")
-        subprocess.run(["open", u], capture_output=True)
+        osinfo.open_url(u)
         return
     if args.cmd == "logs":
         subprocess.run(["tail", "-n", "60", os.path.join(engine.HOME, "team", "staffd.log")])

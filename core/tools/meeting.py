@@ -26,7 +26,8 @@ MODEL = os.path.expanduser("~/Staff/models/ggml-large-v3-turbo-q5_0.bin")
 
 
 def _bin(n):
-    return shutil.which(n) or "/opt/homebrew/bin/" + n
+    return shutil.which(n) or next((p for p in ("/opt/homebrew/bin/" + n, os.path.expanduser("~/.local/bin/") + n)
+                                    if os.path.exists(p)), "/opt/homebrew/bin/" + n)
 
 
 def duration_s(path: str) -> float:

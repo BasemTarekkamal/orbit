@@ -6,7 +6,7 @@ Only approved owners can direct the team. A stranger who messages one of your bo
 listed in the control panel under Settings → Access, where you decide.
 
 The quickest way for every channel is the control panel: **Today → Connect** (or Settings → Chat
-channels). It walks you through creating the bot, takes the token in the page (it goes to this Mac's
+channels). It walks you through creating the bot, takes the token in the page (it goes to this computer's
 private folder, never through a chat), then gives you a one-time code: on Telegram you just tap
 **Open Telegram and press Start**; on Slack or Discord you send the 6-digit code to your bot. That
 links the bot to you. The steps below are the same thing by hand, for Terminal users.
@@ -14,8 +14,8 @@ links the bot to you. The steps below are the same thing by hand, for Terminal u
 ## Telegram
 
 1. In Telegram, open **@BotFather**, send `/newbot`, follow the two questions and copy the token it gives you.
-2. Paste it in the control panel (Today → Connect), or on the Mac: `orbit secret telegram` (typed
-   hidden, stored only on this Mac).
+2. Paste it in the control panel (Today → Connect), or on your computer: `orbit secret telegram` (typed
+   hidden, stored only on this computer).
 3. In the panel: tap **Open Telegram and press Start**. By hand: message your bot once (anything),
    then approve yourself in the control panel: Settings → Access.
 
@@ -31,7 +31,7 @@ message there, then read the chat id from `orbit logs` (a line like "unregistere
 3. Under **Basic Information → App-Level Tokens**, generate a token with the scope `connections:write`
    and copy it (`xapp-…`). This is what lets the bot receive messages without a public address
    (Socket Mode).
-4. On the Mac: `orbit secret slack` (it asks for both tokens).
+4. On your computer: `orbit secret slack` (it asks for both tokens).
 5. If `orbit doctor` asks for it: `pip3 install --user websocket-client` (the only package the
    Slack and Discord listeners need).
 6. In Slack, open the app's Messages tab and DM the bot once, then approve yourself in the control
@@ -94,7 +94,7 @@ replies at the top level of the channel, not in threads.
 3. Under **OAuth2 → URL Generator**: scope `bot`; bot permissions **View Channels**, **Send Messages**,
    **Read Message History**, **Attach Files**. Open the generated URL and pick your server to invite
    the bot.
-4. On the Mac: `orbit secret discord`. If `orbit doctor` asks for it: `pip3 install --user websocket-client`.
+4. On your computer: `orbit secret discord`. If `orbit doctor` asks for it: `pip3 install --user websocket-client`.
 5. DM the bot (open its profile from the server's member list → Message; a bot can only be messaged by
    people who share a server with it), then approve yourself in the control panel (Settings → Access).
 

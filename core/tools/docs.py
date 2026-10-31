@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""staff-docs: read local documents: PDF text, OCR of scans and photos (macOS Vision, on this Mac, any
-of ~30 languages incl. Arabic, Chinese, Cyrillic), and tables (PDF layout, Excel, CSV).
+"""staff-docs: read local documents: PDF text, OCR of scans and photos (on a Mac macOS Vision, ~30 languages;
+on Windows/Linux tesseract, Arabic and English by default; both on this computer, incl. Arabic), and
+tables (PDF layout, Excel, CSV).
 
     staff-docs text <file> [--pages 1-5] [--engine auto|pypdf|pdftotext|pdfkit]
     staff-docs ocr <file> [--pages 1-3] [--langs ar,en] [--dpi 200]
@@ -20,7 +21,8 @@ Full output is saved under <workspace>/research/docs/ (path printed); stdout sho
 Text layers of right-to-left PDFs (Arabic, Hebrew) are sometimes stored in visual order: before
 quoting verbatim, compare with `staff-docs ocr` of that page or look at the page itself.
 Runs inside the sandbox: local files only, no network. Python 3.9+; optional pypdf; macOS swift
-(Xcode Command Line Tools) for PDFKit/Vision. Exit codes: 0 ok, 1 failed, 2 bad usage.
+(Xcode Command Line Tools) for PDFKit/Vision; on Windows (WSL) and Linux tesseract and poppler-utils
+(setup-linux.sh installs both). Exit codes: 0 ok, 1 failed, 2 bad usage.
 """
 from __future__ import annotations
 
@@ -43,6 +45,10 @@ if HERE not in sys.path:
 import _kit  # noqa: E402
 
 SWIFT_SRC = os.path.join(HERE, "vision_ocr.swift")
+MAC = sys.platform == "darwin"         # Vision and PDFKit; elsewhere tesseract and poppler
+TESS_LANGS = {"ar": "ara", "en": "eng", "fr": "fra", "de": "deu", "es": "spa", "it": "ita", "pt": "por", "ru": "rus",
+              "tr": "tur", "fa": "fas", "ur": "urd", "he": "heb", "hi": "hin", "ja": "jpn", "ko": "kor",
+              "zh-hans": "chi_sim", "zh-hant": "chi_tra", "zh": "chi_sim", "nl": "nld", "pl": "pol", "uk": "ukr"}
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".heic", ".heif", ".tif", ".tiff", ".gif", ".bmp", ".webp")
 TEXTUTIL_EXT = (".docx", ".doc", ".rtf", ".rtfd", ".odt", ".html", ".htm", ".webarchive", ".wordml")
 PLAIN_EXT = (".txt", ".md", ".json", ".xml", ".log")
@@ -86,6 +92,63 @@ def _pages(spec: str, count: int) -> list:
 def _bin(name: str):
     return shutil.which(name) or next((p for p in ("/opt/homebrew/bin/" + name, "/usr/local/bin/" + name,
                                                    "/usr/bin/" + name) if os.path.exists(p)), None)
+
+
+# ---------------------------------------------------------------------------------------------
+# Windows (WSL) and Linux: tesseract for OCR, poppler's pdftoppm for PDF pages
+
+
+def _tess_installed() -> list:
+    exe = _bin("tesseract")
+    if not exe:
+        raise DocError("OCR needs tesseract: ask your owner to run  sudo sh <the kit>/setup-linux.sh  once, or Read "
+                       "the PDF or image directly with the Read tool")
+    r = subprocess.run([exe, "--list-langs"], capture_output=True, text=True, timeout=30)
+    return [x.strip() for x in (r.stdout or r.stderr).splitlines()[1:] if x.strip() and x.strip() != "osd"]
+
+
+def _tess_langs(langs: str = None) -> str:
+    have = _tess_installed()
+    if langs:
+        want = [TESS_LANGS.get(x.strip().lower(), x.strip()) for x in langs.split(",") if x.strip()]
+        miss = [w for w in want if w not in have]
+        if miss:
+            raise DocError("tesseract has no %s here (installed: %s). On Ubuntu: sudo apt install %s"
+                           % (", ".join(miss), ", ".join(have), " ".join("tesseract-ocr-" + m for m in miss)))
+        return "+".join(want)
+    return "+".join([x for x in ("ara", "eng") if x in have] or have[:1] or ["eng"])
+
+
+def _tesseract(path: str, pages_spec: str = None, langs: str = None, dpi: int = 200, sep: str = "  ") -> dict:
+    """{page: text}. Images are page 1; PDF pages are rendered with pdftoppm first."""
+    lang = _tess_langs(langs)
+    exe = _bin("tesseract")
+    cfg = ["-c", "preserve_interword_spaces=1"] if sep != "  " else []
+
+    def one(img):
+        r = subprocess.run([exe, img, "stdout", "-l", lang, "--dpi", str(dpi)] + cfg, capture_output=True,
+                           text=True, timeout=600)
+        if r.returncode != 0:
+            raise DocError("tesseract: %s" % (r.stderr.strip() or "failed")[-300:])
+        text = r.stdout.strip()
+        return re.sub(r" {3,}", " | ", text) if sep == " | " else text
+
+    with open(path, "rb") as fh:
+        is_pdf = fh.read(5) == b"%PDF-"
+    if not is_pdf:
+        return {1: one(path)}
+    if not _bin("pdftoppm"):
+        raise DocError("OCR of PDF pages needs pdftoppm (poppler-utils): sudo sh <the kit>/setup-linux.sh")
+    out = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for n in _pages(pages_spec, pdf_page_count(path)):
+            base = os.path.join(tmp, "p%d" % n)
+            r = subprocess.run([_bin("pdftoppm"), "-r", str(dpi), "-f", str(n), "-l", str(n), "-png", "-singlefile",
+                                path, base], capture_output=True, text=True, timeout=300)
+            if r.returncode != 0:
+                raise DocError("pdftoppm: %s" % (r.stderr.strip() or "failed")[-300:])
+            out[n] = one(base + ".png")
+    return out
 
 
 def _writable(d: str) -> bool:
@@ -186,6 +249,8 @@ def pdf_page_count(path: str) -> int:
         m = re.search(r"^Pages:\s+(\d+)", r.stdout, re.M)
         if m:
             return int(m.group(1))
+    if not MAC:
+        raise DocError("can't read %s as a PDF (pypdf and pdfinfo couldn't open it)" % path)
     m = re.search(r"pages=(\d+)", _vision(["info", path]))
     if m:
         return int(m.group(1))
@@ -236,7 +301,7 @@ def pdf_text(path: str, pages: list, engine: str = "auto", layout: bool = False)
     except ImportError:
         have_pypdf = False
     order = [engine] if engine != "auto" else (["pypdf"] if have_pypdf else []) + \
-        (["pdftotext"] if _bin("pdftotext") else []) + ["pdfkit"]
+        (["pdftotext"] if _bin("pdftotext") else []) + (["pdfkit"] if MAC else [])
     if layout:   # pdftotext keeps columns best
         order = sorted(order, key=lambda e: 0 if e == "pdftotext" else 1)
     last_err, best = None, None
@@ -248,9 +313,11 @@ def pdf_text(path: str, pages: list, engine: str = "auto", layout: bool = False)
                 got = _pdf_pypdf(path, pages, layout)
             elif eng == "pdftotext":
                 if not _bin("pdftotext"):
-                    raise DocError("pdftotext isn't installed (brew install poppler)")
+                    raise DocError("pdftotext isn't installed (%s)" % ("brew install poppler" if MAC else "sudo apt install poppler-utils"))
                 got = _pdf_pdftotext(path, pages, layout)
             elif eng == "pdfkit":
+                if not MAC:
+                    raise DocError("pdfkit is macOS only; here use --engine pypdf or pdftotext")
                 got = _pdf_pdfkit(path, pages)
             else:
                 raise DocError("unknown engine %r" % eng)
@@ -261,7 +328,7 @@ def pdf_text(path: str, pages: list, engine: str = "auto", layout: bool = False)
             continue
         got = {k: _fix_forms(v) for k, v in got.items()}
         joined = "\n".join(got.values())
-        if engine == "auto" and eng != "pdfkit" and not layout and RTL.search(joined):
+        if engine == "auto" and MAC and eng != "pdfkit" and not layout and RTL.search(joined):
             # pypdf scrambles word order and pdftotext breaks lam-alef ligatures in Arabic;
             # PDFKit keeps right-to-left text in logical order. Prefer it when it works.
             try:
@@ -348,9 +415,58 @@ def _pptx_text(path: str) -> str:
         return "\n".join(parts)
 
 
+def _xml_text(data: bytes, para_tags: tuple) -> str:
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(data)
+    out = []
+    for el in root.iter():
+        if el.tag.rsplit("}", 1)[-1] in para_tags:
+            t = "".join(el.itertext()).strip()
+            if t:
+                out.append(t)
+    return "\n".join(out)
+
+
+def _office_text(path: str) -> str:
+    """Windows/Linux, without textutil: .docx, .odt and .html with the standard library."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".docx":
+        with zipfile.ZipFile(path) as z:
+            return _xml_text(z.read("word/document.xml"), ("p",))
+    if ext == ".odt":
+        with zipfile.ZipFile(path) as z:
+            return _xml_text(z.read("content.xml"), ("p", "h"))
+    if ext in (".html", ".htm"):
+        from html.parser import HTMLParser
+
+        class P(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.out, self.skip = [], 0
+
+            def handle_starttag(self, tag, a):
+                self.skip += tag in ("script", "style")
+                if tag in ("p", "br", "div", "li", "tr", "h1", "h2", "h3", "h4"):
+                    self.out.append("\n")
+
+            def handle_endtag(self, tag):
+                self.skip -= tag in ("script", "style") and self.skip > 0
+
+            def handle_data(self, d):
+                if not self.skip:
+                    self.out.append(d)
+        p = P()
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            p.feed(fh.read())
+        return re.sub(r"\n\s*\n+", "\n\n", "".join(p.out)).strip()
+    raise DocError("%s files need macOS textutil; here, save it as .docx or PDF first" % ext)
+
+
 def _textutil(path: str) -> str:
     exe = _bin("textutil")
     if not exe:
+        if not MAC:
+            return _office_text(path)
         raise DocError("textutil (macOS) is needed for %s files" % os.path.splitext(path)[1])
     r = subprocess.run([exe, "-convert", "txt", "-stdout", path], capture_output=True, timeout=120)
     if r.returncode != 0:
@@ -400,6 +516,8 @@ def _join_pages(pages: dict) -> str:
 
 
 def ocr(path: str, pages_spec: str = None, langs: str = None, dpi: int = 200, sep: str = "  ") -> dict:
+    if not MAC:
+        return _tesseract(path, pages_spec, langs, dpi, sep)
     args = ["ocr", path, "--dpi", str(dpi), "--sep", sep]
     if pages_spec:
         args += ["--pages", pages_spec]
@@ -448,7 +566,7 @@ def cmd_text(path: str, pages_spec: str, engine: str, max_chars: int) -> int:
                          "--pages %s" % (len(empty), _ranges(empty)[:80], path, _ranges(empty[:10])))
     if any(RTL.search(v or "") for v in got.values()) and not eng.startswith("pdfkit"):
         notes.append("right-to-left text extracted via %s: word order or letters may be off; before quoting, "
-                     "re-check with --engine pdfkit or `staff-docs ocr %s --pages N`" % (eng, path))
+                     "re-check with %s`staff-docs ocr %s --pages N`" % (eng, "--engine pdfkit or " if MAC else "", path))
     _emit(path, "text", _join_pages(got), max_chars,
           "%s: %d page(s), showing %s, text via %s" % (path, count, _ranges(pages), eng))
     for n in notes:
@@ -474,8 +592,10 @@ def _ranges(pages: list) -> str:
 def cmd_ocr(path: str, pages_spec: str, langs: str, dpi: int, max_chars: int) -> int:
     got = ocr(path, pages_spec, langs, dpi)
     text = _join_pages(got)
-    _emit(path, "ocr", text, max_chars, "%s: OCR of %d page(s)%s (macOS Vision, on this Mac)" % (
-        path, len(got), (", languages " + langs) if langs else ", language auto-detected"))
+    _emit(path, "ocr", text, max_chars, "%s: OCR of %d page(s)%s (%s)" % (
+        path, len(got), (", languages " + langs) if langs else (", language auto-detected" if MAC else
+                                                               ", languages " + _tess_langs()),
+        "macOS Vision, on this Mac" if MAC else "tesseract, on this computer"))
     if not text.replace("=", "").strip() or all(not v for v in got.values()):
         print("Note: no text found. Try --dpi 300, or --langs with the document's language, or look at it "
               "with the Read tool.")
@@ -518,7 +638,7 @@ def cmd_tables(path: str, pages_spec: str, sheet: str, max_chars: int) -> int:
     print("Note: columns are aligned with spaces; check numbers against the page before using them.")
     if any(RTL.search(v or "") for v in got.values()):
         print("Note: layout mode can break right-to-left words; quote Arabic/Hebrew text from "
-              "`staff-docs text %s` (PDFKit) instead." % path)
+              "`staff-docs text %s`%s instead." % (path, " (PDFKit)" if MAC else " or `staff-docs ocr`"))
     return 0
 
 
@@ -555,7 +675,7 @@ def main(argv=None) -> int:
     _kit.require("documents")
     try:
         if a.cmd == "langs":
-            print(_vision(["langs"]).strip().replace("\n", " "))
+            print(_vision(["langs"]).strip().replace("\n", " ") if MAC else " ".join(_tess_installed()))
             return 0
         if not a.file:
             ap.error("which file?")

@@ -1,13 +1,13 @@
 ---
 name: documents
-description: How to read documents reliably with staff-docs - PDF text, scanned PDFs and photos of documents (OCR on this Mac with macOS Vision, ~30 languages including Arabic, Chinese, Cyrillic), tables from PDFs, Excel and CSV, Word/RTF/PowerPoint files - and how to quote original-language text verbatim with page numbers. Use whenever a task involves a PDF, report, law, decree, circular, contract, invoice, statement, filing, brochure, spreadsheet, scan, screenshot or photo of text, or when extracted text looks garbled or reversed.
+description: How to read documents reliably with staff-docs - PDF text, scanned PDFs and photos of documents (OCR on this computer: macOS Vision on a Mac, ~30 languages; tesseract on Windows/Linux, Arabic and English by default), tables from PDFs, Excel and CSV, Word/RTF/PowerPoint files - and how to quote original-language text verbatim with page numbers. Use whenever a task involves a PDF, report, law, decree, circular, contract, invoice, statement, filing, brochure, spreadsheet, scan, screenshot or photo of text, or when extracted text looks garbled or reversed.
 metadata:
   abilities: documents
 ---
 
 # Documents
 
-`staff-docs` reads local files on this Mac (nothing is uploaded anywhere). Get web files with
+`staff-docs` reads local files on this computer (nothing is uploaded anywhere). Get web files with
 `staff-fetch '<url>'` first: it saves them to `research/files/` and prints the path.
 
 ## Rules that always apply
@@ -24,7 +24,7 @@ metadata:
 | PDF with a text layer | `staff-docs text <file>` | `--pages 3-7`; scanned pages inside are OCR'd automatically (up to 10) |
 | Scanned PDF, photo, screenshot | `staff-docs ocr <file>` | `--langs ar,en` to fix languages (default: auto-detect); `--dpi 300` for small print |
 | Tables (PDF, xlsx, csv, scans) | `staff-docs tables <file>` | PDF columns kept; Excel sheets as rows (`--sheet Name`); scans as rows with ` \| ` between cells |
-| Word, RTF, ODT, HTML | `staff-docs text <file>` | via macOS textutil |
+| Word, RTF, ODT, HTML | `staff-docs text <file>` | via macOS textutil; on Windows/Linux .docx, .odt and .html only |
 | PowerPoint | `staff-docs text <file>` | slide by slide |
 | How big / is it scanned? | `staff-docs info <file>` | pages, which have text, title/author/dates |
 | OCR languages here | `staff-docs langs` | |
@@ -39,6 +39,8 @@ Tested on a Chromium-made Arabic PDF:
 `staff-docs text` therefore switches to PDFKit automatically when a page contains right-to-left
 script (it says `text via pdfkit`). If you still see reversed words or digits, or isolated letter
 forms, check with `staff-docs ocr <file> --pages N` and quote from the version that matches the page.
+On Windows and Linux there is no PDFKit: for right-to-left text, always compare `text` with
+`staff-docs ocr <file> --pages N` (tesseract) and quote the one that matches the page.
 Digits and parentheses at the edge of RTL lines are the most common errors: check them against the
 page itself. `tables` keeps columns but can break RTL words: take the words from `text`.
 

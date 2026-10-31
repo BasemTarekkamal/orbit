@@ -120,6 +120,8 @@ function linkify(s) {
 function store(get) { try { return get(); } catch (e) { return null; } }
 
 // ---------------------------------------------------------------- state & api
+// The computer the panel runs on, for the words: 'Mac', or 'PC' on Windows, 'computer' on Linux
+const MAC = () => (S.data && S.data.device) || 'Mac';
 const S = { data: null, detail: null, detailId: null, detailAt: 0, cat: null, roles: null, settings: null, file: null, fileLoading: '',
   skill: null, skillLoading: '', pair: null, job: null, situation: null, theme: store(() => localStorage.getItem('theme')) || '', lastHtml: '', vals: {},
   open: new Set(), busy: new Set() };
@@ -302,7 +304,7 @@ function callCard(id, compact) {             // a crew member listening to a liv
   const last = c.last ? c.last.replace(/^\[[^\]]+\]\s*/, '') : (c.ending ? 'Writing the minutes…' : 'Listening… the first lines appear within a minute.');
   return `<div class="call${c.ending ? ' ending' : ''}"><div class="call-head"><i class="rec"></i><b>${esc(e ? e.name : id)} ${c.ending ? 'is writing the minutes' : 'is on your call'}</b><span class="meta">${esc(c.title)} · <span class="num" data-since="${esc(c.started)}"></span> · ${plural(c.lines, 'line')}</span>
     ${c.ending ? '' : `<button class="btn btn-sm" data-act="order" data-kind="call_stop" data-emp="${id}">End call</button>`}</div>
-    <p class="call-last">${esc(last)}</p>${compact ? '' : `<p class="meta">Ask ${esc(e ? e.name : 'them')} anything about it while it runs. Heard on this Mac only: no bot joins, the audio is deleted once transcribed. <a class="link" href="/e/${id}/work?v=files&f=${encodeURIComponent(c.transcript)}">Read the transcript</a></p>`}</div>`;
+    <p class="call-last">${esc(last)}</p>${compact ? '' : `<p class="meta">Ask ${esc(e ? e.name : 'them')} anything about it while it runs. Heard on this ${MAC()} only: no bot joins, the audio is deleted once transcribed. <a class="link" href="/e/${id}/work?v=files&f=${encodeURIComponent(c.transcript)}">Read the transcript</a></p>`}</div>`;
 }
 function lastStep(id) { const L = (S.data.live || {})[id]; if (!L) return ''; const s = L.steps || []; return s.length ? s[s.length - 1].text : 'Getting started…'; }
 function receiptHtml(rc, key) {
@@ -435,7 +437,7 @@ PAGES.connect = (r) => {
 };
 function tokenForm(kind, fields) {
   return `<form class="connect-form" data-form="connect" data-kind="${kind}">${fields.map(([name, ph, label]) => `<div class="field"><label for="c-${kind}-${name}">${label}</label><input id="c-${kind}-${name}" class="input lg mono" name="${name}" required autocomplete="off" spellcheck="false" placeholder="${ph}"></div>`).join('')}
-    <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit">Connect</button><span class="meta">The token stays on this Mac, in your team's private folder. It never goes through a chat.</span></div></form>`;
+    <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit">Connect</button><span class="meta">The token stays on this ${MAC()}, in your team's private folder. It never goes through a chat.</span></div></form>`;
 }
 function howTo(ch) {
   if (ch === 'telegram') {
@@ -554,7 +556,7 @@ PAGES.employee = (r) => {
   const body = { chat: tabChat, knowledge: tabKnowledge, work: tabWork, manage: tabManage }[r.tab](e, dt, r);
   const canCall = dt && dt.abilities.includes('meetings') && e.status !== 'paused';
   const callBtn = callOf(e.id) ? '' : canCall && !Object.keys(S.data.calls || {}).length
-    ? `<div class="actions"><button class="btn" data-act="order" data-kind="call_start" data-emp="${e.id}" title="${esc(e.name)} listens on this Mac and takes notes. Tell the others you're taking notes.">${icon('mic')}Listen to a call</button></div>` : '';
+    ? `<div class="actions"><button class="btn" data-act="order" data-kind="call_start" data-emp="${e.id}" title="${esc(e.name)} listens on this ${MAC()} and takes notes. Tell the others you're taking notes.">${icon('mic')}Listen to a call</button></div>` : '';
   return `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span>·</span><span>reports to ${esc(e.supervisor)}</span><span>·</span>${statusHtml(e)}</div></div>${callBtn}</header>${callCard(e.id)}
     <nav class="tabs">${tabs.map(([k, l, n]) => `<a href="/e/${e.id}/${k}" class="${r.tab === k ? 'on' : ''}">${l}${n !== '' ? `<small>${esc(n)}</small>` : ''}</a>`).join('')}</nav>${body}`;
 };
@@ -722,7 +724,7 @@ function tabManage(e, dt) {
     <section><h2>Abilities</h2><p class="desc">What ${esc(e.name)} may do. These are locks: anything off is blocked, whatever anyone says in chat. Changes apply on their next run.</p>
       <form id="ab-${e.id}" data-form="abilities" data-emp="${e.id}"><div class="ab-bar"><button class="btn btn-primary" type="submit">Save</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="default">Default</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="super">Super agent</button><span class="meta">${on.size} of ${S.cat.abilities.length} on</span></div></form>
       <div class="ab-groups">${groups}</div></section>
-    <section><h2>Retire</h2><p class="desc">They stop working; their folder and memory stay on this Mac.</p><div><button class="btn btn-danger" data-act="retire" data-emp="${e.id}" data-name="${esc(e.name)}">Retire ${esc(e.name)}…</button></div></section>
+    <section><h2>Retire</h2><p class="desc">They stop working; their folder and memory stay on this ${MAC()}.</p><div><button class="btn btn-danger" data-act="retire" data-emp="${e.id}" data-name="${esc(e.name)}">Retire ${esc(e.name)}…</button></div></section>
   </div>`;
 }
 
@@ -773,7 +775,7 @@ PAGES.settings = () => {
       <div class="field"><label for="tn">Team name</label><input id="tn" class="input" name="team_name" maxlength="60" value="${esc(v('settings', 'team_name', s.team_name))}"></div>
       <div class="field"><label for="ab">About the business</label><textarea id="ab" class="textarea" name="about" rows="7" maxlength="6000" placeholder="What you do, for whom, what matters most right now, names they should know.">${esc(v('settings', 'about', s.about))}</textarea></div>
       <div class="field"><span class="lbl">Workdays</span><div class="chips">${days}</div><span class="hint">Routines run on these days.</span></div></section>
-    <section><h2>Routine times</h2><p class="desc">Local time on this Mac. Each employee runs only the routines ticked in their abilities.</p><div class="times">${times}</div></section>
+    <section><h2>Routine times</h2><p class="desc">Local time on this ${MAC()}. Each employee runs only the routines ticked in their abilities.</p><div class="times">${times}</div></section>
     <section id="research"><h2>Research budget</h2><p class="desc">Apify reads TikTok, Instagram, Facebook, YouTube, X and Google Maps for your employees. Paid per use, never beyond this budget.</p>
       <div class="usage-box"><div class="row2"><span>Spent this month</span><b class="num">${money(spent)} of ${money(budget)}</b></div><div class="meter ${pct >= 80 ? 'hot' : ''}"><i data-w="${pct}"></i></div></div>
       <div class="form-row"><div class="field"><label for="amb">Monthly budget (USD)</label><input id="amb" class="input" name="apify.monthly_budget_usd" inputmode="decimal" value="${esc(v('settings', 'apify.monthly_budget_usd', s.apify.monthly_budget_usd ?? 5))}"></div>
@@ -786,9 +788,9 @@ PAGES.settings = () => {
     <form class="connect-form row-form" data-form="connect" data-kind="apify"><input id="c-apify" class="input mono" name="token" required autocomplete="off" spellcheck="false" placeholder="${s.apify.token ? 'Paste a new token to replace it' : 'apify_api_…'}"><button class="btn" type="submit">${s.apify.token ? 'Replace' : 'Add'}</button></form></section>
   <section id="channels"><h2>Chat channels</h2><p class="desc">Your employees answer you through bots you create. Each one talks only to your bots.</p><div class="list">${chans}</div></section>
   <section id="access"><h2>Access</h2><p class="desc">Owners can direct every employee. Only approve people you know.</p>
-    <dl class="kv">${d.owners.map((o) => `<dt>${esc(o.name)}</dt><dd>${o.local ? 'this Mac only · <a class="link" href="/connect">connect your phone</a>' : esc((o.addresses || []).join(' · '))}</dd>`).join('')}</dl>
+    <dl class="kv">${d.owners.map((o) => `<dt>${esc(o.name)}</dt><dd>${o.local ? 'this ' + MAC() + ' only · <a class="link" href="/connect">connect your phone</a>' : esc((o.addresses || []).join(' · '))}</dd>`).join('')}</dl>
     ${pending ? `<h3>Messaged your bot</h3>${pending}` : `<p class="meta">Nobody is waiting for approval.</p>`}</section>
-  <section><h2>Appearance</h2><div class="seg" role="group" aria-label="Appearance"><button data-act="theme" data-v="" class="${S.theme === '' ? 'on' : ''}">Match the Mac</button><button data-act="theme" data-v="light" class="${S.theme === 'light' ? 'on' : ''}">Light</button><button data-act="theme" data-v="dark" class="${S.theme === 'dark' ? 'on' : ''}">Dark</button></div></section>
+  <section><h2>Appearance</h2><div class="seg" role="group" aria-label="Appearance"><button data-act="theme" data-v="" class="${S.theme === '' ? 'on' : ''}">${MAC() === 'PC' ? 'Match Windows' : MAC() === 'Mac' ? 'Match the Mac' : 'Match the system'}</button><button data-act="theme" data-v="light" class="${S.theme === 'light' ? 'on' : ''}">Light</button><button data-act="theme" data-v="dark" class="${S.theme === 'dark' ? 'on' : ''}">Dark</button></div></section>
   <section><h2>About this install</h2>
     <dl class="kv"><dt>Claude</dt><dd>${s.claude.ok ? `signed in (${esc(s.claude.note)})` : '<span class="badge danger">not signed in</span> ask Claude: “Sign in Claude Code for my Orbit.”'} · runs on ${s.auth === 'api_key' ? 'your API key' : 'your subscription'}</dd>
       <dt>Service</dt><dd>${d.online ? 'running' : '<span class="badge danger">stopped</span>'} · panel on port ${s.port}</dd>
@@ -900,7 +902,7 @@ document.addEventListener('click', async (ev) => {
   }
   else if (act === 'preset') { await order({ kind: 'set_abilities', employee_id: b.dataset.emp, preset: b.dataset.preset }); if (S.detailId === b.dataset.emp) await loadDetail(b.dataset.emp); render(true); }
   else if (act === 'retire') {
-    if (confirm(`Retire ${b.dataset.name}? They stop working; their folder and memory are kept on this Mac.`)) { await order({ kind: 'retire', employee_id: b.dataset.emp }); go('/team'); }
+    if (confirm(`Retire ${b.dataset.name}? They stop working; their folder and memory are kept on this ${MAC()}.`)) { await order({ kind: 'retire', employee_id: b.dataset.emp }); go('/team'); }
   }
   else if (act === 'skill') {
     const { emp, where, name } = b.dataset;

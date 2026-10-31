@@ -6,14 +6,14 @@ product
 
 ## Users
 
-A solo founder or professional on a Mac, usually with one or two AI employees, sometimes a small
+A solo founder or professional on a Mac or a Windows or Linux PC, usually with one or two AI employees, sometimes a small
 team with several. They open the control panel a few times a day: in the morning to see what their
 assistant did overnight and what needs them, during the day to give an order or hire someone, in the
 evening to read the end-of-day report. They are not developers; Terminal is for setup only.
 
 ## Product Purpose
 
-Orbit turns a person's own Claude Code into AI employees that work on their Mac: research,
+Orbit turns a person's own Claude Code into AI employees that work on their own computer: research,
 routines, memory, chat (Telegram, Slack or Discord), skills they learn. The control panel is where the owner sees the team, directs it and tunes
 what each employee may do. Success: the owner trusts the panel at a glance (what's running, what
 needs me, what did it cost), reaches any action in one or two clicks, and would show it on a screen

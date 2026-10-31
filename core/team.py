@@ -17,6 +17,7 @@ import uuid
 import abilities
 import channels
 import engine
+import osinfo
 
 TEAM = os.path.join(engine.HOME, "team")
 LOG = os.path.join(TEAM, "staffd.log")
@@ -310,7 +311,7 @@ def panel_prompt(who, text, team):
 
 def minutes(emp_id, info, who, title):
     """Minutes from a transcript (a recording sent after the call, or a live call that just ended)."""
-    prompt = ("An owner ({who}) had a meeting; it was transcribed on the Mac to {t} ({m} min). Write {mn} in the "
+    prompt = osinfo.local("An owner ({who}) had a meeting; it was transcribed on the Mac to {t} ({m} min). Write {mn} in the "
               "meeting's main language: summary, decisions, action items (owner, due; set a reminder with "
               "staff-remind for each dated one), items in your scope, open questions, 'My view:' (2–4 honest "
               "points). Flag numbers and names you rely on as (check). Then reply with a ≤ 15-line version for "

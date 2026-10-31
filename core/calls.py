@@ -2,8 +2,9 @@
 a phone on speaker), keeps a running transcript, answers questions about it during the call, and writes
 minutes when it ends.
 
-How: Orbit Listener (tools/call_listen.swift, built once into a tiny .app) records what the Mac plays (them)
-and the microphone (you) as two raw 16 kHz streams. Every 30 s the new audio is cut at a quiet moment and
+How: Orbit Listener records what the computer plays (them) and the microphone (you) as two raw 16 kHz
+streams: on a Mac tools/call_listen.swift, built once into a tiny .app; on Windows and Linux
+tools/call_listen.py (on Windows run by Python for Windows, since Linux inside WSL can't hear Windows apps). Every 30 s the new audio is cut at a quiet moment and
 transcribed with whisper on this Mac. No bot joins the call, nothing is uploaded, and the raw audio is
 deleted once it's transcribed.
 
@@ -28,9 +29,11 @@ import time
 import wave
 
 import engine
+import osinfo
 
 CORE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(CORE, "tools", "call_listen.swift")
+PY_SRC = os.path.join(CORE, "tools", "call_listen.py")
 SR = 16000
 CHUNK_S = 30
 MAX_MIN = 180
@@ -38,9 +41,17 @@ QUIET_RMS = 0.004                      # below this a slice is silence: skip whi
 STREAMS = (("them", "Them"), ("you", "You"))
 CALLS: dict = {}                       # emp_id -> state
 LOCK = threading.Lock()
-PERMISSION_HELP = ("The first time, macOS asks to let Orbit Listener hear the call. Open System Settings > "
-                   "Privacy & Security, turn Orbit Listener on under Screen & System Audio Recording and under "
-                   "Microphone, then start again.")
+PERMISSION_HELP = {
+    "mac": ("The first time, macOS asks to let Orbit Listener hear the call. Open System Settings > "
+            "Privacy & Security, turn Orbit Listener on under Screen & System Audio Recording and under "
+            "Microphone, then start again."),
+    "wsl": ("Windows didn't let Orbit hear the microphone. Open Settings > Privacy & security > Microphone, turn on "
+            "\"Let desktop apps access your microphone\", then start again."),
+    "linux": ("Orbit couldn't hear the microphone. Check that a microphone is connected and not muted in your sound "
+              "settings, then start again."),
+}.get(osinfo.KIND, "Orbit couldn't hear the microphone.")
+WIN_SETUP = ("Live calls on Windows need Python for Windows once (it hears what Windows plays). In PowerShell run:  "
+             "winget install Python.Python.3.12   then   py -m pip install soundcard numpy")
 
 
 class CallError(Exception):
@@ -48,8 +59,7 @@ class CallError(Exception):
 
 
 def _bin(n):
-    return shutil.which(n) or next((p for p in ("/opt/homebrew/bin/" + n, "/usr/local/bin/" + n, "/usr/bin/" + n)
-                                    if os.path.exists(p)), None)
+    return osinfo.which(n)
 
 
 def model_path():
@@ -60,8 +70,35 @@ def model_path():
     return None
 
 
+def _py_ok(cmd):
+    """Can this Python record (soundcard + numpy importable, a sound server there)?"""
+    try:
+        r = subprocess.run(cmd + ["-c", "import numpy, soundcard; soundcard.default_speaker()"], capture_output=True,
+                           text=True, timeout=30, cwd="/mnt/c" if osinfo.KIND == "wsl" and os.path.isdir("/mnt/c") else None)
+    except (OSError, subprocess.TimeoutExpired):
+        return False, "timed out"
+    return r.returncode == 0, (r.stderr.strip().splitlines() or [""])[-1][:160]
+
+
 def ready():
-    """→ (ok, plain reason). Live calls need macOS 15+, Apple's Swift compiler, whisper and its model."""
+    """→ (ok, plain reason). Live calls need whisper and its model, plus: on a Mac macOS 15+ and Apple's Swift
+    compiler; on Windows, Python for Windows with soundcard; on Linux, soundcard and a sound server."""
+    voice = "brew install ffmpeg whisper-cpp" if osinfo.KIND == "mac" else "orbit doctor --get-whisper"
+    if not _bin("whisper-cli") or not model_path():
+        return False, ("Live calls need the speech model, the same one voice notes use: %s, then  "
+                       "orbit doctor --get-voice-model" % voice)
+    if osinfo.KIND == "wsl":
+        py = osinfo.win_python()
+        if not py or not _py_ok(py)[0]:
+            return False, WIN_SETUP
+        return True, ""
+    if osinfo.KIND != "mac":
+        ok, why = _py_ok([sys.executable])
+        if not ok:
+            if "No module" in why:
+                return False, "Live calls need one Python package: python3 -m pip install --user soundcard numpy"
+            return False, "Live calls need a sound server (PulseAudio or PipeWire, there on any desktop Linux): %s" % why
+        return True, ""
     try:
         major = int(subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True).stdout.split(".")[0])
     except (ValueError, OSError):
@@ -70,8 +107,6 @@ def ready():
         return False, "Live calls need macOS 15 or newer. You can still send a recording after the call."
     if not _bin("swiftc"):
         return False, "Live calls need Apple's developer tools once: run  xcode-select --install"
-    if not _bin("whisper-cli") or not model_path():
-        return False, "Live calls need the speech model, the same one voice notes use: brew install ffmpeg whisper-cpp, then  orbit doctor --get-voice-model"
     return True, ""
 
 
@@ -236,6 +271,20 @@ def _alive(pid):
         return False
 
 
+def _listening(st):
+    """Is the listener still running? The Mac app: its pid. The Python listener (on Windows a Windows process
+    this Linux can't signal): the alive file it touches every second, and our handle on it."""
+    proc = st.get("proc")
+    if proc is not None and proc.poll() is not None:
+        return False
+    if proc is None and osinfo.KIND == "mac":
+        return _alive(_pid(st))
+    try:
+        return time.time() - os.path.getmtime(os.path.join(st["audio"], "alive")) < 10
+    except OSError:
+        return False
+
+
 def _pid(st):
     try:
         with open(os.path.join(st["audio"], "listener.pid")) as fh:
@@ -301,37 +350,61 @@ def _start(emp_id, by, title, on_end, mic):
     os.makedirs(audio, exist_ok=True)
     if demo:
         return _launched(emp_id, emp, by, title, now, d, audio, ws, on_end, _demo_loop)
-    app = listener_app()
-    subprocess.run(["open", "-n", "-g", "-a", app, "--args", audio, "--max-min", str(MAX_MIN)] + ([] if mic else ["--no-mic"]),
-                   capture_output=True, timeout=30)
+    extra = ["--max-min", str(MAX_MIN)] + ([] if mic else ["--no-mic"])
+    proc = None
+    if osinfo.KIND == "mac":
+        app = listener_app()
+        subprocess.run(["open", "-n", "-g", "-a", app, "--args", audio] + extra, capture_output=True, timeout=30)
+    else:
+        try:
+            if osinfo.KIND == "wsl":
+                cmd = (osinfo.win_python() or []) + [osinfo.win_path(PY_SRC), osinfo.win_path(audio)]
+                cwd = "/mnt/c" if os.path.isdir("/mnt/c") else None
+            else:
+                cmd, cwd = [sys.executable, PY_SRC, audio], None
+            log = open(os.path.join(audio, "listener.log"), "ab")
+            proc = subprocess.Popen(cmd + extra, stdout=log, stderr=log, stdin=subprocess.DEVNULL, cwd=cwd,
+                                    start_new_session=True)
+        except OSError as e:
+            shutil.rmtree(d, ignore_errors=True)
+            raise CallError("Orbit Listener didn't start (%s). Run  orbit doctor" % e)
     err = os.path.join(audio, "error.txt")
-    t_end = time.time() + 20
+    t_end = time.time() + (20 if osinfo.KIND == "mac" else 40)   # Windows Python is slower to start
     while time.time() < t_end:
         if os.path.exists(err) or os.path.exists(os.path.join(audio, "listener.pid")):
             break
         if os.path.exists(os.path.join(audio, "asking.txt")):
             t_end = max(t_end, time.time() + 5)               # macOS is showing the microphone prompt: wait for the click
         time.sleep(0.25)
-    if os.path.exists(err):
-        with open(err, encoding="utf-8") as fh:
-            msg = fh.read().strip()
+        if proc is not None and proc.poll() is not None:
+            break
+        time.sleep(0.25)
+    if os.path.exists(err) or not os.path.exists(os.path.join(audio, "listener.pid")):
+        msg = ""
+        if os.path.exists(err):
+            with open(err, encoding="utf-8") as fh:
+                msg = fh.read().strip()
+        if proc is not None and proc.poll() is None:
+            proc.kill()
         shutil.rmtree(d, ignore_errors=True)
-        raise CallError(PERMISSION_HELP if msg.startswith("NEEDS_PERMISSION") else msg)
-    if not os.path.exists(os.path.join(audio, "listener.pid")):
-        shutil.rmtree(d, ignore_errors=True)
-        raise CallError("Orbit Listener didn't start. Try again; if it keeps failing, run  orbit doctor")
-    return _launched(emp_id, emp, by, title, now, d, audio, ws, on_end, _loop)
+        if msg.startswith("NEEDS_PERMISSION"):
+            raise CallError(PERMISSION_HELP)
+        if msg.startswith("NEEDS_SETUP"):
+            raise CallError(WIN_SETUP if osinfo.KIND == "wsl" else
+                            "Live calls need one Python package: python3 -m pip install --user soundcard numpy")
+        raise CallError(msg or "Orbit Listener didn't start. Try again; if it keeps failing, run  orbit doctor")
+    return _launched(emp_id, emp, by, title, now, d, audio, ws, on_end, _loop, proc)
 
 
-def _launched(emp_id, emp, by, title, now, d, audio, ws, on_end, loop):
+def _launched(emp_id, emp, by, title, now, d, audio, ws, on_end, loop, proc=None):
     tpath = os.path.join(d, "transcript.md")
     with open(tpath, "w", encoding="utf-8") as fh:
-        fh.write("# Live call: %s\n\nStarted %s by %s · heard on this Mac (Them = what the Mac played, You = the "
-                 "microphone) · transcribed locally, so check numbers and names\n\n" % (title, now.strftime("%Y-%m-%d %H:%M"), by))
+        fh.write(osinfo.local("# Live call: %s\n\nStarted %s by %s · heard on this Mac (Them = what the Mac played, You = the "
+                 "microphone) · transcribed locally, so check numbers and names\n\n") % (title, now.strftime("%Y-%m-%d %H:%M"), by))
     st = {"emp_id": emp_id, "name": emp["name"], "by": by, "title": title, "started": now.strftime("%Y-%m-%dT%H:%M:%S"),
           "t0": time.time(), "dir": d, "audio": audio, "ws": ws, "transcript_abs": tpath,
           "transcript": os.path.relpath(tpath, ws), "offset": {k: 0 for k, _ in STREAMS}, "lines": 0, "last": "",
-          "stop": threading.Event(), "on_end": on_end}
+          "stop": threading.Event(), "on_end": on_end, "proc": proc}
     with open(os.path.join(audio, "call.json"), "w") as fh:
         json.dump({k: st[k] for k in ("emp_id", "by", "title", "started")}, fh)
     th = threading.Thread(target=loop, args=(st,), daemon=True)
@@ -344,9 +417,8 @@ def _launched(emp_id, emp, by, title, now, d, audio, ws, on_end, loop):
 
 def _loop(st):
     while not st["stop"].wait(CHUNK_S):
-        pid = _pid(st)
         _consume(st)
-        if pid is None or not _alive(pid):               # the time cap, or the listener was quit
+        if not _listening(st):                           # the time cap, or the listener was quit
             break
     _finish(st)
 
@@ -354,16 +426,24 @@ def _loop(st):
 def _finish(st):
     open(os.path.join(st["audio"], "stop"), "w").close()
     for _ in range(40):
-        if not _alive(_pid(st)):
+        if not _listening(st):
             break
         time.sleep(0.25)
+    if st.get("proc") is not None and st["proc"].poll() is None:
+        try:
+            st["proc"].wait(5)
+        except subprocess.TimeoutExpired:
+            st["proc"].kill()
     _consume(st, final=True)
     mins = round((time.time() - st["t0"]) / 60, 1)
     with open(st["transcript_abs"], encoding="utf-8") as fh:
         body = fh.read()
-    body = body.replace("· heard on this Mac", "· %s min · heard on this Mac" % mins, 1)
+    here = osinfo.local("· heard on this Mac")
+    body = body.replace(here, "· %s min %s" % (mins, here), 1)
     if not st["lines"]:
-        body += "(Nothing was heard. Was the call's sound on, and is Orbit Listener allowed in System Settings?)\n"
+        body += {"mac": "(Nothing was heard. Was the call's sound on, and is Orbit Listener allowed in System Settings?)\n",
+                 "wsl": "(Nothing was heard. Was the call's sound on, and is the microphone allowed in Windows Settings?)\n",
+                 }.get(osinfo.KIND, "(Nothing was heard. Was the call's sound on, and is the microphone working?)\n")
     with open(st["transcript_abs"], "w", encoding="utf-8") as fh:
         fh.write(body)
     if not st.get("errors"):
@@ -441,7 +521,7 @@ def recover(on_end=None):
             except (KeyError, ValueError):
                 pass
             with open(st["transcript_abs"], "w", encoding="utf-8") as fh:   # offsets weren't saved: redo from the start
-                fh.write("# Live call: %s\n\nStarted %s by %s · heard on this Mac (recovered after a restart)\n\n"
+                fh.write(osinfo.local("# Live call: %s\n\nStarted %s by %s · heard on this Mac (recovered after a restart)\n\n")
                          % (st["title"], st["started"].replace("T", " ")[:16], st["by"]))
             threading.Thread(target=_finish, args=(st,), daemon=True).start()
 

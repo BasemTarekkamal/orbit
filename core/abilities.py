@@ -18,8 +18,9 @@ CATALOG_F = os.path.join(engine.CORE, "abilities.json")
 
 
 def _load() -> dict:
+    import osinfo                                          # "this Mac" said as "this PC" on Windows
     with open(CATALOG_F, encoding="utf-8") as fh:
-        return json.load(fh)
+        return json.loads(osinfo.local(fh.read()))
 
 
 def catalog() -> list:

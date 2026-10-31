@@ -2,7 +2,7 @@
 
 Your employees don't just "browse". They know **how** to research anything: which source to try
 first, which tool reads it, what each platform hides, what it costs, and how to prove every claim.
-That know-how lives in two places: five command-line tools on this Mac, and eight playbooks
+That know-how lives in two places: five command-line tools on your computer, and eight playbooks
 (Claude Code skills) that load when a task needs them.
 
 ## The tools
@@ -13,7 +13,7 @@ That know-how lives in two places: five command-line tools on this Mac, and eigh
 | `staff-browse <url>` | Headless Chromium for JavaScript-heavy pages: `--scroll N` (infinite feeds), `--click "Load more"` (repeatable, `--click-max N`), `--wait <css>`, `--screenshot` (the agent can look at the PNG), `--network` (lists the XHR/JSON endpoints a page calls), `--links`, `--html`. |
 | `staff-apify` | A gateway to 21 vetted Apify scrapers: Google Search, News, Trends and Maps (places + reviews), website crawler, search/URL-to-markdown, business contact details, YouTube (+ transcripts), TikTok, Instagram, Facebook pages/posts/comments, Meta Ad Library, X, Threads, LinkedIn company pages, Reddit, Amazon reviews. `list`, `schema <alias>`, `run <alias> '<json>' [--max-items N] [--max-usd X] [--tag slug]`, `results <run-id>`, `budget`, `verify`. |
 | `staff-watch` | Watches RSS/Atom feeds, sitemaps, JSON endpoints and pages: `add <name> <url> [--match RE] [--css SEL] [--ignore RE]`, `list`, `check [--dry-run]`, `remove`. Prints only what's new or changed. |
-| `staff-docs` | Reads local documents: PDF text (pypdf, pdftotext or macOS PDFKit; PDFKit is used automatically for Arabic and other right-to-left text), OCR of scans and photos with macOS Vision (on this Mac, ~30 languages), tables from PDFs, Excel and CSV, Word/RTF/PowerPoint. `text`, `ocr`, `tables`, `info`, `langs`. |
+| `staff-docs` | Reads local documents: PDF text (pypdf, pdftotext or macOS PDFKit; PDFKit is used automatically for Arabic and other right-to-left text), OCR of scans and photos on your computer (macOS Vision on a Mac, ~30 languages; tesseract on Windows and Linux), tables from PDFs, Excel and CSV, Word/RTF/PowerPoint. `text`, `ocr`, `tables`, `info`, `langs`. |
 
 Every tool prints a short, model-friendly summary and saves the full result inside the employee's
 workspace (`research/pages`, `research/files`, `research/browse`, `research/scrapes`, `research/docs`),
@@ -27,7 +27,7 @@ them as excluded commands) so they can read the open web. That makes them the bo
 enforce the rules themselves, in code:
 
 - **Public web only.** Every URL, every redirect hop and every socket connection is checked: never
-  this Mac (`127.0.0.1`, `localhost`, `[::1]`, the control panel), never the local network
+  this computer (`127.0.0.1`, `localhost`, `[::1]`, the control panel), never the local network
   (`10.x`, `192.168.x`, `172.16-31.x`, `169.254.x`, `.local`), never `file://` or `ftp://`. In the
   browser every request goes through a filter, and each response's server address is re-checked
   (DNS rebinding). WebSockets are never connected, service workers are blocked, WebRTC can't

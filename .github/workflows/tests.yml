@@ -1,0 +1,109 @@
+# Orbit's tests on every push: the Mac, Linux (Ubuntu), and Windows through WSL 2. The Linux and Windows
+# jobs also install Orbit the way a new user would (Claude Code installed, not signed in: no Claude run
+# here), check the sandbox really works, read a real scan with tesseract, and start the service.
+name: tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python packages
+        run: python3 -m pip install --user --quiet requests beautifulsoup4 pypdf numpy
+      - name: Unit tests
+        env:
+          STAFF_TEST_OCR: "0"
+        run: for t in test_core test_channels test_tools test_calls test_platforms; do python3 -m unittest tests.$t || exit 1; done
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages (setup-linux.sh, as a user runs it)
+        run: sudo sh ./setup-linux.sh && sudo apt-get install -y -q imagemagick
+      - name: Python packages
+        run: python3 -m pip install --user --quiet --break-system-packages requests beautifulsoup4 pypdf numpy soundcard websocket-client
+      - name: Unit tests
+        run: for t in test_core test_channels test_tools test_calls test_platforms; do python3 -m unittest tests.$t || exit 1; done
+      - name: The sandbox starts here (bubblewrap, as Claude Code uses it)
+        run: bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all --die-with-parent true && echo "sandbox ok"
+      - name: Reading a real scan with tesseract
+        run: |
+          python3 - <<'EOF'
+          import subprocess
+          subprocess.run(["convert", "-size", "1000x160", "xc:white", "-fill", "black", "-pointsize", "56",
+                          "-annotate", "+30+100", "Orbit reads scans 2026", "scan.png"], check=True)
+          EOF
+          python3 core/tools/docs.py ocr scan.png | tee ocr.txt
+          grep -q "Orbit reads scans" ocr.txt
+      - name: Install like a new user
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          export PATH="$HOME/.local/bin:$PATH"
+          ./install.sh --yes
+      - name: The service and the panel are up
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          orbit status
+          orbit doctor || true
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7317/)
+          echo "panel answered $code"; [ "$code" != "000" ]
+          orbit stop
+      - name: Building the speech engine (whisper.cpp)
+        run: ./orbit doctor --get-whisper || true; test -x "$HOME/.local/bin/whisper-cli"
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: wsl-bash {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Ubuntu-24.04
+          wsl-version: 2
+      - name: Orbit sees Windows (WSL 2)
+        run: |
+          python3 -c "import sys; sys.path.insert(0, 'core'); import osinfo; print(osinfo.KIND, osinfo.DEVICE); assert osinfo.KIND == 'wsl'"
+          uname -r
+      - name: System packages (setup-linux.sh, as a user runs it)
+        run: sudo sh ./setup-linux.sh
+      - name: Python packages
+        run: python3 -m pip install --user --quiet --break-system-packages requests beautifulsoup4 pypdf numpy websocket-client
+      - name: Copy the kit into Linux's own disk (as git clone does; the Windows drive ignores file modes)
+        run: cp -r "$PWD" "$HOME/orbit"
+      - name: Unit tests
+        run: cd "$HOME/orbit" && for t in test_core test_channels test_tools test_calls test_platforms; do python3 -m unittest tests.$t || exit 1; done
+      - name: The sandbox starts inside WSL
+        run: bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all --die-with-parent true && echo "sandbox ok"
+      - name: Windows programs are reachable from Linux (what the service and the browser use)
+        run: |
+          powershell.exe -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+          wslpath -w "$PWD"
+          cmd.exe /c "echo %APPDATA%"
+      - name: Install like a new user (the service starts from the Windows side)
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          export PATH="$HOME/.local/bin:$PATH"
+          cd "$HOME/orbit" && ./install.sh --yes
+      - name: The service survives, the panel answers Windows, the login shortcut exists
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          sleep 5
+          orbit status
+          orbit doctor || true
+          code=$(curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:7317/ | tr -d '\r')
+          echo "panel answered Windows with $code"; [ "$code" != "000" ]
+          lnk=$(powershell.exe -NoProfile -Command "Test-Path (Join-Path ([Environment]::GetFolderPath('Startup')) 'Orbit.lnk')" | tr -d '\r')
+          echo "startup shortcut: $lnk"; [ "$lnk" = "True" ]
+          orbit stop
+      - name: Python for Windows can load the call listener's packages
+        shell: pwsh
+        run: |
+          python -m pip install --quiet soundcard numpy
+          python -c "import soundcard, numpy; print('soundcard', soundcard.__name__)"

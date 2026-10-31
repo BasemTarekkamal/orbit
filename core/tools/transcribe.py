@@ -18,7 +18,8 @@ MODEL = os.path.expanduser(os.environ.get("WHISPER_MODEL", "~/Staff/models/ggml-
 
 
 def _bin(name: str) -> str | None:
-    return shutil.which(name) or next((p for p in ("/opt/homebrew/bin/" + name, "/usr/local/bin/" + name)
+    return shutil.which(name) or next((p for p in ("/opt/homebrew/bin/" + name, "/usr/local/bin/" + name,
+                                                   os.path.expanduser("~/.local/bin/") + name)
                                        if os.path.exists(p)), None)
 
 

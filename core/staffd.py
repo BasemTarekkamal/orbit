@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.join(CORE, "tools"))
 import abilities  # noqa: E402
 import channels  # noqa: E402
 import engine  # noqa: E402
+import osinfo  # noqa: E402
 import skillbook  # noqa: E402
 import team  # noqa: E402
 from team import jload, jsave, log, run_async, send, to_people  # noqa: E402
@@ -78,7 +79,7 @@ def help_text(mod):
     for k, e in team.active().items():
         lines.append("%s — %s, %s" % (mod.mention(k), e["name"], e["role"]))
     lines.append("talk <handle> — make them your default")
-    lines.append("start call / end call — they listen on the Mac and send minutes")
+    lines.append(osinfo.local("start call / end call — they listen on the Mac and send minutes"))
     return "\n".join(lines) if len(lines) > 2 else "Nobody works here yet. Hire someone in the control panel."
 
 
@@ -213,13 +214,13 @@ def handle(msg):
         if off("meetings", "meeting recordings"):
             return
         if ch == "telegram" and rec.get("size", 0) > 20 * 1024 * 1024:
-            send(chat, "That's over Telegram's 20 MB bot limit: drop it in %s/state/meetings_in on the Mac." % emp["workspace"], emp)
+            send(chat, osinfo.local("That's over Telegram's 20 MB bot limit: drop it in %s/state/meetings_in on the Mac.") % emp["workspace"], emp)
             return
         p = mod.download(rec, inbox, rec.get("name") or "meeting.ogg")
         if not p:
             send(chat, "I couldn't download that recording. Please send it again.", emp)
             return
-        send(chat, "Got the recording. Transcribing on the Mac; minutes shortly.", emp)
+        send(chat, osinfo.local("Got the recording. Transcribing on the Mac; minutes shortly."), emp)
 
         def meet():
             r = subprocess.run([sys.executable, os.path.join(CORE, "tools", "meeting.py"), p, "--title", body or "meeting"],
@@ -247,7 +248,7 @@ def handle(msg):
         if not said:
             send(chat, "I couldn't transcribe that voice note (%s). Please type it." % (r.stderr.strip()[-120:] or "no speech found"), emp)
             return
-        body = "[voice note, transcribed on the Mac; confirm any number before acting]\n%s\n%s" % (said, body)
+        body = osinfo.local("[voice note, transcribed on the Mac; confirm any number before acting]\n%s\n%s") % (said, body)
     saved = []
     for a in files:
         p = mod.download(a, inbox, a.get("name") or ("photo.jpg" if a["kind"] == "photo" else "file"))
@@ -301,7 +302,7 @@ def call_reply(act, emp_id, who, text):
         calls.start(emp_id, who, call_title(text), on_end=team.call_ended)
     except calls.CallError as e:
         return str(e)
-    return ("Listening to your call on this Mac. Ask me anything during it, like \"what did they say about price?\". "
+    return osinfo.local("Listening to your call on this Mac. Ask me anything during it, like \"what did they say about price?\". "
             "Say \"end call\" when you hang up and I'll send the minutes. Tell the others you're taking notes.")
 
 

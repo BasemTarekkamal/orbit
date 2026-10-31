@@ -22,6 +22,7 @@ import calls  # noqa: E402
 import engine  # noqa: E402
 import hire  # noqa: E402
 import orders  # noqa: E402
+import osinfo  # noqa: E402
 import staffd  # noqa: E402
 import team  # noqa: E402
 
@@ -42,7 +43,7 @@ def state(d, on_end=None):
     os.makedirs(a, exist_ok=True)
     tp = os.path.join(d, "transcript.md")
     with open(tp, "w") as fh:
-        fh.write("# Live call: t\n\nStarted now by Alex · heard on this Mac\n\n")
+        fh.write(osinfo.local("# Live call: t\n\nStarted now by Alex · heard on this Mac\n\n"))
     return {"emp_id": "lina", "name": "Lina", "by": "Alex", "title": "t", "started": "2026-10-30T10:00:00", "t0": time.time() - 90,
             "dir": d, "audio": a, "ws": d, "transcript_abs": tp, "transcript": "transcript.md", "offset": {"them": 0, "you": 0},
             "lines": 0, "last": "", "stop": threading.Event(), "on_end": on_end}
@@ -115,7 +116,7 @@ class Transcript(unittest.TestCase):
         info = calls._finish(st)
         self.assertFalse(os.path.exists(st["audio"]))
         self.assertEqual(ended[0]["transcript"], "transcript.md")
-        self.assertIn("min · heard on this Mac", open(st["transcript_abs"]).read())
+        self.assertIn(osinfo.local("min · heard on this Mac"), open(st["transcript_abs"]).read())
         self.assertNotIn("lina", calls.CALLS)
         self.assertEqual(info["lines"], 1)
 

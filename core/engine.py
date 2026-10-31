@@ -15,7 +15,8 @@ API key), headless in the employee's folder, and gets whatever the employee's pr
   * abilities: tools, gateway commands and skills switched on or off per employee;
   * model routing: the employee's model, or the fallback when plan usage is high;
   * a cost/reliability log in <workspace>/state/runs.jsonl.
-Python 3.9 compatible (the Mac's system python).
+Python 3.9 compatible (the Mac's system python). The same on Windows (inside WSL2) and Linux, where the
+sandbox is bubblewrap instead of macOS Seatbelt; osinfo.py holds the few differences.
 """
 from __future__ import annotations
 
@@ -29,6 +30,8 @@ import tempfile
 import threading
 import time
 import uuid
+
+import osinfo
 
 CORE = os.path.dirname(os.path.abspath(__file__))
 KIT = os.path.dirname(CORE)
@@ -44,11 +47,15 @@ BASE_DOMAINS = ["pypi.org", "files.pythonhosted.org"]
 SECRET_PATHS = ["~/.ssh", "~/.aws", "~/.gnupg", "~/.config/gh", "~/.config/rclone", "~/.netrc",
                 "~/.claude/.credentials.json", "~/.claude/channels", "~/Library/Keychains",
                 "~/Library/Application Support/Google/Chrome", "~/Library/Safari", "~/Library/Messages",
-                "~/Library/Mail", "~/Desktop", "~/Documents", "~/Downloads", SECRETS]
+                "~/Library/Mail", "~/Desktop", "~/Documents", "~/Downloads", "~/.local/share/keyrings",
+                "~/.mozilla", "~/.config/google-chrome", "~/.config/chromium", SECRETS]
+if osinfo.KIND == "wsl":
+    SECRET_PATHS.append("/mnt")                        # the Windows drives: their files stay out of reach
 BASE_ALLOWED = ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite", "Skill"]
 BASE_DENIED = ["Bash(git push *)", "Bash(git push)", "Bash(git remote *)", "Bash(sudo *)",
                "Bash(ssh *)", "Bash(scp *)", "Bash(security *)", "Bash(osascript *)",
-               "Bash(launchctl *)", "Bash(gh *)", "Edit(profile.json)", "Write(profile.json)"]
+               "Bash(launchctl *)", "Bash(gh *)", "Bash(systemctl *)", "Bash(powershell.exe *)", "Bash(cmd.exe *)",
+               "Bash(wsl.exe *)", "Bash(schtasks.exe *)", "Edit(profile.json)", "Write(profile.json)"]
 
 
 # ------------------------------------------------------------------ registry
@@ -189,8 +196,7 @@ def clean_env(emp: dict) -> dict:
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_", "CLAUDE_AGENT_SDK")) and k != "CLAUDECODE"}
     env["HOME"] = H
-    env["PATH"] = ":".join([BIN, os.path.dirname(resolve_claude()), "/opt/homebrew/bin", "/usr/local/bin",
-                            "/usr/bin", "/bin", "/usr/sbin", "/sbin"])
+    env["PATH"] = ":".join([BIN, os.path.dirname(resolve_claude())] + osinfo.path_dirs())
     env["CLAUDE_CODE_FORK_SUBAGENT"] = "0"              # no hidden conversation-copying subagents
     env["STAFF_EMPLOYEE"] = emp["id"]
     env["STAFF_WORKSPACE"] = emp["workspace"]
@@ -271,7 +277,7 @@ def friendly_error(err: str) -> str:
     if re.search(r"usage limit|rate limit|limit reached", err, re.I):
         return "I've hit the Claude usage limit; I'll pick this up after it resets. Nothing is lost."
     if re.search(r"authenticate|OAuth|not logged in|log in", err, re.I):
-        return "My Claude sign-in on this Mac has expired. Owner: run `claude auth login` in Terminal."
+        return osinfo.local("My Claude sign-in on this Mac has expired. Owner: run `claude auth login` in Terminal.")
     if re.search(r"ENOTFOUND|ECONNRESET|network|reach the API", err, re.I):
         return "I couldn't reach Claude (internet down?). Please resend in a few minutes."
     return "Something went wrong on my side (logged). Please resend."

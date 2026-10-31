@@ -33,6 +33,7 @@ import abilities  # noqa: E402
 import calls  # noqa: E402
 import channels  # noqa: E402
 import engine  # noqa: E402
+import osinfo  # noqa: E402
 import hire  # noqa: E402
 import orders  # noqa: E402
 import skillbook  # noqa: E402
@@ -186,7 +187,7 @@ def checklist(emps, feed):
          "how": "Telegram, Slack or Discord, through a bot of your own. About two minutes.", "href": "/connect", "cta": "Connect"},
         {"id": "apify", "done": bool(engine.secret("apify_token")), "optional": True, "title": "TikTok, Instagram, Facebook and Maps research",
          "how": "A free Apify account; paste its token in Settings. Paid per use, inside the budget you set.", "href": "/settings#research", "cta": "Add"},
-        {"id": "voice", "done": os.path.exists(model), "optional": True, "title": "Voice notes, transcribed on this Mac",
+        {"id": "voice", "done": os.path.exists(model), "optional": True, "title": osinfo.local("Voice notes, transcribed on this Mac"),
          "how": "Ask Claude: “Set up voice notes for my Orbit.”"},
     ]
 
@@ -294,7 +295,7 @@ def state():
     pending = team.jload(PENDING, {})
     usage = engine.usage()
     me = next(iter(reg.get("owners", {}).values()), {}).get("name", "Owner")
-    return {"team_name": reg.get("team_name", "Orbit"), "me": me, "online": daemon_online(), "now": time.strftime("%Y-%m-%dT%H:%M:%S"), "demo": DEMO,
+    return {"team_name": reg.get("team_name", "Orbit"), "me": me, "online": daemon_online(), "now": time.strftime("%Y-%m-%dT%H:%M:%S"), "demo": DEMO, "device": osinfo.DEVICE,
             "usage": usage, "owners": [{"id": i, "name": o["name"], "local": bool(o.get("local")),
                                         "addresses": [channels.label(i)] + [channels.label(a) for a in o.get("addresses", [])]}
                                        for i, o in reg.get("owners", {}).items()],
@@ -611,7 +612,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"groups": abilities.groups(), "abilities": abilities.catalog()})
         if path == "/api/roles":
             with open(ROLES_F, encoding="utf-8") as fh:
-                return self._json(200, json.load(fh))
+                return self._json(200, json.loads(osinfo.local(fh.read())))
         if path == "/api/settings":
             return self._json(200, settings_view())
         if path == "/api/pairing":

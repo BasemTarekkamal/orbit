@@ -21,9 +21,11 @@ const ALLOWED_PLUGINS = ['staff-guard', 'staffroom-skills']
 const SECRET_FRAGMENTS = [
   '/.ssh/', '/.aws/', '/.gnupg/', '/.config/gh/', '/.config/rclone', '/.netrc',
   '/library/keychains', '.claude/.credentials', '.claude/channels/', '.claude.json', 'secrets.env',
+  '/.local/share/keyrings',
 ]
 // Fragments of paths an employee may read but never change
-const HARNESS_FRAGMENTS = ['profile.json', '.claude/settings', 'library/launchagents', '.github/', '.claude-plugin/']
+const HARNESS_FRAGMENTS = ['profile.json', '.claude/settings', 'library/launchagents', '.config/systemd/',
+  'start menu/programs/startup', '.github/', '.claude-plugin/']
 // Files staffd owns inside ~/Staff/team (the bus itself stays writable: employees post to it)
 const TEAM_FILES = ['feed.jsonl', 'orders.jsonl', 'staffd_state.json', 'pending_owners.json', 'offsets.json',
   'directory.md', 'about.md', 'chatlog.jsonl', 'staffd.log', 'staffd_alive']
@@ -35,10 +37,12 @@ const BLOCKED_COMMANDS = [
   [/(^|[\s;&|(`$])gh(\s|$)|api\.github\.com/i, 'GitHub CLI/API'],
   [/(^|[\s;&|(`$\/])claude(-code)?(\s|$)|@anthropic-ai\/claude-code/i, 'nested claude run or plugin install'],
   [/\bchflags\b|\bxattr\b/i, 'changing file protection flags'],
-  [/\blaunchctl\b|\bcrontab\b/i, 'changing scheduled jobs'],
+  [/\blaunchctl\b|\bcrontab\b|\bsystemctl\b|\bschtasks(\.exe)?\b/i, 'changing scheduled jobs'],
+  [/\b(powershell|pwsh|cmd|wsl|explorer|wscript|cscript|rundll32|reg)\.exe\b/i, 'running Windows programs'],
   [/\bsecurity\s+(find|dump|export|add|delete)/i, 'keychain access'],
   [/\bsudo\b/i, 'sudo'],
   [/\bopen\s+(-a\s+\S+\s+)?https?:/i, 'opening a browser'],
+  [/\b(xdg-open|wslview)\b/i, 'opening a browser'],
 ]
 // Banking, payment and crypto hosts: never reached, whatever the reason
 const MONEY_HOSTS = /(^|\.)(paypal|stripe|wise|revolut|venmo|cash\.app|zelle|payoneer|skrill|westernunion|moneygram|remitly|klarna|afterpay|alipay|wechatpay|paytm|phonepe|razorpay|mpesa|instapay|fawry|paymob|valu|binance|coinbase|kraken|bybit|okx|kucoin|crypto\.com|metamask|blockchain\.com|chase|bankofamerica|wellsfargo|citi|hsbc|barclays|santander|lloydsbank|natwest|monzo|starlingbank|n26|bnpparibas|societegenerale|deutsche-bank|ing|rabobank|ubs|emiratesnbd|alrajhibank|qnb|cibeg|banquemisr|nbe)\.[a-z.]+$/i
