@@ -328,20 +328,26 @@ def _ps(script):
 
 
 def wsl_script():
-    """PowerShell that starts the service now (hidden) and at every Windows login (a Startup shortcut)."""
+    """PowerShell that writes a Startup shortcut (starts the service hidden at every Windows login) and runs
+    the shortcut's command now. It's started through WMI: anything started straight from here would sit in
+    WSL's job for this command and be closed with it."""
     import pwd                                             # as this Linux user, whoever WSL's default user is
     user = pwd.getpwuid(os.getuid()).pw_name
     args = " ".join(["-d", '"%s"' % osinfo.distro(), "-u", '"%s"' % user, "-e"] +
                     ['"%s"' % a for a in service_cmd()]).replace("'", "''")
     return ("$a = '%s'\n"
-            "Start-Process -WindowStyle Hidden -FilePath \"$env:WINDIR\\System32\\wsl.exe\" -ArgumentList $a\n"
             "$lnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'Orbit.lnk'\n"
             "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)\n"
             "$s.TargetPath = \"$env:WINDIR\\System32\\conhost.exe\"\n"
             "$s.Arguments = '--headless wsl.exe ' + $a\n"
             "$s.WindowStyle = 7\n"
             "$s.Description = 'Orbit: your AI crew'\n"
-            "$s.Save()\n" % args)
+            "$s.Save()\n"
+            "$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ShowWindow = [uint16]0}\n"
+            "$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{\n"
+            "  CommandLine = '\"' + $s.TargetPath + '\" ' + $s.Arguments; ProcessStartupInformation = $si}\n"
+            "if ($r.ReturnValue -ne 0) { throw \"Windows couldn't start it (Win32_Process.Create: $($r.ReturnValue))\" }\n"
+            % args)
 
 
 def start_other():

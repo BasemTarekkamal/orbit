@@ -223,7 +223,7 @@ class Service(unittest.TestCase):
         me = pwd.getpwuid(os.getuid()).pw_name
         self.assertIn('-d "Ubuntu-24.04" -u "%s" -e "/usr/bin/env" "STAFFROOM_HOME=%s"' % (me, engine.HOME), ps)
         self.assertIn("service-run", ps)
-        self.assertIn("Start-Process -WindowStyle Hidden", ps)
+        self.assertIn("Invoke-CimMethod -ClassName Win32_Process -MethodName Create", ps)   # outside WSL's job
         self.assertIn("GetFolderPath('Startup')", ps)
         self.assertIn("'--headless wsl.exe '", ps)
         self.assertEqual(ps.count("$a = '"), 1)
