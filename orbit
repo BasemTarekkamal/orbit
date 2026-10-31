@@ -329,7 +329,10 @@ def _ps(script):
 
 def wsl_script():
     """PowerShell that starts the service now (hidden) and at every Windows login (a Startup shortcut)."""
-    args = " ".join(["-d", '"%s"' % osinfo.distro(), "-e"] + ['"%s"' % a for a in service_cmd()]).replace("'", "''")
+    import pwd                                             # as this Linux user, whoever WSL's default user is
+    user = pwd.getpwuid(os.getuid()).pw_name
+    args = " ".join(["-d", '"%s"' % osinfo.distro(), "-u", '"%s"' % user, "-e"] +
+                    ['"%s"' % a for a in service_cmd()]).replace("'", "''")
     return ("$a = '%s'\n"
             "Start-Process -WindowStyle Hidden -FilePath \"$env:WINDIR\\System32\\wsl.exe\" -ArgumentList $a\n"
             "$lnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'Orbit.lnk'\n"

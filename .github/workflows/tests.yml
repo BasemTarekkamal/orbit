@@ -109,8 +109,24 @@ jobs:
           ls -la "$HOME/Staff/team" || true
           tail -40 "$HOME/Staff/team/staffd.out" || true
           tail -40 "$HOME/Staff/team/staffd.log" || true
-          cd "$HOME/orbit" && python3 -c "import sys; sys.argv=['orbit']; exec(open('orbit').read().split('def main():')[0]); print(wsl_script())"
-          powershell.exe -NoProfile -Command "Get-Process wsl* | Format-Table -AutoSize Id,ProcessName,StartTime" || true
+          cd "$HOME/orbit"
+          python3 - > /tmp/start.ps1 <<'EOF'
+          import importlib.machinery, importlib.util
+          l = importlib.machinery.SourceFileLoader("o", "orbit")
+          m = importlib.util.module_from_spec(importlib.util.spec_from_loader("o", l)); l.exec_module(m)
+          print(m.wsl_script())
+          EOF
+          cat /tmp/start.ps1
+          cat > /tmp/probe.ps1 <<'EOF'
+          wsl.exe --list --verbose
+          wsl.exe -d Ubuntu-24.04 -e /usr/bin/id
+          $p = Start-Process -PassThru -WindowStyle Hidden -FilePath "$env:WINDIR\System32\wsl.exe" -ArgumentList '-d Ubuntu-24.04 -u root -e /bin/sh -c "id > /tmp/started.txt; sleep 30"' -RedirectStandardError "$env:TEMP\wsl-err.txt" -RedirectStandardOutput "$env:TEMP\wsl-out.txt"
+          Start-Sleep 8
+          "exited: $($p.HasExited) code: $($p.ExitCode)"
+          Get-Content "$env:TEMP\wsl-err.txt", "$env:TEMP\wsl-out.txt"
+          EOF
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w /tmp/probe.ps1)" || true
+          cat /tmp/started.txt || echo "probe never reached Linux"
           powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='wsl.exe'\" | Select-Object -ExpandProperty CommandLine" || true
       - name: Python for Windows can load the call listener's packages
         shell: pwsh

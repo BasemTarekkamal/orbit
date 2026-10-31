@@ -219,7 +219,9 @@ class Service(unittest.TestCase):
             ps = self.cli.wsl_script()
         finally:
             os.environ.pop("WSL_DISTRO_NAME", None)
-        self.assertIn('-d "Ubuntu-24.04" -e "/usr/bin/env" "STAFFROOM_HOME=%s"' % engine.HOME, ps)
+        import pwd
+        me = pwd.getpwuid(os.getuid()).pw_name
+        self.assertIn('-d "Ubuntu-24.04" -u "%s" -e "/usr/bin/env" "STAFFROOM_HOME=%s"' % (me, engine.HOME), ps)
         self.assertIn("service-run", ps)
         self.assertIn("Start-Process -WindowStyle Hidden", ps)
         self.assertIn("GetFolderPath('Startup')", ps)
