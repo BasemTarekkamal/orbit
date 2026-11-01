@@ -77,15 +77,18 @@ usually `Ubuntu`). Quote the command so the Windows shell passes it through whol
 ## Hand over
 Tell them, in your own words, short:
 - "Your control panel is open in your browser. It asks your name and what your business does, then you
-  pick what your first crew member should do. They start right away with a real first task." If the page
+  pick a job; your Claude asks a few questions about it and writes their card. When you launch them,
+  Claude opens on them and they start right away with a real first task." If the page
   didn't open: `~/orbit/orbit panel` (on Windows through `wsl -d <distro> -- bash -lc`).
 - How they'll talk to their crew, all three ways, since they won't think to ask:
   1. **In the control panel:** open the crew member and type; the answer appears right under it.
   2. **On their phone** (recommended): Telegram, Slack or Discord, through a bot of their own. The panel's
      "Connect your phone" walks them through it in about two minutes. Then they message the crew from
      anywhere, send voice notes and files, and get the routine reports there.
-  3. **Here, in the Claude app** (a backup at the computer): "ask Sara: …" in a Claude session opened in
-     the `orbit` folder. You pass it on with `~/orbit/orbit run <handle> "<message>"` (handles:
+  3. **In Claude itself:** each crew member's page has **Open in Claude**, a Claude session in their own
+     folder, with the same job, memory and safety locks (it opens on its own right after a hire; the first
+     time, Claude asks them to confirm the folder). And in any Claude session in the `orbit` folder, "ask
+     Sara: …" works too: you pass it on with `~/orbit/orbit run <handle> "<message>"` (handles:
      `~/orbit/orbit list`) and show the answer as it came.
 - What to expect: an answer in a minute or two (deep research takes longer), each with "How I did it".
   On their own, crew members only send the routines ticked in Manage (like a morning brief) and things

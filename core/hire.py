@@ -55,8 +55,28 @@ def directory(reg=None):
         fh.write("\n".join(lines) + "\n")
 
 
+def card_md(card: dict) -> str:
+    """The hiring interview's card, as a section of the employee's CLAUDE.md."""
+    out = ["", "## Your card (from the hiring interview)"]
+    if card.get("responsibilities"):
+        out += ["Responsibilities:"] + ["- %s" % r for r in card["responsibilities"]]
+    if card.get("plan"):
+        out += ["", "Your first days:"] + ["%d. %s" % (i + 1, p) for i, p in enumerate(card["plan"])]
+    if card.get("access"):
+        out += ["", "Access you asked your owner for (not given until they set it up; until then, prepare and ask):"]
+        out += ["- %s%s: %s" % (a.get("what", ""), (" (%s)" % a["site"]) if a.get("site") else "", a.get("why", ""))
+                for a in card["access"]]
+    if card.get("interview"):
+        out += ["", "What your owner told you in the interview:"]
+        out += ["- %s → %s" % (x.get("q", ""), x.get("a", "")) for x in card["interview"] if x.get("a")]
+    out += ["", "Acting as your owner (posting, replying as them, changing things in a portal): prepare it and ask; "
+            "do it only after they approve. Money: read only, never pay, transfer or buy.", ""]
+    return "\n".join(out)
+
+
 def hire(name: str, role: str, scope: str = "", supervisor: str = "", emp_id: str = None,
-         preset: str = "default", picked: list = None, model: str = None, domains: list = None) -> str:
+         preset: str = "default", picked: list = None, model: str = None, domains: list = None,
+         card: dict = None) -> str:
     name, role, scope = name.strip()[:60], role.strip()[:120], scope.strip()[:2000]
     if not name or not role:
         raise HireError("A name and a role are needed")
@@ -93,6 +113,13 @@ def hire(name: str, role: str, scope: str = "", supervisor: str = "", emp_id: st
              "abilities": abilities.validate(picked if picked is not None else abilities.preset(preset))}
     if model:
         entry["model"] = model
+    if card:
+        keep = {k: card[k] for k in ("responsibilities", "first_task", "plan", "access", "interview") if card.get(k)}
+        entry["card"] = keep
+        if card.get("weekly_tokens"):
+            entry["weekly_tokens"] = int(card["weekly_tokens"])
+        with open(os.path.join(ws, "CLAUDE.md"), "a", encoding="utf-8") as fh:
+            fh.write(card_md(keep))
     reg.setdefault("employees", {})[emp_id] = entry
     engine.save_registry(reg, "hire: %s (%s), supervisor %s" % (name, role, sup))
     directory(reg)
@@ -124,9 +151,16 @@ def set_abilities(emp_id: str, ids: list, by: str = "owner"):
 
 
 def set_field(emp_id: str, field: str, value) -> None:
-    """Owner-editable settings: model, effort, scope, supervisor."""
-    if field not in ("model", "effort", "scope", "supervisor", "role"):
+    """Owner-editable settings: model, effort, scope, supervisor, role, weekly token budget."""
+    if field not in ("model", "effort", "scope", "supervisor", "role", "weekly_tokens"):
         raise HireError("Can't change %r" % field)
+    if field == "weekly_tokens":
+        try:
+            value = int(value or 0)
+        except ValueError:
+            raise HireError("The weekly budget is a number of tokens")
+        if value < 0 or value > 100_000_000:
+            raise HireError("The weekly budget is between 0 (no cap) and 100M tokens")
     reg = engine.registry()
     if emp_id not in reg.get("employees", {}):
         raise HireError("No employee %r" % emp_id)

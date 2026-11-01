@@ -375,19 +375,36 @@ def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
     text = friendly_error(err) if d.get("is_error") else (d.get("result") or "").strip()
     rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "employee": emp["id"], "job": job,
            "ok": not d.get("is_error"), "secs": round(time.time() - t0), "model": model,
-           "turns": d.get("num_turns"), "cost_usd": d.get("total_cost_usd"),
+           "turns": d.get("num_turns"), "cost_usd": d.get("total_cost_usd"), "tokens": run_tokens(d),
            "error": err[:200] or None, "steps": steps[-40:]}
     os.makedirs(os.path.join(ws, "state"), exist_ok=True)
     with open(os.path.join(ws, "state", "runs.jsonl"), "a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
     return {"ok": not d.get("is_error"), "text": text, "error": err, "model": model, "steps": steps[-40:],
-            "secs": rec["secs"], "cost_usd": rec["cost_usd"]}
+            "secs": rec["secs"], "cost_usd": rec["cost_usd"], "tokens": rec["tokens"]}
+
+
+def run_tokens(d: dict) -> int:
+    """Tokens a run used on the owner's plan: what it read, wrote and newly cached (cache re-reads are cheap
+    and left out). Plan use is shown in tokens, never dollars: nothing is billed on a subscription."""
+    u = d.get("usage") or {}
+    return int(sum(int(u.get(k) or 0) for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens")))
+
+
+def tokens_of(r: dict) -> int:
+    """A logged run's tokens. Runs logged before tokens were recorded: estimated from their API-equivalent cost
+    (about 200,000 tokens per dollar on Sonnet)."""
+    if r.get("tokens") is not None:
+        return int(r["tokens"])
+    return int(float(r.get("cost_usd") or 0) * 200000)
 
 
 def stats(emp: dict) -> dict:
-    """Runs and plan use (API-equivalent dollars; nothing is billed on a subscription) today and 7 days."""
+    """Runs and plan use today and over 7 days: tokens (what the owner's plan meters), plus the API-equivalent
+    dollars kept for the record (nothing is billed on a subscription)."""
     today, week = time.strftime("%Y-%m-%d"), time.strftime("%Y-%m-%d", time.localtime(time.time() - 6 * 86400))
-    out = {"runs_today": 0, "failures_today": 0, "use_today": 0.0, "use_7d": 0.0, "last_run": None}
+    out = {"runs_today": 0, "failures_today": 0, "use_today": 0.0, "use_7d": 0.0, "tokens_today": 0, "tokens_7d": 0,
+           "failures_7d": 0, "runs_7d": 0, "last_run": None}
     try:
         with open(os.path.join(emp["workspace"], "state", "runs.jsonl"), encoding="utf-8") as fh:
             for line in fh:
@@ -398,11 +415,65 @@ def stats(emp: dict) -> dict:
                 day = r.get("ts", "")[:10]
                 if day >= week:
                     out["use_7d"] += float(r.get("cost_usd") or 0)
+                    out["tokens_7d"] += tokens_of(r)
+                    out["runs_7d"] += 1
+                    out["failures_7d"] += 0 if r.get("ok") else 1
                 if day == today:
                     out["runs_today"] += 1
                     out["failures_today"] += 0 if r.get("ok") else 1
                     out["use_today"] += float(r.get("cost_usd") or 0)
+                    out["tokens_today"] += tokens_of(r)
                 out["last_run"] = r.get("ts")
     except OSError:
         pass
     return out
+
+
+# ------------------------------------------------------------------ a Claude session in the employee's folder
+SESSION_HELLO = ("Hi %s. Introduce yourself to me in a few short lines: your job as you understand it, what you'll "
+                 "do first, and anything you need from me. Read your CLAUDE.md and notes first.")
+
+
+def claude_session(emp_id: str) -> dict:
+    """Readies the employee's folder so a Claude app session opened there is that employee, with the same locks
+    as its runs: the sandbox, the deny list and the guard (installed for this folder only), its abilities and
+    its tools. Written to .claude/settings.local.json, which the harness's own runs don't read (they use
+    --setting-sources project), so runs and sessions never double up. → {"folder", "link", "hello"}"""
+    import abilities
+    emp = employee(emp_id)
+    ws = emp["workspace"]
+    allow, block = abilities.tools(emp["id"])
+    sandbox = json.loads(settings_json(emp, abilities.commands(emp["id"])))["sandbox"]
+    env = clean_env(emp)
+    deny = []
+    for rule in BASE_DENIED + block + emp.get("extra_denied", []):
+        rule = re.sub(r"^Write\(", "Edit(", rule)          # Edit rules cover every file-editing tool
+        if rule not in deny:
+            deny.append(rule)
+    path = os.path.join(ws, ".claude", "settings.local.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            local = json.load(fh)
+    except (OSError, ValueError):
+        local = {}
+    local.update({
+        "sandbox": sandbox,
+        "permissions": {"allow": [t for t in BASE_ALLOWED if t not in block] + allow + emp.get("extra_tools", []),
+                        "deny": deny},
+        "env": {k: env[k] for k in ("STAFF_EMPLOYEE", "STAFF_WORKSPACE", "STAFFROOM_HOME", "STAFFROOM_KIT",
+                                     "STAFF_ABILITIES", "PATH")},
+    })
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(local, fh, indent=2)
+    if not (local.get("enabledPlugins") or {}).get("staff-guard@orbit"):
+        env_cli = {k: v for k, v in os.environ.items() if not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_")) and k != "CLAUDECODE"}
+        for args in (["plugin", "marketplace", "add", os.path.join(KIT, "core"), "--scope", "local"],
+                     ["plugin", "install", "staff-guard@orbit", "--scope", "local"]):
+            r = subprocess.run([resolve_claude()] + args, cwd=ws, capture_output=True, text=True, timeout=120, env=env_cli)
+            if r.returncode != 0 and "already" not in (r.stdout + r.stderr).lower():
+                raise RuntimeError("couldn't add the guard to %s's folder: %s" % (emp["name"], (r.stderr or r.stdout).strip()[-200:]))
+    import urllib.parse
+    hello = SESSION_HELLO % emp["name"]
+    link = "claude://code/new?" + urllib.parse.urlencode({"folder": ws, "q": hello}, quote_via=urllib.parse.quote)
+    return {"folder": ws, "link": link, "hello": hello}

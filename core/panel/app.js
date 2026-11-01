@@ -91,6 +91,10 @@ const I = {
   phone: svg('<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>'),
   copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>'),
   manage: svg('<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>'),
+  key: svg('<circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M16 7l2 2M14 9l2 2"/>'),
+  eye: svg('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>'),
+  chat: svg('<path d="M4 5h16v11H9l-5 4z"/>'),
+  claude: svg('<path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/>', 2),
 };
 const icon = (n) => I[n] || '';
 
@@ -256,7 +260,7 @@ function renderSide(r) {
     const pct = Math.max(0, Math.min(100, u[k]));
     return `<div class="row"><span>${k === 'five_hour' ? '5-hour limit' : 'Weekly limit'}</span><span class="num">${Math.round(pct)}%</span></div><div class="meter ${pct >= 80 ? 'hot' : ''}"><i data-w="${pct}"></i></div>`;
   }).join('');
-  const today = d.employees.reduce((a, e) => a + e.use_today, 0);
+  const today = d.employees.reduce((a, e) => a + (e.tokens_today || 0), 0);
   side.innerHTML = `
     <div class="brand"><img src="/icon.svg" alt=""><div><b>${esc(d.team_name)}${d.demo ? ' <span class="badge accent">demo</span>' : ''}</b><span class="meta"><i class="dot ${d.online ? 'active' : 'off'}"></i>${d.online ? 'Running' : 'Service stopped'}</span></div></div>
     <nav class="nav">
@@ -268,7 +272,7 @@ function renderSide(r) {
     <h3>Crew</h3>
     <nav class="nav emps">${emps || '<span class="faint small pad">None yet</span>'}</nav>
     <div class="spacer"></div>
-    <div class="use">${meters}<div class="row"><span>Plan use today</span><span class="num">≈${money(today)}</span></div></div>
+    <div class="use">${meters}<div class="row"><span>Crew today</span><span class="num">${fmtTok(today)} tokens</span></div></div>
     <div class="theme"><span>Appearance</span><div class="seg" role="group" aria-label="Appearance">
       <button data-act="theme" data-v="" class="${S.theme === '' ? 'on' : ''}">Auto</button>
       <button data-act="theme" data-v="light" class="${S.theme === 'light' ? 'on' : ''}">Light</button>
@@ -277,6 +281,7 @@ function renderSide(r) {
 }
 
 function afterRender(r, nav) {
+  syncLaunch(r);
   main.querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w + '%'; });
   main.querySelectorAll('textarea[data-grow]').forEach(grow);
   if (r.page === 'employee' && r.tab === 'work' && r.v === 'files' && r.f) ensureFile(r.id, r.f);
@@ -363,7 +368,8 @@ PAGES.missing = () => `<div class="empty"><b>No such page.</b><p><a class="link"
 PAGES.welcome = () => {
   const st = S.data.setup || {};
   const step = st.owner ? 2 : 1;
-  const steps = `<ol class="w-steps"><li class="${step > 1 ? 'done' : 'on'}">You</li><li class="${step === 2 ? 'on' : ''}">Their job</li><li>How you'll talk</li></ol>`;
+  const inter = step === 2 && S.ob && S.ob.stage !== 'basics';
+  const steps = `<ol class="w-steps"><li class="${step > 1 ? 'done' : 'on'}">You</li><li class="${step === 2 && !inter ? 'on' : inter ? 'done' : ''}">Their job</li><li class="${inter ? 'on' : ''}">The interview</li><li>Meet them in Claude</li></ol>`;
   const brand = `<div class="w-brand"><img src="/icon.svg" alt=""><span>Orbit</span></div>`;
   if (step === 1) {
     return `<div class="welcome">${brand}<h1>Build your crew.</h1>
@@ -394,28 +400,133 @@ function jobPicker(from) {
   const back = `<p class="meta sit-line">${esc(sit.title)} · <a class="link" href="#" data-act="situation" data-id="">change</a>${sit.id === 'other' ? '' : ` · <a class="link" href="#" data-act="situation" data-id="other">all jobs</a>`}</p>`;
   const sel = roles.find((x) => x.id === S.job);
   if (!sel) return back + `<div class="jobs">${cards}</div>`;
+  if (S.ob && S.ob.job === sel.id && S.ob.stage !== 'basics') {
+    return `<p class="meta sit-line">${esc(sel.title)} · <a class="link" href="#" data-act="ob-restart">change the job</a></p>${interviewHtml(sel, from)}`;
+  }
+  return back + `<div class="jobs">${cards}</div>${interviewHtml(sel, from)}`;
+}
+// ---- the hiring interview: the basics, then the owner's own Claude asks what this job needs and writes the card
+const BUDGET_LABELS = { light: ['Light', '≈1M tokens a week'], regular: ['Regular', '≈3M tokens a week'], heavy: ['Heavy', '≈8M tokens a week'] };
+const ACCESS_KIND = { sign_in: ['key', 'Signs in to read', 'You sign in once, in their own browser on this computer'],
+  post_with_approval: ['send', 'Posts after you approve', 'They prepare it; you tap Approve; they post it'],
+  finance_read_only: ['eye', 'Reads money, never moves it', 'Statements and balances only'],
+  files: ['file', 'Files you share', ''], chat_channel: ['chat', 'A chat channel', ''], other: ['plus', 'Other', ''] };
+function fmtTok(n) { n = Number(n) || 0; return n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n); }
+function thinking(title, lines) {
+  return `<div class="w-card think" role="status" aria-live="polite"><div class="orbit-spin" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div><b>${esc(title)}</b><ul class="think-lines">${lines.map((l, i) => `<li>${esc(l)}</li>`).join('')}</ul></div></div>`;
+}
+function interviewHtml(sel, from) {
+  const ob = S.ob && S.ob.job === sel.id ? S.ob : (S.ob = { job: sel.id, stage: 'basics' });
   const custom = sel.id === 'blank';
   const name = v('hire', 'name', sel.names[0] || '');
-  const on = new Set(v('hire', 'access', null) || ACCESS.filter(([, , ids]) => !sel.abilities || ids.some((a) => sel.abilities.includes(a))).map(([k]) => k));
-  const access = `<div class="field"><span class="lbl">What they get access to</span><div class="chips">${ACCESS.map(([k, l]) => `<label class="chip ${on.has(k) ? 'on' : ''}"><input class="sr" type="checkbox" name="access" value="${k}" ${on.has(k) ? 'checked' : ''}>${esc(l)}</label>`).join('')}</div>
-    <span class="hint">Always: memory, the safety guard, your chat. Coming: ${COMING.join(' · ')}. Until then they prepare and you send.</span></div>`;
-  const status = sel.today ? `<p class="small status-line">${esc(sel.today)}${sel.soon ? ` <span class="faint">Soon: ${esc(sel.soon)}</span>` : ''}</p>` : '';
-  const model = v('hire', 'model', sel.model || 'sonnet');
-  const form = `<form class="w-card hire-bar" data-form="hire" data-from="${from}">
+  const who = esc(name || 'them');
+  if (ob.stage === 'asking') return thinking(`Your Claude is preparing ${name || 'their'} interview…`, ['Reading about your business', `Thinking about what a ${(v('hire', 'role', sel.role) || 'crew member').toLowerCase()} needs to know`, 'Writing a few questions for you']);
+  if (ob.stage === 'composing') return thinking(`Building ${name || 'their'} card…`, ['Reading your answers', 'Choosing responsibilities and routines', 'Deciding what access to ask you for', 'Planning the first days']);
+  if (ob.stage === 'questions') {
+    const qs = ob.questions || [];
+    return `<form class="w-card interview" data-form="interview" data-from="${from}">
+      ${ob.intro ? `<p class="lede small">${esc(ob.intro)}</p>` : ''}
+      ${qs.map((q, i) => {
+        const a = ob.answers[q.id] || (q.type === 'multi' ? [] : '');
+        const opts = q.type === 'text' ? `<input class="input" name="${q.id}" maxlength="1500" placeholder="${esc(q.placeholder || '')}" value="${esc(a)}">`
+          : `<div class="chips">${q.options.map((o) => { const on = q.type === 'multi' ? a.includes(o) : a === o;
+              return `<button type="button" class="chip ${on ? 'on' : ''}" data-act="answer" data-q="${q.id}" data-multi="${q.type === 'multi' ? 1 : ''}" data-v="${esc(o)}" aria-pressed="${on}">${esc(o)}</button>`; }).join('')}</div>
+            <input class="input other" name="${q.id}__other" maxlength="400" placeholder="Or in your own words" value="${esc(ob.answers[q.id + '__other'] || '')}">`;
+        return `<fieldset class="q"><legend><span class="qn">${i + 1}</span>${esc(q.text)}</legend>${q.why ? `<p class="meta">${esc(q.why)}</p>` : ''}${opts}</fieldset>`;
+      }).join('')}
+      <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit">Build ${who}'s card</button>
+        <button type="button" class="btn btn-ghost" data-act="ob-back">Back</button></div></form>`;
+  }
+  if (ob.stage === 'card' && ob.card) return cardHtml(sel, ob, name, from);
+  // basics
+  const status = sel.today ? `<p class="small status-line">${esc(sel.today)}</p>` : '';
+  return `<form class="w-card hire-bar" data-form="basics" data-from="${from}">
       <div class="form-row"><div class="field"><label for="h-name">Their name</label><input id="h-name" class="input lg" name="name" required maxlength="60" value="${esc(name)}" placeholder="Sara">
         ${sel.names.length ? `<div class="chips">${sel.names.map((n) => `<button type="button" class="chip ${name === n ? 'on' : ''}" data-act="name" data-name="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}</div>
       ${custom ? `<div class="field"><label for="h-role">Job title</label><input id="h-role" class="input lg" name="role" required maxlength="120" value="${esc(v('hire', 'role', ''))}" placeholder="Bookkeeper"></div>` : ''}</div>
-      ${custom ? `<div class="field"><label for="h-scope">The job, in your own words</label><textarea id="h-scope" class="textarea" name="scope" rows="3" required maxlength="2000" placeholder="Keep my books from the bank statements I send each month: sort every line, flag anything odd, send me a one-page summary.">${esc(v('hire', 'scope', ''))}</textarea></div>` : status}
-      ${access}
-      <details class="adv"><summary>Job title, scope and model</summary><div class="form mt">
-        ${custom ? '' : `<div class="field"><label for="h-role">Job title</label><input id="h-role" class="input" name="role" maxlength="120" value="${esc(v('hire', 'role', sel.role))}"></div>
-        <div class="field"><label for="h-scope">What they own</label><textarea id="h-scope" class="textarea" name="scope" rows="3" maxlength="2000">${esc(v('hire', 'scope', sel.scope))}</textarea></div>`}
-        <div class="field"><label for="h-model">Model</label><select id="h-model" class="select auto" name="model">${MODELS.map((m) => `<option value="${m}" ${m === model ? 'selected' : ''}>${m}${m === 'sonnet' ? ' (balanced)' : m === 'haiku' ? ' (lightest on your plan)' : ' (strongest, heaviest)'}</option>`).join('')}</select></div>
-      </div></details>
-      <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit" data-hire-label>${icon('plus')}Launch ${esc(name || 'them')}</button><span class="meta">They start with a real first task, in about a minute.</span></div>
+      <div class="field"><label for="h-scope">${custom ? 'The job, in your own words' : 'What you want from them, in your own words'}</label><textarea id="h-scope" class="textarea" name="scope" rows="3" ${custom ? 'required' : ''} maxlength="2000" placeholder="${custom ? 'Keep my books from the bank statements I send each month: sort every line, flag anything odd, send me a one-page summary.' : esc(sel.scope)}">${esc(v('hire', 'scope', custom ? '' : sel.scope))}</textarea>
+        <span class="hint">Say it the way you'd brief a person. Next, your Claude asks a few questions about it.</span></div>
+      ${status}
+      <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit">Continue</button><span class="meta">A few questions, about a minute.</span></div>
     </form>`;
-  return back + `<div class="jobs">${cards}</div>${form}`;
 }
+function cardHtml(sel, ob, name, from) {
+  const c = ob.card, ed = ob.edit;
+  const on = new Set(ed.access);
+  const access = `<div class="chips">${ACCESS.filter(([k]) => k !== 'brief').map(([k, l]) => `<button type="button" class="chip ${on.has(k) ? 'on' : ''}" data-act="ob-access" data-k="${k}" aria-pressed="${on.has(k)}">${esc(l)}</button>`).join('')}</div>`;
+  const routines = [['brief', 'Morning brief'], ['standup', 'Standup'], ['eod', 'End of day']].map(([k, l]) =>
+    `<button type="button" class="chip ${ed.routines[k] ? 'on' : ''}" data-act="ob-routine" data-k="${k}" aria-pressed="${!!ed.routines[k]}">${l}</button>`).join('');
+  const asks = (c.access || []).map((a) => { const [ic, label, how] = ACCESS_KIND[a.kind] || ACCESS_KIND.other;
+    return `<li>${icon(ic)}<div><b>${esc(a.what)}</b>${a.site ? ` <span class="meta">${esc(a.site)}</span>` : ''}<div class="meta">${esc(label)}${how ? ' · ' + esc(how) : ''}. ${esc(a.why || '')}</div></div></li>`; }).join('');
+  const budget = Object.entries(BUDGET_LABELS).map(([k, [l, t]]) => `<button type="button" class="${ed.budget === k ? 'on' : ''}" data-act="ob-budget" data-k="${k}"><b>${l}</b><span>${t}</span></button>`).join('');
+  return `<form class="idcard" data-form="hire" data-from="${from}">
+    <header class="id-head"><span class="avatar xl hue-${hue(name || 'x')}" aria-hidden="true">${esc((name || '?').charAt(0).toUpperCase())}</span><div><h2>${esc(name || 'New crew member')}</h2><input class="input bare" name="role" maxlength="120" value="${esc(ed.role)}" aria-label="Job title"></div></header>
+    <div class="id-grid">
+      <section><h3>The job</h3><textarea class="textarea" name="scope" rows="4" data-grow maxlength="2000" aria-label="Scope">${esc(ed.scope)}</textarea>
+        <ul class="ticks">${(c.responsibilities || []).map((r) => `<li>${icon('check')}${esc(r)}</li>`).join('')}</ul></section>
+      <section><h3>First days</h3><ol class="plan">${(c.plan || []).map((p) => `<li>${esc(p)}</li>`).join('')}</ol>
+        <p class="meta">Starts with: ${esc(c.first_task || '')}</p></section>
+      ${asks ? `<section class="wide"><h3>Access ${esc(name)} will ask you for</h3><ul class="asks">${asks}</ul>
+        <p class="meta">Nothing here is granted yet: ${esc(name)} asks when it's needed, and anything public waits for your Approve. Money is read only, always.</p></section>` : ''}
+      <section><h3>Tools</h3>${access}</section>
+      <section><h3>Routines</h3><div class="chips">${routines}</div><p class="meta">Reports land in the team room and on your phone.</p></section>
+      <section class="wide"><h3>Weekly budget on your Claude plan</h3><div class="seg budget" role="group" aria-label="Weekly budget">${budget}</div>
+        <p class="meta">When it's used up, routines wait and ${esc(name)} still answers you. Crew members also slow down when your plan's weekly limit runs high.</p></section>
+    </div>
+    <div class="save-bar"><button class="btn btn-primary btn-lg" type="submit" data-hire-label>${icon('plus')}Launch ${esc(name || 'them')}</button>
+      <button type="button" class="btn btn-ghost" data-act="ob-back">Change answers</button></div>
+  </form>`;
+}
+
+function keepTyped() {                // the interview's typed answers survive a re-render
+  const f = $('.interview'); if (!f || !S.ob) return;
+  for (const el of f.querySelectorAll('input[name]')) S.ob.answers[el.name.endsWith('__other') ? el.name : el.name] = el.value;
+}
+function keepCard() {
+  const f = $('.idcard'); if (!f || !S.ob || !S.ob.edit) return;
+  S.ob.edit.role = f.elements.role.value; S.ob.edit.scope = f.elements.scope.value;
+}
+async function openClaude(emp, btn) {
+  const label = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Opening Claude…'; }
+  try {
+    const r = await api('/api/claude_session', { employee: emp });
+    S.claudeLinks = { ...(S.claudeLinks || {}), [emp]: r.link };
+    if (!r.opened) window.location.href = r.link;
+    toast(r.opened ? 'Claude is opening. Confirm the folder once, then press Enter to say hello.' : 'If Claude didn\'t open, use the link on this page.');
+  } catch (e) { toast(e.message, 'err'); }
+  if (btn) { btn.disabled = false; btn.innerHTML = label; }
+}
+// The moment after a hire: what's ready, and Claude opening on the new crew member
+function syncLaunch(r) {             // the welcome after a hire: shown once, then Claude opens on the new crew member
+  let el = document.getElementById('launch-layer');
+  const e = S.launched && S.data.employees.find((x) => x.id === S.launched);
+  if (!e || r.page !== 'employee' || r.id !== e.id) { if (el) el.remove(); return; }
+  if (el) return;
+  el = document.createElement('div'); el.id = 'launch-layer'; el.innerHTML = launchHtml(e); document.body.appendChild(el);
+  if (!S.data.demo && S.autoOpened !== e.id) {
+    S.autoOpened = e.id;
+    setTimeout(() => { const b = el.querySelector('[data-act=open-claude]'); if (b && document.body.contains(el)) openClaude(e.id, b); }, 2800);
+  }
+}
+function launchHtml(e) {
+  const st = S.data.setup || {};
+  const steps = [['Card and memory set up', 'Their job, plan and your answers are in their notes'], ['Safety locks on', 'Sandbox and guard, in every run and every Claude session'],
+    ['First task started', 'Watch it below; it takes a minute or two'], [`${esc(e.name)} is ready in Claude`, 'A session in their folder, with everything above']];
+  return `<div class="launch" role="dialog" aria-modal="true" aria-label="${esc(e.name)} joined your crew"><div class="launch-card">
+    <div class="launch-orbit" aria-hidden="true"><span class="ring r1"></span><span class="ring r2"></span><span class="sat s1"></span><span class="sat s2"></span>${avatar(e.id, e.name, 'xl')}</div>
+    <p class="launch-kicker">Welcome aboard</p><h2>${esc(e.name)} joined your crew</h2><p class="launch-role">${esc(e.role)}</p>
+    <ol class="launch-steps">${steps.map(([t, d], i) => `<li>${icon('check')}<div><b>${t}</b><span>${d}</span></div></li>`).join('')}</ol>
+    <div class="launch-actions">
+      <button class="btn btn-primary btn-lg" data-act="open-claude" data-emp="${e.id}">${icon('claude')}Talk to ${esc(e.name)} in Claude</button>
+      ${st.paired ? '' : `<a class="btn btn-lg" href="/connect">${icon('phone')}Put ${esc(e.name)} on your phone</a>`}
+    </div>
+    <p class="meta">Claude is where ${esc(e.name)} does the work, with all of Claude's power. Orbit adds the job, the memory, the routines and the locks.</p>
+    <button class="btn btn-ghost btn-sm launch-close" data-act="close-launch">Watch their first task</button>
+  </div></div>`;
+}
+
 function pickJob(id, rerender = true) {
   const x = S.roles.roles.find((y) => y.id === id); if (!x) return;
   S.job = id;
@@ -508,11 +619,11 @@ PAGES.today = () => {
     : `<div class="empty"><b>Quiet so far.</b><p>${emps.length ? 'What your team says to you and to each other shows up here.' : 'Add your first crew member and their missions show up here.'}</p></div>`;
   const mini = emps.length ? `<div class="list mini">${emps.map((e) => `<a class="row" href="/e/${e.id}">${avatar(e.id, e.name)}<div><div class="title">${esc(e.name)}</div><div class="meta">${esc(empNow(e))}</div></div>${statusHtml(e)}</a>`).join('')}</div>`
     : `<p class="quiet">No crew yet. <a class="link" href="/hire">Add your first</a>.</p>`;
-  const useToday = emps.reduce((a, e) => a + e.use_today, 0), use7 = emps.reduce((a, e) => a + e.use_7d, 0);
+  const useToday = emps.reduce((a, e) => a + (e.tokens_today || 0), 0), use7 = emps.reduce((a, e) => a + (e.tokens_7d || 0), 0);
   const u = d.usage || {};
-  const usage = `<div class="usage-box"><div class="row2"><span>Today</span><b class="num">≈${money(useToday)}</b></div><div class="row2"><span>Last 7 days</span><b class="num">≈${money(use7)}</b></div>
+  const usage = `<div class="usage-box"><div class="row2"><span>Crew today</span><b class="num">${fmtTok(useToday)} tokens</b></div><div class="row2"><span>Last 7 days</span><b class="num">${fmtTok(use7)} tokens</b></div>
     ${['five_hour', 'seven_day'].filter((k) => k in u).map((k) => `<div class="row2"><span>${k === 'five_hour' ? '5-hour limit' : 'Weekly limit'}</span><b class="num">${Math.round(u[k])}% used</b></div>`).join('')}
-    <p class="meta">What the runs would cost on the API. Nothing extra is billed: they use your Claude plan's limits.</p></div>`;
+    <p class="meta">Your crew runs on your Claude plan: nothing extra is billed. The limits are your plan's (shared with your own Claude use); each crew member also has a weekly budget.</p></div>`;
   const calls = Object.keys(d.calls || {}).map((id) => callCard(id, true)).join('');
   return `${demo}<header class="greet"><h1>${greet}, ${esc(d.me)}.</h1><p class="sub">${sub}</p></header>${setup}
     <div class="cols"><div>${calls ? `<section>${calls}</section>` : ''}${nowSec}
@@ -531,13 +642,21 @@ function tlItem(f) {
 }
 
 // ---- team
+// A crew member's health at a glance: this week's runs and failures, and tokens against their weekly budget
+function healthHtml(e) {
+  const cap = e.weekly_tokens || 0, used = e.tokens_7d || 0, pct = cap ? Math.min(100, Math.round(used / cap * 100)) : 0;
+  const runs = e.runs_7d ? `${plural(e.runs_7d, 'run')} this week` : 'No runs this week';
+  const fails = e.failures_7d ? ` · <span class="badge danger">${e.failures_7d} failed</span>` : '';
+  const meter = cap ? `<div class="meter thin ${pct >= 90 ? 'hot' : ''}" title="${fmtTok(used)} of ${fmtTok(cap)} tokens this week"><i data-w="${pct}"></i></div>` : '';
+  return `${runs}${fails}<div>${fmtTok(used)}${cap ? ' of ' + fmtTok(cap) : ''} tokens</div>${meter}`;
+}
 PAGES.team = () => {
   const d = S.data, emps = d.employees;
   const working = emps.filter((e) => (d.live || {})[e.id] || e.doing).length;
   const rows = emps.map((e) => `<a class="row team-row" href="/e/${e.id}">
     <div class="who">${avatar(e.id, e.name)}<div><div class="title">${esc(e.name)}</div><div class="meta">${esc(e.role)} · reports to ${esc(e.supervisor)}</div></div></div>
     ${statusHtml(e)}<div class="c-next small muted">${esc(empNow(e))}</div>
-    <div class="c-today small muted num">${e.runs_today ? `${plural(e.runs_today, 'run')} · ≈${money(e.use_today)}` : 'No runs today'}${e.failures_today ? ` · <span class="badge danger">${e.failures_today} failed</span>` : ''}</div>
+    <div class="c-today small muted num">${healthHtml(e)}</div>
     <div class="c-model small muted">${esc(e.model)}</div>${icon('chev').replace('<svg', '<svg class="chev"')}</a>`).join('');
   const ts = d.team_skills || [];
   const skills = emps.length ? `<section class="mt-lg"><div class="sec-head"><h2>Team skills</h2><span class="meta">${ts.length ? `${ts.length} shared · every employee uses them` : 'shared by employees, used by all'}</span></div>
@@ -558,8 +677,9 @@ PAGES.employee = (r) => {
   const body = { chat: tabChat, knowledge: tabKnowledge, work: tabWork, manage: tabManage }[r.tab](e, dt, r);
   const canCall = dt && dt.abilities.includes('meetings') && e.status !== 'paused';
   const callBtn = callOf(e.id) ? '' : canCall && !Object.keys(S.data.calls || {}).length
-    ? `<div class="actions"><button class="btn" data-act="order" data-kind="call_start" data-emp="${e.id}" title="${esc(e.name)} listens on this ${MAC()} and takes notes. Tell the others you're taking notes.">${icon('mic')}Listen to a call</button></div>` : '';
-  return `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span>·</span><span>reports to ${esc(e.supervisor)}</span><span>·</span>${statusHtml(e)}</div></div>${callBtn}</header>${callCard(e.id)}
+    ? `<button class="btn" data-act="order" data-kind="call_start" data-emp="${e.id}" title="${esc(e.name)} listens on this ${MAC()} and takes notes. Tell the others you're taking notes.">${icon('mic')}Listen to a call</button>` : '';
+  const claudeBtn = S.data.demo ? '' : `<button class="btn btn-primary" data-act="open-claude" data-emp="${e.id}" title="A Claude session in ${esc(e.name)}'s folder: same job, memory and locks">${icon('claude')}Open in Claude</button>`;
+  return `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span>·</span><span>reports to ${esc(e.supervisor)}</span><span>·</span>${statusHtml(e)}</div></div><div class="actions">${claudeBtn}${callBtn}</div></header>${callCard(e.id)}
     <nav class="tabs">${tabs.map(([k, l, n]) => `<a href="/e/${e.id}/${k}" class="${r.tab === k ? 'on' : ''}">${l}${n !== '' ? `<small>${esc(n)}</small>` : ''}</a>`).join('')}</nav>${body}`;
 };
 
@@ -660,9 +780,9 @@ function reachCard(e) {
   if (S.data.demo || st.paired || store(() => localStorage.getItem('reach-hidden'))) return '';
   return `<section class="reach"><div class="reach-head"><h2>How you'll work with ${esc(e.name)}</h2><button type="button" class="btn btn-ghost btn-sm" data-act="hide-reach" aria-label="Close">Got it</button></div>
     <ol>
-      <li><b>Here.</b> Type in the box above; the answer appears right under it. Everything the crew says also shows in Mission Control.</li>
+      <li><b>Here.</b> Type in the box above; the answer appears right under it. The whole crew talks in Mission Control's team room.</li>
       <li><b>On your phone</b> <span class="meta">recommended</span>. Telegram, Slack or Discord, through a bot of your own: message ${esc(e.name)} from anywhere, send voice notes, photos and files, and get their routine reports there. <a class="btn btn-primary btn-sm" href="/connect">Connect your phone</a> <span class="meta">about 2 minutes</span></li>
-      <li><b>In the Claude app</b> <span class="meta">a backup at your computer</span>. In Claude's Code tab, open the <code>orbit</code> folder and say “ask ${esc(e.name)}: …”. Same ${esc(e.name)}, same memory and limits.</li>
+      <li><b>In Claude.</b> <button type="button" class="btn btn-sm" data-act="open-claude" data-emp="${e.id}">${icon('claude')}Open ${esc(e.name)} in Claude</button> A session in their folder with all of Claude's power and the same memory and locks.</li>
     </ol>
     <p class="meta">What to expect: an answer in a minute or two (deep research takes longer), each with “How I did it”. On their own they only send the routines you tick in Manage (like a morning brief) and things that need you. They never post, buy or message anyone but you.</p></section>`;
 }
@@ -715,10 +835,10 @@ async function ensureFile(emp, path) {
 }
 function runsHtml(dt) {
   if (!dt.runs.length) return `<div class="empty"><b>No runs yet.</b><p>Every chat, routine and colleague question is logged here, with how it was done, how long it took and its plan use.</p></div>`;
-  const head = `<div class="run-head"><span>When</span><span>What</span><span>Model</span><span class="num">Time</span><span class="num">Plan use</span><span>Result</span></div>`;
+  const head = `<div class="run-head"><span>When</span><span>What</span><span>Model</span><span class="num">Time</span><span class="num">Tokens</span><span>Result</span></div>`;
   return `<div class="runs">${head}${dt.runs.map((x) => {
     const steps = x.steps || [];
-    const cells = `<span class="num">${fmtTime(x.ts)}</span><span>${esc(RUN_LABELS[x.job] || x.job)}</span><span class="muted">${esc(x.model || '')}</span><span class="num">${dur(x.secs)}</span><span class="num">≈${money(x.cost_usd)}</span><span class="${x.ok ? 'muted' : 'err'}">${x.ok ? (steps.length ? plural(steps.length, 'step') : 'ok') : esc(x.error || 'failed')}</span>`;
+    const cells = `<span class="num">${fmtTime(x.ts)}</span><span>${esc(RUN_LABELS[x.job] || x.job)}</span><span class="muted">${esc(x.model || '')}</span><span class="num">${dur(x.secs)}</span><span class="num">${fmtTok(x.tokens != null ? x.tokens : (x.cost_usd || 0) * 200000)}</span><span class="${x.ok ? 'muted' : 'err'}">${x.ok ? (steps.length ? plural(steps.length, 'step') : 'ok') : esc(x.error || 'failed')}</span>`;
     const key = 'run:' + x.ts;
     return steps.length ? `<details class="run" data-key="${esc(key)}" ${S.open.has(key) ? 'open' : ''}><summary>${cells}</summary><ol class="steps done">${steps.map((s) => `<li><span>${esc(s.text)}</span><span class="t num">${mmss(s.t)}</span></li>`).join('')}</ol></details>`
       : `<div class="run"><div class="sum">${cells}</div></div>`;
@@ -743,6 +863,7 @@ function tabManage(e, dt) {
     <section><h2>Run a routine now</h2><p class="desc">The result shows up in the chat and the team room.</p>
       <div class="save-bar"><select class="select auto" id="run-job" aria-label="Routine">${jobs}</select><button class="btn" data-act="order" data-kind="run_job" data-emp="${e.id}" data-from="#run-job" ${paused ? 'disabled' : ''}>Launch now</button></div></section>
     <section><h2>Model</h2><p class="desc">${esc(e.name)} switches to the lightest model on their own when your plan is nearly used up.</p><div><select class="select auto" data-field="model" data-emp="${e.id}" aria-label="Model">${models}</select></div></section>
+    <section><h2>Weekly budget</h2><p class="desc">Tokens a week on your Claude plan. When it's used up, routines wait and ${esc(e.name)} still answers you. This week: ${fmtTok(e.tokens_7d)} tokens.</p><div><select class="select auto" data-field="weekly_tokens" data-emp="${e.id}" aria-label="Weekly budget">${[[0, 'No cap'], [1000000, 'Light · 1M tokens'], [3000000, 'Regular · 3M tokens'], [8000000, 'Heavy · 8M tokens'], [20000000, 'Very heavy · 20M tokens']].map(([n, l]) => `<option value="${n}" ${Number(e.weekly_tokens || 0) === n ? 'selected' : ''}>${l}</option>`).join('')}</select></div></section>
     <section><h2>Abilities</h2><p class="desc">What ${esc(e.name)} may do. These are locks: anything off is blocked, whatever anyone says in chat. Changes apply on their next run.</p>
       <form id="ab-${e.id}" data-form="abilities" data-emp="${e.id}"><div class="ab-bar"><button class="btn btn-primary" type="submit">Save</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="default">Default</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="super">Super agent</button><span class="meta">${on.size} of ${S.cat.abilities.length} on</span></div></form>
       <div class="ab-groups">${groups}</div></section>
@@ -902,6 +1023,19 @@ document.addEventListener('click', async (ev) => {
   else if (act === 'job') { pickJob(b.dataset.role); }
   else if (act === 'situation') { ev.preventDefault(); S.situation = b.dataset.id || null; S.job = null; delete S.vals.hire; render(true); }
   else if (act === 'name') { (S.vals.hire ||= {}).name = b.dataset.name; render(true); }
+  else if (act === 'answer' && S.ob) {
+    const q = b.dataset.q, val = b.dataset.v;
+    if (b.dataset.multi) { const cur = new Set(S.ob.answers[q] || []); cur.has(val) ? cur.delete(val) : cur.add(val); S.ob.answers[q] = [...cur]; }
+    else S.ob.answers[q] = S.ob.answers[q] === val ? '' : val;
+    keepTyped(); render(true);
+  }
+  else if (act === 'ob-restart') { ev.preventDefault(); S.ob = null; S.job = null; render(true); }
+  else if (act === 'ob-back' && S.ob) { S.ob.stage = S.ob.stage === 'card' ? 'questions' : 'basics'; render(true); }
+  else if (act === 'ob-access' && S.ob) { const a = new Set(S.ob.edit.access); a.has(b.dataset.k) ? a.delete(b.dataset.k) : a.add(b.dataset.k); S.ob.edit.access = [...a]; keepCard(); render(true); }
+  else if (act === 'ob-routine' && S.ob) { S.ob.edit.routines[b.dataset.k] = !S.ob.edit.routines[b.dataset.k]; keepCard(); render(true); }
+  else if (act === 'ob-budget' && S.ob) { S.ob.edit.budget = b.dataset.k; keepCard(); render(true); }
+  else if (act === 'open-claude') { openClaude(b.dataset.emp, b); }
+  else if (act === 'close-launch') { S.launched = null; const l = document.getElementById('launch-layer'); if (l) l.remove(); }
   else if (act === 'try') {
     const emp = b.dataset.emp;
     if (!document.getElementById('composer-' + emp)) { (S.vals['message:' + emp] ||= {}).text = b.dataset.text; go('/e/' + emp); return; }
@@ -991,16 +1125,47 @@ document.addEventListener('submit', async (ev) => {
     if (kind === 'welcome') {
       await api('/api/welcome', { name: fd.get('name'), team_name: fd.get('team_name'), about: fd.get('about') });
       delete S.vals.welcome; S.data = await api('/api/state'); await render(true);
-    } else if (kind === 'hire') {
+    } else if (kind === 'basics') {
       const sel = S.roles.roles.find((x) => x.id === S.job) || {};
-      const body = { kind: 'hire', name: fd.get('name'), role: fd.get('role') || sel.role, scope: fd.get('scope') || sel.scope,
-        supervisor: fd.get('supervisor') || S.data.me, model: fd.get('model') || sel.model || 'sonnet' };
-      const picked = new Set(fd.getAll('access'));
-      body.abilities = ALWAYS.concat(...ACCESS.filter(([k]) => picked.has(k)).map(([, , ids]) => ids));
+      const h = (S.vals.hire ||= {});
+      h.name = (fd.get('name') || '').trim(); h.role = (fd.get('role') || sel.role || '').trim(); h.scope = (fd.get('scope') || sel.scope || '').trim();
+      S.ob = { job: S.job, stage: 'asking', answers: {} }; render(true);
+      try {
+        const q = await api('/api/onboard/questions', { name: h.name, role: h.role, scope: h.scope });
+        Object.assign(S.ob, { stage: 'questions', intro: q.intro, questions: q.questions || [] });
+      } catch (e) { S.ob.stage = 'basics'; toast(e.message); }
+      render(true).then(() => { const x = $('.interview, .hire-bar'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    } else if (kind === 'interview') {
+      const h = S.vals.hire || {}, ob = S.ob;
+      for (const q of ob.questions) {
+        if (q.type === 'text') ob.answers[q.id] = (fd.get(q.id) || '').trim();
+        else ob.answers[q.id + '__other'] = (fd.get(q.id + '__other') || '').trim();
+      }
+      const answers = ob.questions.map((q) => { const a = ob.answers[q.id], o = ob.answers[q.id + '__other'];
+        return { q: q.text, a: [].concat(a || []).concat(o ? [o] : []).join(', ') }; });
+      ob.stage = 'composing'; render(true);
+      try {
+        const c = await api('/api/onboard/card', { name: h.name, role: h.role, scope: h.scope, answers });
+        const ids = new Set(c.abilities || []);
+        ob.card = c; ob.stage = 'card';
+        ob.edit = { role: c.role || h.role, scope: c.scope || h.scope, routines: { ...(c.routines || {}) }, budget: c.budget || 'regular', model: c.model || 'sonnet',
+          access: ACCESS.filter(([k, , a]) => k !== 'brief' && a.some((x) => ids.has(x))).map(([k]) => k) };
+      } catch (e) { ob.stage = 'questions'; toast(e.message); }
+      render(true).then(() => { const x = $('.idcard, .interview'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    } else if (kind === 'hire') {
+      const h = S.vals.hire || {}, ob = S.ob || {}, ed = ob.edit || {}, c = ob.card || {};
+      const picked = new Set(ed.access || []);
+      const routines = Object.entries(ed.routines || {}).filter(([, on]) => on).map(([k]) => k);
+      const body = { kind: 'hire', name: h.name, role: fd.get('role') || ed.role || h.role, scope: fd.get('scope') || ed.scope || h.scope,
+        supervisor: S.data.me, model: ed.model || 'sonnet',
+        abilities: ALWAYS.concat(...ACCESS.filter(([k]) => picked.has(k) && k !== 'brief').map(([, , ids]) => ids), routines),
+        card: { ...c, weekly_tokens: { light: 1e6, regular: 3e6, heavy: 8e6 }[ed.budget] || 3e6 } };
+      const btn = f.querySelector('[data-hire-label]'); if (btn) { btn.disabled = true; btn.textContent = 'Launching…'; }
       const r = await api('/api/order', body);
       const id = (r.message.match(/\/([a-z0-9-]+)$/) || [])[1];
-      delete S.vals.hire; S.job = null;
+      delete S.vals.hire; S.job = null; S.ob = null;
       S.data = await api('/api/state');
+      S.launched = id || null;
       go(id ? `/e/${id}` : '/team');
       schedule();
     } else if (kind === 'connect') {

@@ -228,6 +228,32 @@ def to_people(emp, target):
 
 
 # ------------------------------------------------------------------ running employees
+BUDGET_NOTED: dict = {}
+
+
+def over_budget(emp):
+    """Has this crew member used its weekly token budget (set in the hiring interview or in Manage)? Says so in
+    the team room once a day, then skips routines until the week rolls on."""
+    cap = int(emp.get("weekly_tokens") or 0)
+    if not cap:
+        return False
+    used = engine.stats(emp)["tokens_7d"]
+    if used < cap:
+        return False
+    today = time.strftime("%Y-%m-%d")
+    if BUDGET_NOTED.get(emp["id"]) != today:
+        BUDGET_NOTED[emp["id"]] = today
+        feed(emp["id"], emp["name"], emp.get("supervisor", "team"),
+             "I've used my weekly budget (%s of %s tokens), so my routines wait until it frees up. I still answer you. "
+             "Raise it in my Manage tab if you want more." % (fmt_tokens(used), fmt_tokens(cap)), "job")
+    return True
+
+
+def fmt_tokens(n):
+    n = int(n or 0)
+    return "%.1fM" % (n / 1e6) if n >= 1e6 else "%dk" % round(n / 1e3) if n >= 1e3 else str(n)
+
+
 def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None, extra_env=None, said=None, channel=None):
     """Runs an employee in the background (one run at a time each). on_done(output) gets the final text.
     `said` is the owner's own words (for the chat log); the prompt wraps them."""
@@ -239,6 +265,8 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
         lock = LOCKS.setdefault(emp_id, threading.Lock())
         with lock:
             emp = engine.employee(emp_id)
+            if job in DEFAULT_JOBS and over_budget(emp):     # routines wait; chats and owner requests never do
+                return
             DOING[emp_id] = ("Talking with %s" % who) if job == "chat" and who else "Working on %s" % LABELS.get(job, job)
             LIVE[emp_id] = {"doing": DOING[emp_id], "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "steps": []}
 
@@ -338,6 +366,10 @@ def job_prompt(emp_id, e, job, note=""):
         tpl = fh.read()
     ctx = "\n\n---\nContext: now %s local time.%s Recent owner messages to you:\n%s" % (now_str(), note, recent_chat(emp_id))
     tpl = tpl.replace("$STAFFROOM_KIT", engine.KIT)
+    card = e.get("card") or {}
+    if job == "first_day" and card.get("first_task"):
+        note += (" Your first task, agreed in the hiring interview: %s Do that as your one piece of work." % card["first_task"])
+        ctx = "\n\n---\nContext: now %s local time.%s Recent owner messages to you:\n%s" % (now_str(), note, recent_chat(emp_id))
     return tpl.replace("{name}", e["name"]).replace("{role}", e["role"]).replace("{supervisor}", e.get("supervisor", "")) + ctx
 
 

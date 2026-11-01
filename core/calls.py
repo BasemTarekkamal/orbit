@@ -362,9 +362,9 @@ def _start(emp_id, by, title, on_end, mic):
                 cwd = "/mnt/c" if os.path.isdir("/mnt/c") else None
             else:
                 cmd, cwd = [sys.executable, PY_SRC, audio], None
-            log = open(os.path.join(audio, "listener.log"), "ab")
-            proc = subprocess.Popen(cmd + extra, stdout=log, stderr=log, stdin=subprocess.DEVNULL, cwd=cwd,
-                                    start_new_session=True)
+            with open(os.path.join(audio, "listener.log"), "ab") as log:   # the child keeps its own copy
+                proc = subprocess.Popen(cmd + extra, stdout=log, stderr=log, stdin=subprocess.DEVNULL, cwd=cwd,
+                                        start_new_session=True)
         except OSError as e:
             shutil.rmtree(d, ignore_errors=True)
             raise CallError("Orbit Listener didn't start (%s). Run  orbit doctor" % e)

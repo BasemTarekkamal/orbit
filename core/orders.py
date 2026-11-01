@@ -61,8 +61,9 @@ def execute(by, kind, p):
             sup = p.get("supervisor") or by
             preset = "super" if p.get("preset") == "super" else "default"
             picked = [str(x) for x in p["abilities"]][:100] if isinstance(p.get("abilities"), list) else None
+            card = p.get("card") if isinstance(p.get("card"), dict) else None
             new = hire.hire(p.get("name", ""), p.get("role", ""), p.get("scope", ""), supervisor=sup, preset=preset,
-                            picked=picked, model=p.get("model") or None)
+                            picked=picked, model=p.get("model") or None, card=card)
             e = engine.registry()["employees"][new]
             team.feed("staff", "Orbit", "team", "%s joined as %s, reporting to %s. Message them here, or /%s (@%s on "
                       "Slack and Discord) in your chat." % (e["name"], e["role"], e["supervisor"], new, new), "panel")

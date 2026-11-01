@@ -41,10 +41,12 @@ setup differences are below.
 
 Claude installs everything, says what each step does, and opens your control panel. On Windows it
 first asks you to turn on WSL (two clicks and a restart, below) and to type your password where one
-is needed. There you answer
-two questions (your name, what your business does), pick what your first employee should do, and
-watch them start: within a minute they introduce themselves with a first piece of real work for your
-business. Then you put them on your phone in about two minutes.
+is needed. There you say who
+you are and what your business does, pick a job, and your own Claude interviews you about it: a few
+tap-to-answer questions written for that job (your channels, goals, tone, what they may do alone,
+what access you'd give). It turns your answers into the crew member's card: responsibilities, first
+days, routines, the access they'll ask you for, and a weekly token budget. Launch, and Claude opens on
+your new crew member, who introduces themselves and gets to work.
 
 **In Terminal instead (Mac):**
 
@@ -69,9 +71,10 @@ in a sandbox there, the same one Claude Code uses on Linux.
 Windows and Linux support is new (November 2026). It's tested automatically on Ubuntu and on WSL,
 but few people have used it yet, so please tell us what breaks.
 
-**Talking to your crew.** In the control panel (open a crew member and type), on your phone through
-Telegram, Slack or Discord (the panel connects it in about two minutes), or in the Claude app: open the
-`orbit` folder in Claude's Code tab and say "ask Sara: …". Same crew member everywhere, same memory.
+**Talking to your crew.** In Claude: every crew member has an **Open in Claude** button, a Claude
+session in their own folder with all of Claude's power and the same job, memory and safety locks. On
+your phone: Telegram, Slack or Discord (the panel connects it in about two minutes). And in the
+control panel: the team room for the whole crew, and each crew member's page.
 
 **Just want to look around first?** After cloning, `~/orbit/orbit demo` opens the control panel
 with a pretend team (invented business, canned replies, no bot, no Claude run). `orbit demo --stop`
@@ -147,10 +150,12 @@ who don't live in Terminal: every setting is a button or a form.
 
 - **Watch them work.** While an employee works you see each step as it happens ("Searching the web",
   "Opening tiktok.com in the browser", "Asking Omar", "Writing research/prices.md"), and every answer
-  keeps a **How I did it** receipt: the steps, the time, the plan use.
-- **First run in the browser:** your name and business, then "What should your first employee do?"
-  (be my right hand, research my market, tell me what's said on TikTok, find leads, watch my
-  competitors, read my documents, or describe the job yourself). They start with a real first task.
+  keeps a **How I did it** receipt: the steps, the time, the tokens.
+- **Hiring is an interview:** your name and business, then the job (be my right hand, research my
+  market, tell me what's said on TikTok, find leads, watch my competitors, keep my books, or describe it
+  yourself), then your Claude asks what this job needs and writes the card you approve. Instead of
+  "I can't", the card lists the access they'll ask for: signing in once in their own browser, posting
+  after you approve, money read only.
 - **Your phone in two minutes:** paste your bot's token in the panel, tap "Open Telegram and press
   Start" (or send a 6-digit code on Slack or Discord), done. The token never goes through a chat.
 - **Today:** who's working on what right now, what needs you, what the team said, plan use.
@@ -188,8 +193,9 @@ An autonomous agent that reads the open web needs locks, not promises. Every run
 
 - **Claude:** employees run on your own Claude subscription through the official, unmodified
   Claude Code, each signed in through Anthropic's own login on your computer. Nothing is billed per run;
-  runs use your plan's limits, which you share with your own Claude use. The panel shows "plan use"
-  (what the runs would cost on the API) and your 5-hour and weekly limits. When usage is high,
+  runs use your plan's limits, which you share with your own Claude use. The panel shows use in
+  tokens, never dollars: each crew member's tokens this week against the weekly budget you gave them,
+  and your plan's 5-hour and weekly limits. Over budget, routines wait and they still answer you. When usage is high,
   employees switch to a lighter model on their own. A busy team uses a lot, so start with one or two
   employees on Sonnet or Haiku. You can also use your own API key (`orbit secret anthropic`), billed
   to your Anthropic account.

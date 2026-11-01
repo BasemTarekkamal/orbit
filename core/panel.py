@@ -114,6 +114,8 @@ def members():
                     "last_run": s["last_run"], "next_job": nj, "next_job_at": nw.strftime("%Y-%m-%dT%H:%M:%S") if nw else None,
                     "runs_today": s["runs_today"], "failures_today": s["failures_today"],
                     "use_today": round(s["use_today"], 3), "use_7d": round(s["use_7d"], 3),
+                    "tokens_today": s["tokens_today"], "tokens_7d": s["tokens_7d"], "weekly_tokens": int(m.get("weekly_tokens") or 0),
+                    "runs_7d": s["runs_7d"], "failures_7d": s["failures_7d"], "card": m.get("card") or {},
                     "abilities": sorted(abilities.effective(k)), "abilities_on": len(abilities.effective(k)), "abilities_total": total,
                     "model": m.get("model") or emp.get("model", "sonnet"), "effort": m.get("effort") or emp.get("effort", "medium")})
     return out
@@ -190,6 +192,59 @@ def checklist(emps, feed):
         {"id": "voice", "done": os.path.exists(model), "optional": True, "title": osinfo.local("Voice notes, transcribed on this Mac"),
          "how": "Ask Claude: “Set up voice notes for my Orbit.”"},
     ]
+
+
+def interview(step, f):
+    """The hiring interview (onboard.py): Claude's follow-up questions, then the card. Canned in the demo."""
+    name, role, scope = (str(f.get(k) or "").strip()[:2000] for k in ("name", "role", "scope"))
+    if not role:
+        raise orders.OrderError("Pick a job first")
+    if DEMO:
+        return demo_interview(step, name, role)
+    import onboard
+    try:
+        if step == "questions":
+            return onboard.questions(role, scope, name)
+        answers = [{"q": str(x.get("q", ""))[:300], "a": str(x.get("a", ""))[:1500]} for x in (f.get("answers") or [])
+                   if isinstance(x, dict)][:8]
+        card = onboard.compose(role, scope, name, answers)
+        card["interview"] = answers
+        return card
+    except subprocess.TimeoutExpired:
+        raise orders.OrderError("Claude took too long. Try again, or skip the questions.")
+    except RuntimeError as e:
+        raise orders.OrderError(str(e))
+
+
+def demo_interview(step, name, role):
+    if step == "questions":
+        return {"intro": "Demo: these questions are scripted. With your own Orbit, your Claude writes them for this job.",
+                "questions": [
+                    {"id": "q1", "text": "Where should %s look first?" % (name or "they"), "type": "multi",
+                     "options": ["Competitors' sites", "TikTok and Instagram", "Google Maps reviews", "News"]},
+                    {"id": "q2", "text": "How often should they report?", "type": "choice",
+                     "options": ["Every morning", "Twice a week", "Only when something changes"]},
+                    {"id": "q3", "text": "Anything they must always do?", "type": "text", "options": [],
+                     "placeholder": "Quote prices with the date and a link"}]}
+    return {"role": role, "scope": "Demo card: with your own Orbit, your Claude writes this from your answers.",
+            "responsibilities": ["Watch the competitors you named", "Report what changed, with a link", "Keep notes"],
+            "first_task": "Check the three main competitors' prices today.", "plan": ["Day 1: prices", "Day 2: social posts"],
+            "routines": {"brief": True, "standup": False, "eod": False}, "abilities": ["web", "fetch", "browser", "brief"],
+            "access": [], "budget": "light", "weekly_tokens": 1000000, "model": "haiku", "interview": []}
+
+
+def claude_session(emp_id):
+    """Readies the crew member's folder (engine.claude_session) and, on a Mac, opens a Claude app session there."""
+    if emp_id not in engine.registry().get("employees", {}):
+        raise orders.OrderError("No such crew member")
+    if DEMO:
+        raise orders.OrderError("Not in the demo: in your own Orbit this opens a Claude session as them.")
+    try:
+        s = engine.claude_session(emp_id)
+    except RuntimeError as e:
+        raise orders.OrderError(str(e))
+    opened = osinfo.KIND == "mac" and osinfo.open_url(s["link"])
+    return {"ok": True, "link": s["link"], "folder": s["folder"], "opened": bool(opened), "hello": s["hello"]}
 
 
 def setup_state(emps):
@@ -661,6 +716,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "message": skill_action(f, me)})
             if path == "/api/welcome":
                 return self._json(200, {"ok": True, "message": welcome(f, me)})
+            if path in ("/api/onboard/questions", "/api/onboard/card"):
+                return self._json(200, interview(path.rsplit("/", 1)[1], f))
+            if path == "/api/claude_session":
+                return self._json(200, claude_session(str(f.get("employee") or "")))
             if path == "/api/connect":
                 return self._json(200, connect(f, me))
             if path == "/api/pairing" and f.get("channel") in channels.NAMES:

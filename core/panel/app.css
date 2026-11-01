@@ -585,3 +585,79 @@ details.adv > summary:hover { color: var(--ink); }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
   .dot.working { animation: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 }
+
+/* ---- the hiring interview */
+.think { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; margin-top: 18px; animation: rise 220ms var(--ease); }
+.think b { font-weight: 600; }
+.think-lines { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; color: var(--ink-3); }
+.think-lines li { opacity: 0.35; animation: think-on 600ms var(--ease) forwards; }
+.think-lines li:nth-child(2) { animation-delay: 1.6s; } .think-lines li:nth-child(3) { animation-delay: 3.2s; } .think-lines li:nth-child(4) { animation-delay: 4.8s; }
+@keyframes think-on { to { opacity: 1; color: var(--ink-2); } }
+.orbit-spin { position: relative; width: 44px; height: 44px; }
+.orbit-spin i { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid transparent; border-top-color: var(--accent); animation: spin 1.4s linear infinite; }
+.orbit-spin i:nth-child(2) { inset: 7px; border-top-color: color-mix(in srgb, var(--accent) 60%, transparent); animation-duration: 2s; animation-direction: reverse; }
+.orbit-spin i:nth-child(3) { inset: 18px; background: var(--accent); border: 0; animation: pulse 1.6s infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.interview { margin-top: 18px; display: grid; gap: 18px; animation: rise 220ms var(--ease); }
+.interview .q { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; animation: rise 320ms var(--ease) both; }
+.interview .q:nth-of-type(2) { animation-delay: 60ms; } .interview .q:nth-of-type(3) { animation-delay: 120ms; } .interview .q:nth-of-type(4) { animation-delay: 180ms; } .interview .q:nth-of-type(5) { animation-delay: 240ms; } .interview .q:nth-of-type(6) { animation-delay: 300ms; }
+.interview legend { font-weight: 600; font-size: 14.5px; display: flex; gap: 10px; align-items: baseline; padding: 0; text-wrap: pretty; }
+.interview .qn { flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; background: var(--accent-soft); color: var(--accent-text); }
+.interview .q .meta { margin: -4px 0 0 32px; }
+.interview .q .chips, .interview .q > .input { margin-left: 32px; }
+.interview .q > .input { width: calc(100% - 32px); }
+.interview .input.other { margin-left: 32px; width: calc(100% - 32px); font-size: 13px; }
+.idcard { margin-top: 18px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--bg); box-shadow: var(--shadow); overflow: hidden; animation: rise 280ms var(--ease); }
+.id-head { display: flex; gap: 16px; align-items: center; padding: 20px 22px; background: linear-gradient(135deg, var(--accent-soft), transparent 70%); border-bottom: 1px solid var(--line); }
+.id-head h2 { margin: 0; font-size: 22px; letter-spacing: -0.015em; }
+.input.bare { border: 0; background: transparent; padding: 2px 0; font-size: 14px; color: var(--ink-2); width: 100%; }
+.input.bare:focus { outline: none; box-shadow: inset 0 -1px 0 var(--accent); }
+.id-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0; }
+.id-grid section { padding: 16px 22px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; align-content: start; }
+.id-grid section.wide { grid-column: 1 / -1; }
+.id-grid h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.ticks, .asks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 13.5px; line-height: 1.45; }
+.ticks li { display: grid; grid-template-columns: 16px 1fr; gap: 8px; }
+.ticks svg { width: 16px; height: 16px; color: var(--accent-text); margin-top: 2px; }
+.asks li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.asks svg { width: 18px; height: 18px; color: var(--accent-text); margin: 2px 0 0 4px; }
+.plan { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13.5px; line-height: 1.45; }
+.seg.budget { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.seg.budget button { display: grid; gap: 2px; text-align: left; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg); cursor: pointer; }
+.seg.budget button span { font-size: 12px; color: var(--ink-3); }
+.seg.budget button.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.idcard .save-bar { padding: 16px 22px; }
+.avatar.xl { width: 64px; height: 64px; font-size: 26px; border-radius: 18px; }
+.emp-head .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+
+/* ---- the moment after a hire */
+.launch { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(6px); animation: fade 260ms var(--ease); }
+@keyframes fade { from { opacity: 0; } }
+.launch-card { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto; text-align: center; padding: 28px 28px 20px; border: 1px solid var(--line-2); border-radius: 18px; background: var(--bg); box-shadow: var(--shadow); animation: rise 420ms var(--ease); }
+.launch-orbit { position: relative; width: 132px; height: 132px; margin: 0 auto 10px; display: grid; place-items: center; }
+.launch-orbit .ring { position: absolute; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.launch-orbit .r1 { inset: 0; animation: spin 14s linear infinite; }
+.launch-orbit .r2 { inset: 18px; border-style: dashed; animation: spin 9s linear infinite reverse; }
+.launch-orbit .sat { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); top: 50%; left: 50%; margin: -5px; }
+.launch-orbit .s1 { animation: orbit1 3.6s linear infinite; }
+.launch-orbit .s2 { width: 7px; height: 7px; margin: -3.5px; opacity: 0.7; animation: orbit2 5.2s linear infinite; }
+@keyframes orbit1 { from { transform: rotate(0deg) translateX(66px); } to { transform: rotate(360deg) translateX(66px); } }
+@keyframes orbit2 { from { transform: rotate(180deg) translateX(48px); } to { transform: rotate(-180deg) translateX(48px); } }
+.launch-orbit .avatar { animation: pop 600ms var(--ease) both 150ms; }
+@keyframes pop { from { transform: scale(0.6); opacity: 0; } }
+.launch-kicker { margin: 0; font-size: 12px; color: var(--accent-text); font-weight: 600; }
+.launch h2 { margin: 4px 0 2px; font-size: 24px; letter-spacing: -0.02em; }
+.launch-role { margin: 0 0 16px; color: var(--ink-3); }
+.launch-steps { list-style: none; padding: 0; margin: 0 0 18px; display: grid; gap: 8px; text-align: left; }
+.launch-steps li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); opacity: 0; animation: step-in 420ms var(--ease) forwards; animation-delay: 500ms; }
+.launch-steps li:nth-child(2) { animation-delay: 950ms; } .launch-steps li:nth-child(3) { animation-delay: 1400ms; } .launch-steps li:nth-child(4) { animation-delay: 1850ms; }
+.launch-steps svg { width: 18px; height: 18px; color: var(--accent-text); }
+.launch-steps b { display: block; font-weight: 600; font-size: 13.5px; }
+.launch-steps span { font-size: 12.5px; color: var(--ink-3); }
+@keyframes step-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.launch-actions { display: grid; gap: 8px; margin-bottom: 12px; }
+.launch-close { margin-top: 6px; }
+@media (prefers-reduced-motion: reduce) {
+  .launch, .launch-card, .launch-steps li, .launch-orbit *, .think-lines li, .interview .q, .idcard, .orbit-spin i { animation: none !important; opacity: 1 !important; }
+}
+.meter.thin { height: 3px; margin-top: 5px; max-width: 160px; }

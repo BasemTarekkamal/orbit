@@ -1,0 +1,9 @@
+{
+  "name": "orbit",
+  "owner": { "name": "Orbit" },
+  "description": "The Orbit kit's own plugins: the guard every crew member runs with, also in Claude sessions opened in a crew member's folder.",
+  "plugins": [
+    { "name": "staff-guard", "source": "./guard/staff-guard",
+      "description": "Block-only safety locks for every Orbit crew member: no money movement, no outside contact, no secrets, no tampering." }
+  ]
+}

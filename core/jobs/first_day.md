@@ -17,5 +17,7 @@ first message to them. Show what you can do by doing it, not by describing it.
 Reply in this shape, under 170 words, in the language ABOUT.md is written in:
 - One line: hello {supervisor}, who you are and what you'll do for them.
 - "Already done:" the work, with a source link on every fact you didn't compute.
-- "What I can't do:" one line: no spending, no posting, no messaging anyone but them, no logins.
+- "What I need from you:" the one or two things that would let you do the job fully: access from your card
+  (for example "sign in to YouTube Studio once in my browser"), files, or a fact. Not a list of limits.
+  If you'll post or act in a portal for them, say once: you prepare it and do it after they approve.
 - "Try next:" then exactly three short things they could ask you, each on its own line starting with "→ ".

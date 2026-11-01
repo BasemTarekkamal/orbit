@@ -4,6 +4,7 @@ Never records real audio or calls Claude.  python3 -m unittest tests.test_platfo
 from __future__ import annotations
 
 import io
+import json
 import os
 import subprocess
 import sys
@@ -294,3 +295,90 @@ class Sandbox(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Onboarding(unittest.TestCase):
+    """The hiring interview's card reaches the crew member: CLAUDE.md, the registry, the first task, the budget."""
+
+    def setUp(self):
+        import hire
+        self.hire = hire
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"111": {"name": "Alex"}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7397}})
+
+    def card(self):
+        return {"responsibilities": ["Read the monthly statement", "Flag odd lines"], "first_task": "Propose a category list.",
+                "plan": ["Day 1: categories", "Day 2: first ledger"], "weekly_tokens": 1000000,
+                "access": [{"kind": "finance_read_only", "what": "Read CIB statements", "why": "for the books", "site": "CIB"}],
+                "interview": [{"q": "How often?", "a": "Monthly"}]}
+
+    def test_card_is_written_where_the_crew_member_reads(self):
+        eid = self.hire.hire("Nora", "Bookkeeper", "Keep my books", supervisor="Alex", picked=["documents"], card=self.card())
+        reg = engine.registry()["employees"][eid]
+        self.assertEqual(reg["weekly_tokens"], 1000000)
+        self.assertEqual(reg["card"]["first_task"], "Propose a category list.")
+        with open(os.path.join(TMP, "employees", eid, "CLAUDE.md"), encoding="utf-8") as fh:
+            md = fh.read()
+        for bit in ("Read the monthly statement", "Day 1: categories", "Read CIB statements (CIB)", "How often? → Monthly",
+                    "Money: read only"):
+            self.assertIn(bit, md)
+        import team
+        prompt = team.job_prompt(eid, engine.employee(eid), "first_day")
+        self.assertIn("Propose a category list.", prompt)
+        self.assertNotIn("What I can't do", prompt)
+
+    def test_budget_pauses_routines_not_chats(self):
+        import team
+        eid = self.hire.hire("Bea", "Researcher", "Research", supervisor="Alex", picked=["web"])
+        self.hire.set_field(eid, "weekly_tokens", "1000")
+        emp = engine.employee(eid)
+        os.makedirs(os.path.join(emp["workspace"], "state"), exist_ok=True)
+        with open(os.path.join(emp["workspace"], "state", "runs.jsonl"), "w") as fh:
+            fh.write('{"ts": "%s", "employee": "%s", "job": "chat", "ok": true, "tokens": 5000}\n' % (time.strftime("%Y-%m-%dT%H:%M:%S"), eid))
+        self.assertEqual(engine.stats(emp)["tokens_7d"], 5000)
+        self.assertTrue(team.over_budget(emp))
+        self.hire.set_field(eid, "weekly_tokens", "0")
+        self.assertFalse(team.over_budget(engine.employee(eid)))
+
+    def test_old_runs_without_tokens_are_estimated(self):
+        self.assertEqual(engine.tokens_of({"cost_usd": 0.5}), 100000)
+        self.assertEqual(engine.tokens_of({"tokens": 42, "cost_usd": 9}), 42)
+
+    def test_demo_interview_is_scripted(self):
+        import panel
+        old = panel.DEMO
+        panel.DEMO = True
+        try:
+            q = panel.interview("questions", {"name": "Sara", "role": "Researcher"})
+            self.assertGreaterEqual(len(q["questions"]), 3)
+            c = panel.interview("card", {"name": "Sara", "role": "Researcher", "answers": []})
+            self.assertIn("responsibilities", c)
+        finally:
+            panel.DEMO = old
+
+
+class ClaudeSession(unittest.TestCase):
+    """The folder a Claude app session opens in carries the same locks as the crew member's runs."""
+
+    def test_local_settings_mirror_the_run(self):
+        import hire
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"111": {"name": "Alex"}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7397}})
+        eid = hire.hire("Cleo", "Researcher", "Research", supervisor="Alex", picked=["web"])
+        ws = engine.employee(eid)["workspace"]
+        os.makedirs(os.path.join(ws, ".claude"), exist_ok=True)
+        with open(os.path.join(ws, ".claude", "settings.local.json"), "w") as fh:   # the guard already installed
+            json.dump({"enabledPlugins": {"staff-guard@orbit": True}}, fh)
+        s = engine.claude_session(eid)
+        with open(os.path.join(ws, ".claude", "settings.local.json")) as fh:
+            d = json.load(fh)
+        self.assertTrue(d["sandbox"]["enabled"])
+        self.assertTrue(d["sandbox"]["failIfUnavailable"])
+        self.assertIn("Bash(git push *)", d["permissions"]["deny"])
+        self.assertFalse(any(r.startswith("Write(") for r in d["permissions"]["deny"]))
+        self.assertEqual(d["env"]["STAFF_EMPLOYEE"], eid)
+        self.assertTrue(d["enabledPlugins"]["staff-guard@orbit"])                 # kept
+        self.assertTrue(s["link"].startswith("claude://code/new?folder="))
+        self.assertIn("Cleo", s["hello"])
