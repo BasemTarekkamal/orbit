@@ -661,3 +661,9 @@ details.adv > summary:hover { color: var(--ink); }
   .launch, .launch-card, .launch-steps li, .launch-orbit *, .think-lines li, .interview .q, .idcard, .orbit-spin i { animation: none !important; opacity: 1 !important; }
 }
 .meter.thin { height: 3px; margin-top: 5px; max-width: 160px; }
+
+.grant h2 svg, .grant h3 svg { width: 16px; height: 16px; vertical-align: -3px; color: var(--accent-text); }
+.grant .row-form { display: flex; gap: 8px; margin-top: 8px; max-width: 420px; }
+.grant .row-form .input { flex: 1; }
+.grant .seg { margin-top: 10px; }
+.mt { margin-top: 10px; }

@@ -13,7 +13,11 @@
 //      network connections or runs programs.
 //   5. Card numbers and IBANs are masked in anything a tool returns, before the model sees it.
 //   6. No other mod may load next to this one (the kit's skills bundle excepted).
-// Paths come from the environment the engine sets: HOME, STAFFROOM_HOME, STAFFROOM_KIT, STAFF_ABILITIES.
+//   7. The owner's browser (Claude in Chrome, Claude's own browser) only with "Acts in your browser", which
+//      the owner switches on in the panel, and only on the sites they picked; never a bank or payment site.
+//      Controlling the whole computer is never allowed.
+// Paths come from the environment the engine sets: HOME, STAFFROOM_HOME, STAFFROOM_KIT, STAFF_ABILITIES,
+// STAFF_BROWSER_SITES (from the team registry, which employees can't edit).
 
 const ALLOWED_PLUGINS = ['staff-guard', 'staffroom-skills']
 
@@ -47,6 +51,8 @@ const BLOCKED_COMMANDS = [
 // Banking, payment and crypto hosts: never reached, whatever the reason
 const MONEY_HOSTS = /(^|\.)(paypal|stripe|wise|revolut|venmo|cash\.app|zelle|payoneer|skrill|westernunion|moneygram|remitly|klarna|afterpay|alipay|wechatpay|paytm|phonepe|razorpay|mpesa|instapay|fawry|paymob|valu|binance|coinbase|kraken|bybit|okx|kucoin|crypto\.com|metamask|blockchain\.com|chase|bankofamerica|wellsfargo|citi|hsbc|barclays|santander|lloydsbank|natwest|monzo|starlingbank|n26|bnpparibas|societegenerale|deutsche-bank|ing|rabobank|ubs|emiratesnbd|alrajhibank|qnb|cibeg|banquemisr|nbe)\.[a-z.]+$/i
 const WRITE_WORDS = /(>|\btee\b|\bsed\s+-i|\bperl\s+-[a-z]*i|\bmv\b|\bcp\b|\brm\b|\bln\b|\bchmod\b|\btouch\b|\btruncate\b|\binstall\b|\bunlink\b|open\(|write)/i
+const BROWSER_TOOL = /^mcp__(claude-in-chrome|Claude_Browser|remote-devices__Claude_Browser)__/i
+const DESKTOP_TOOL = /^mcp__(computer-use|remote-devices__computer)/i
 const NETWORK_CODE = /urllib|requests\.|http\.client|httpx|aiohttp|socket\.|fetch\(|smtplib|subprocess|os\.system|os\.popen|child_process|playwright|selenium/
 
 let ctx = null
@@ -56,12 +62,15 @@ async function context($) {
   const data = (await $.env.get('STAFFROOM_HOME')) || (home + '/Staff')
   const kit = (await $.env.get('STAFFROOM_KIT')) || ''
   const abilities = ((await $.env.get('STAFF_ABILITIES')) || '').split(',')
+  const sites = ((await $.env.get('STAFF_BROWSER_SITES')) || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)
   ctx = {
     home,
     secrets: SECRET_FRAGMENTS.concat([data + '/.secrets']),
     harness: HARNESS_FRAGMENTS.concat(kit ? [kit + '/'] : [], [data + '/staff.json', data + '/.runtime/'],
       TEAM_FILES.map((f) => data + '/team/' + f)),
     buildTools: abilities.includes('build_tools'),
+    browser: abilities.includes('act_in_browser') && sites.length > 0,
+    sites,
   }
   return ctx
 }
@@ -102,6 +111,19 @@ export function verdict(e, c) {
   const urls = tool === 'WebFetch' ? [String(e.url || '')]
     : tool === 'Bash' ? (text.match(/https?:\/\/[^\s'"]+/gi) || []) : []
   if (urls.some((u) => MONEY_HOSTS.test(hostOf(u)))) return 'banking, payment and crypto sites are off-limits'
+  if (DESKTOP_TOOL.test(tool)) return 'controlling the whole computer'
+  if (BROWSER_TOOL.test(tool)) {
+    if (!c.browser) return 'using your browser needs "Acts in your browser", which your owner switches on in the panel (Manage)'
+    // Where it goes, not what it types: a post may carry links to anywhere, a navigation may not.
+    const seen = [e.url, e.href].filter((u) => u && !/^(back|forward)$/i.test(String(u)))
+      .map((u) => (/^[a-z][a-z0-9+.-]*:/i.test(String(u)) ? String(u) : 'https://' + u))
+      .concat(/javascript|script|eval/i.test(tool) ? (text.match(/https?:\/\/[^\s'"<>)]+/gi) || []) : [])
+    for (const u of seen) {
+      const h = hostOf(u)
+      if (MONEY_HOSTS.test(h)) return 'banking, payment and crypto sites are off-limits'
+      if (!c.sites.some((s) => h === s || h.endsWith('.' + s))) return h + ' is not one of the sites your owner allowed (' + c.sites.join(', ') + ')'
+    }
+  }
   if (tool === 'Bash') {
     for (const [re, why] of BLOCKED_COMMANDS) if (re.test(text)) return why + ' is blocked'
     const harness = touches(text, c.harness, c.home)

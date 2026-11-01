@@ -10,7 +10,8 @@ import engine
 import hire
 import team
 
-KINDS = ("message", "hire", "pause", "resume", "retire", "run_job", "set_abilities", "set_field", "call_start", "call_stop")
+KINDS = ("message", "hire", "pause", "resume", "retire", "run_job", "set_abilities", "set_field", "set_browser", "call_start",
+         "call_stop")
 
 
 class OrderError(ValueError):
@@ -111,6 +112,17 @@ def execute(by, kind, p):
             label = " (super agent)" if preset == "super" else " (default)" if preset == "default" else ""
             summary = "Abilities for %s%s" % (e["name"], label)
             res = ", ".join(diff) if diff else "No change"
+        elif kind == "set_browser":                       # the owner's consent: act in their Chrome on these sites
+            e = _emp(eid, want_active=False)
+            sites = [str(x) for x in p.get("sites") or []][:20] if isinstance(p.get("sites"), list) else []
+            b = hire.set_browser(eid, sites, str(p.get("approval") or "each"), by)
+            try:
+                engine.claude_session(eid)                # their Claude sessions pick it up too
+            except Exception as ex:  # noqa: BLE001
+                team.log("claude_session after set_browser: %r" % ex)
+            summary = "Acts in your browser for %s" % e["name"]
+            res = ("On for %s, after your approval" % ", ".join(b["sites"])) if b else "Off"
+            team.feed("staff", "Orbit", eid, "%s: %s. %s" % (summary, res, "Open them in Claude again to use it there." if b else ""), "panel")
         else:  # set_field
             e = _emp(eid, want_active=False)
             field, value = p.get("field"), str(p.get("value") or "").strip()

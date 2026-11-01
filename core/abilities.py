@@ -10,6 +10,7 @@ employees can read it, not change it. Python 3.9 compatible.
 from __future__ import annotations
 
 import json
+import re
 import os
 
 import engine
@@ -37,7 +38,7 @@ def by_id() -> dict:
 
 def preset(name: str) -> list:
     """'default' or 'super' → the ability ids it ticks."""
-    return [a["id"] for a in catalog() if not a.get("locked") and (name == "super" or a.get("default"))]
+    return [a["id"] for a in catalog() if not a.get("locked") and not a.get("consent") and (name == "super" or a.get("default"))]
 
 
 def chosen(emp_id: str) -> list:
@@ -92,7 +93,20 @@ def prompt(emp_id: str) -> str:
             "in the control panel; don't work around it." % (", ".join(yes), ", ".join(no) or "none"))
 
 
-def validate(ids: list) -> list:
-    """Cleans a requested set: known and not locked."""
+def validate(ids: list, keep_consent_from: str = None) -> list:
+    """Cleans a requested set: known and not locked. Consent abilities (acting in the owner's browser) are
+    switched only by their own panel section (hire.set_browser), never by a preset or the ticks grid: the
+    employee's current state is kept."""
     cat = by_id()
-    return sorted({i for i in ids if i in cat and not cat[i].get("locked")})
+    out = {i for i in ids if i in cat and not cat[i].get("locked") and not cat[i].get("consent")}
+    if keep_consent_from:
+        out |= {i for i in chosen(keep_consent_from) if cat.get(i, {}).get("consent")}
+    return sorted(out)
+
+
+# Banking, payment and crypto hosts: the same list as the guard's MONEY_HOSTS (core/guard/.../register.js).
+MONEY_HOSTS = re.compile(r"(^|\.)(paypal|stripe|wise|revolut|venmo|cash\.app|zelle|payoneer|skrill|westernunion|moneygram|remitly|klarna|afterpay|alipay|wechatpay|paytm|phonepe|razorpay|mpesa|instapay|fawry|paymob|valu|binance|coinbase|kraken|bybit|okx|kucoin|crypto\.com|metamask|blockchain\.com|chase|bankofamerica|wellsfargo|citi|hsbc|barclays|santander|lloydsbank|natwest|monzo|starlingbank|n26|bnpparibas|societegenerale|deutsche-bank|ing|rabobank|ubs|emiratesnbd|alrajhibank|qnb|cibeg|banquemisr|nbe)\.[a-z.]+$", re.I)
+
+
+def money_host(host: str) -> bool:
+    return bool(MONEY_HOSTS.search(str(host or "").lower()))

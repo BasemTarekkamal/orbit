@@ -382,3 +382,49 @@ class ClaudeSession(unittest.TestCase):
         self.assertTrue(d["enabledPlugins"]["staff-guard@orbit"])                 # kept
         self.assertTrue(s["link"].startswith("claude://code/new?folder="))
         self.assertIn("Cleo", s["hello"])
+
+
+class BrowserGrant(unittest.TestCase):
+    """'Acts in your browser': only the panel switch grants it; the registry, CLAUDE.md and sessions follow."""
+
+    def setUp(self):
+        import hire
+        self.hire = hire
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"111": {"name": "Alex"}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7397}})
+        self.eid = hire.hire("Suoo", "Content creator", "Videos", supervisor="Alex", picked=["web", "act_in_browser"])
+
+    def test_hiring_or_presets_never_grant_it(self):
+        import abilities
+        self.assertNotIn("act_in_browser", abilities.effective(self.eid))
+        self.assertNotIn("act_in_browser", abilities.preset("super"))
+        self.hire.set_abilities(self.eid, ["web", "act_in_browser"])
+        self.assertNotIn("act_in_browser", abilities.effective(self.eid))
+
+    def test_switch_on_and_off(self):
+        import abilities
+        b = self.hire.set_browser(self.eid, ["https://www.YouTube.com/upload", "etsy.com"], "batch", "Alex")
+        self.assertEqual(b["sites"], ["youtube.com", "etsy.com"])
+        self.assertIn("act_in_browser", abilities.effective(self.eid))
+        self.hire.set_abilities(self.eid, ["web"])                       # the ticks grid keeps the consent as it is
+        self.assertIn("act_in_browser", abilities.effective(self.eid))
+        env = engine.clean_env(engine.employee(self.eid))
+        self.assertEqual(env["STAFF_BROWSER_SITES"], "youtube.com,etsy.com")
+        self.assertIn("--chrome", engine.command(engine.employee(self.eid), "sonnet"))
+        with open(os.path.join(TMP, "employees", self.eid, "CLAUDE.md"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read().count("Granted by your owner"), 1)
+        self.hire.set_browser(self.eid, ["youtube.com"], "each", "Alex")   # again: replaced, not repeated
+        with open(os.path.join(TMP, "employees", self.eid, "CLAUDE.md"), encoding="utf-8") as fh:
+            md = fh.read()
+        self.assertEqual(md.count("Granted by your owner"), 1)
+        self.assertIn("Approve each item separately", md)
+        self.hire.set_browser(self.eid, [], "each", "Alex")
+        self.assertNotIn("act_in_browser", abilities.effective(self.eid))
+        self.assertNotIn("--chrome", engine.command(engine.employee(self.eid), "sonnet"))
+        with open(os.path.join(TMP, "employees", self.eid, "CLAUDE.md"), encoding="utf-8") as fh:
+            self.assertNotIn("Granted by your owner", fh.read())
+
+    def test_money_sites_cannot_be_granted(self):
+        with self.assertRaises(self.hire.HireError):
+            self.hire.set_browser(self.eid, ["paypal.com"], "each", "Alex")

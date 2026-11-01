@@ -204,6 +204,7 @@ def clean_env(emp: dict) -> dict:
     env["STAFFROOM_KIT"] = KIT
     import abilities
     env["STAFF_ABILITIES"] = ",".join(sorted(abilities.effective(emp["id"])))   # read by the guard
+    env["STAFF_BROWSER_SITES"] = ",".join((registry().get("employees", {}).get(emp["id"], {}).get("browser") or {}).get("sites", []))
     if os.path.exists("/etc/ssl/cert.pem"):               # TLS for curl/Go tools inside the sandbox
         env.setdefault("SSL_CERT_FILE", "/etc/ssl/cert.pem")
         env.setdefault("CURL_CA_BUNDLE", "/etc/ssl/cert.pem")
@@ -270,6 +271,8 @@ def command(emp: dict, model: str) -> list:
            "--disallowedTools", *(BASE_DENIED + block + emp.get("extra_denied", []))]
     for extra in emp.get("add_dirs", []):
         cmd += ["--add-dir", os.path.expanduser(extra)]
+    if "act_in_browser" in abilities.effective(emp["id"]):   # the owner's own Chrome, through Claude in Chrome
+        cmd.append("--chrome")
     return cmd
 
 
@@ -461,18 +464,31 @@ def claude_session(emp_id: str) -> dict:
         "permissions": {"allow": [t for t in BASE_ALLOWED if t not in block] + allow + emp.get("extra_tools", []),
                         "deny": deny},
         "env": {k: env[k] for k in ("STAFF_EMPLOYEE", "STAFF_WORKSPACE", "STAFFROOM_HOME", "STAFFROOM_KIT",
-                                     "STAFF_ABILITIES", "PATH")},
+                                     "STAFF_ABILITIES", "STAFF_BROWSER_SITES", "PATH")},
     })
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(local, fh, indent=2)
-    if not (local.get("enabledPlugins") or {}).get("staff-guard@orbit"):
+    with open(os.path.join(GUARD, ".claude-plugin", "plugin.json"), encoding="utf-8") as fh:
+        version = json.load(fh).get("version", "")
+    stamp = os.path.join(ws, ".claude", "orbit-guard.version")
+    try:
+        with open(stamp) as fh:
+            have = fh.read().strip()
+    except OSError:
+        have = ""
+    installed = (local.get("enabledPlugins") or {}).get("staff-guard@orbit")
+    if not installed or have != version:                   # the guard is copied in at install: refresh it when the kit's changes
         env_cli = {k: v for k, v in os.environ.items() if not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_")) and k != "CLAUDECODE"}
-        for args in (["plugin", "marketplace", "add", os.path.join(KIT, "core"), "--scope", "local"],
-                     ["plugin", "install", "staff-guard@orbit", "--scope", "local"]):
+        steps = ([["plugin", "marketplace", "add", os.path.join(KIT, "core"), "--scope", "local"],
+                  ["plugin", "install", "staff-guard@orbit", "--scope", "local"]] if not installed else
+                 [["plugin", "marketplace", "update", "orbit"], ["plugin", "update", "staff-guard@orbit", "--scope", "local"]])
+        for args in steps:
             r = subprocess.run([resolve_claude()] + args, cwd=ws, capture_output=True, text=True, timeout=120, env=env_cli)
-            if r.returncode != 0 and "already" not in (r.stdout + r.stderr).lower():
+            if r.returncode != 0 and not re.search(r"already|up to date|latest", r.stdout + r.stderr, re.I):
                 raise RuntimeError("couldn't add the guard to %s's folder: %s" % (emp["name"], (r.stderr or r.stdout).strip()[-200:]))
+        with open(stamp, "w") as fh:
+            fh.write(version)
     import urllib.parse
     hello = SESSION_HELLO % emp["name"]
     link = "claude://code/new?" + urllib.parse.urlencode({"folder": ws, "q": hello}, quote_via=urllib.parse.quote)

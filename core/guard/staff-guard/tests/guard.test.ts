@@ -44,6 +44,8 @@ const BLOCKED: Array<[Record<string, unknown>, string]> = [
   [{ tool: 'Write', file_path: H + '/Staff/team/pending_owners.json', content: '{}' }, 'read-only'],
   [{ tool: 'Bash', command: 'claude -p "do it" --dangerously-skip-permissions' }, 'nested claude'],
   [{ tool: 'Bash', command: 'launchctl bootout gui/501/com.staffroom.staffd' }, 'scheduled'],
+  [{ tool: 'mcp__claude-in-chrome__navigate', url: 'https://studio.youtube.com' }, 'Acts in your browser'],
+  [{ tool: 'mcp__computer-use__left_click', coordinate: [10, 10] }, 'whole computer'],
   [{ tool: 'Bash', command: 'systemctl --user stop orbit.service' }, 'scheduled'],
   [{ tool: 'Bash', command: 'powershell.exe -Command Get-ChildItem' }, 'Windows'],
   [{ tool: 'Bash', command: 'cmd.exe /c dir C:\\Users' }, 'Windows'],
@@ -91,4 +93,18 @@ test('card numbers and IBANs are masked in tool output', async ($, on) => {
   expect(String(r.result)).toContain('[IBAN hidden]')
   expect(String(r.result)).not.toContain('4111 1111 1111 1111')
   expect(String(r.result)).toContain('2026091100012') // a non-card reference number stays
+})
+
+test('with "Acts in your browser" on, an employee uses your Chrome only on the sites you picked', async ($, on) => {
+  mock.env(on, { ...ENV, STAFF_ABILITIES: ENV.STAFF_ABILITIES + ',act_in_browser', STAFF_BROWSER_SITES: 'youtube.com,tiktok.com' })
+  on('tool.call', () => ({ result: 'ok' }))
+  const call = async (e: Record<string, unknown>) => ((await $.tool.call(e as never)) as { deny?: string }).deny ?? 'allowed'
+  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'https://studio.youtube.com/channel/x/videos/upload', tabId: 1 })).toEqual('allowed')
+  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'www.tiktok.com/upload', tabId: 1 })).toEqual('allowed')
+  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'back', tabId: 1 })).toEqual('allowed')
+  // what it types into a post may link anywhere
+  expect(await call({ tool: 'mcp__claude-in-chrome__form_input', ref: 'ref_3', value: 'Parts I used: https://amazon.com/dp/B0X' })).toEqual('allowed')
+  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'https://accounts.google.com/signin', tabId: 1 })).toContain('not one of the sites')
+  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'https://www.paypal.com/myaccount', tabId: 1 })).toContain('banking')
+  expect(await call({ tool: 'mcp__computer-use__screenshot' })).toContain('whole computer')
 })
