@@ -371,6 +371,9 @@ class ClaudeSession(unittest.TestCase):
         os.makedirs(os.path.join(ws, ".claude"), exist_ok=True)
         with open(os.path.join(ws, ".claude", "settings.local.json"), "w") as fh:   # the guard already installed
             json.dump({"enabledPlugins": {"staff-guard@orbit": True}}, fh)
+        with open(os.path.join(engine.GUARD, ".claude-plugin", "plugin.json")) as fh, \
+                open(os.path.join(ws, ".claude", "orbit-guard.version"), "w") as out:   # ...at the kit's version
+            out.write(json.load(fh)["version"])
         s = engine.claude_session(eid)
         with open(os.path.join(ws, ".claude", "settings.local.json")) as fh:
             d = json.load(fh)
