@@ -75,10 +75,22 @@ usually `Ubuntu`). Quote the command so the Windows shell passes it through whol
 4. Hand over (below).
 
 ## Hand over
-Tell them, in your own words: "Your control panel is open in your browser. It asks your name and what
-your business does, then you pick what your first employee should do. They start working right away,
-and you can put them on your phone from there." If the page didn't open: `~/orbit/orbit panel`
-(on Windows through `wsl -d <distro> -- bash -lc`). Stay available for questions; that's the whole setup.
+Tell them, in your own words, short:
+- "Your control panel is open in your browser. It asks your name and what your business does, then you
+  pick what your first crew member should do. They start right away with a real first task." If the page
+  didn't open: `~/orbit/orbit panel` (on Windows through `wsl -d <distro> -- bash -lc`).
+- How they'll talk to their crew, all three ways, since they won't think to ask:
+  1. **In the control panel:** open the crew member and type; the answer appears right under it.
+  2. **On their phone** (recommended): Telegram, Slack or Discord, through a bot of their own. The panel's
+     "Connect your phone" walks them through it in about two minutes. Then they message the crew from
+     anywhere, send voice notes and files, and get the routine reports there.
+  3. **Here, in the Claude app** (a backup at the computer): "ask Sara: …" in a Claude session opened in
+     the `orbit` folder. You pass it on with `~/orbit/orbit run <handle> "<message>"` (handles:
+     `~/orbit/orbit list`) and show the answer as it came.
+- What to expect: an answer in a minute or two (deep research takes longer), each with "How I did it".
+  On their own, crew members only send the routines ticked in Manage (like a morning brief) and things
+  that need the owner. They never post, buy, or message anyone but the owners.
+Then offer to stay while they connect their phone. That's the whole setup.
 
 ## Extras, only when they ask
 - **Voice notes and live calls** (transcribed on this computer):

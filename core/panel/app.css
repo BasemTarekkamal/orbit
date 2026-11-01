@@ -423,7 +423,16 @@ pre.raw { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5p
 .jobs.sits .job b { font-size: 15px; }
 .sit-line { margin: -6px 0 14px; }
 .status-line { color: var(--ink-2); }
+.composer.top { position: static; padding: 0; margin: 0 0 16px; }
+.reach { border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--accent-soft); padding: 14px 16px; margin: 0 0 16px; max-width: 80ch; }
+.reach-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.reach h2 { margin: 0; font-size: 15px; }
+.reach ol { margin: 10px 0 8px; padding-left: 20px; display: grid; gap: 8px; line-height: 1.5; }
+.reach li .btn { margin-left: 4px; }
+.reach > .meta { margin: 0; line-height: 1.5; }
 .results { display: grid; gap: 14px; }
+.result .asked { margin: 0 0 10px; padding: 0 0 10px; border-bottom: 1px solid var(--line); color: var(--ink-2); font-size: 13px; line-height: 1.45; }
+.result .asked span { color: var(--ink-3); font-weight: 600; margin-right: 4px; }
 .result { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; background: var(--bg); max-width: 80ch; }
 .result .head { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--ink-3); margin-bottom: 6px; }
 @keyframes rise { from { transform: translateY(5px); } to { transform: none; } }

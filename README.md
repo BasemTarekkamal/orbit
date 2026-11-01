@@ -69,6 +69,10 @@ in a sandbox there, the same one Claude Code uses on Linux.
 Windows and Linux support is new (November 2026). It's tested automatically on Ubuntu and on WSL,
 but few people have used it yet, so please tell us what breaks.
 
+**Talking to your crew.** In the control panel (open a crew member and type), on your phone through
+Telegram, Slack or Discord (the panel connects it in about two minutes), or in the Claude app: open the
+`orbit` folder in Claude's Code tab and say "ask Sara: …". Same crew member everywhere, same memory.
+
 **Just want to look around first?** After cloning, `~/orbit/orbit demo` opens the control panel
 with a pretend team (invented business, canned replies, no bot, no Claude run). `orbit demo --stop`
 ends it.

@@ -363,7 +363,7 @@ PAGES.missing = () => `<div class="empty"><b>No such page.</b><p><a class="link"
 PAGES.welcome = () => {
   const st = S.data.setup || {};
   const step = st.owner ? 2 : 1;
-  const steps = `<ol class="w-steps"><li class="${step > 1 ? 'done' : 'on'}">You</li><li class="${step === 2 ? 'on' : ''}">Their job</li><li>Your phone</li></ol>`;
+  const steps = `<ol class="w-steps"><li class="${step > 1 ? 'done' : 'on'}">You</li><li class="${step === 2 ? 'on' : ''}">Their job</li><li>How you'll talk</li></ol>`;
   const brand = `<div class="w-brand"><img src="/icon.svg" alt=""><span>Orbit</span></div>`;
   if (step === 1) {
     return `<div class="welcome">${brand}<h1>Build your crew.</h1>
@@ -653,19 +653,39 @@ async function ensureSkill(emp, where, name) {
   render(false);
 }
 
+// How you'll talk to them, shown on a crew member's page until a phone is connected (or it's closed): the
+// last step of the first minutes, so a new owner knows every way in and what to expect back.
+function reachCard(e) {
+  const st = S.data.setup || {};
+  if (S.data.demo || st.paired || store(() => localStorage.getItem('reach-hidden'))) return '';
+  return `<section class="reach"><div class="reach-head"><h2>How you'll work with ${esc(e.name)}</h2><button type="button" class="btn btn-ghost btn-sm" data-act="hide-reach" aria-label="Close">Got it</button></div>
+    <ol>
+      <li><b>Here.</b> Type in the box above; the answer appears right under it. Everything the crew says also shows in Mission Control.</li>
+      <li><b>On your phone</b> <span class="meta">recommended</span>. Telegram, Slack or Discord, through a bot of your own: message ${esc(e.name)} from anywhere, send voice notes, photos and files, and get their routine reports there. <a class="btn btn-primary btn-sm" href="/connect">Connect your phone</a> <span class="meta">about 2 minutes</span></li>
+      <li><b>In the Claude app</b> <span class="meta">a backup at your computer</span>. In Claude's Code tab, open the <code>orbit</code> folder and say “ask ${esc(e.name)}: …”. Same ${esc(e.name)}, same memory and limits.</li>
+    </ol>
+    <p class="meta">What to expect: an answer in a minute or two (deep research takes longer), each with “How I did it”. On their own they only send the routines you tick in Manage (like a morning brief) and things that need you. They never post, buy or message anyone but you.</p></section>`;
+}
+
 function tabWork(e, dt, r) {
   if (!dt) return loading;
   const activity = r.v === 'activity', files = r.v === 'files';
   const subs = `<div class="subtabs"><a href="/e/${e.id}/work" class="${activity || files ? '' : 'on'}">Latest</a><a href="/e/${e.id}/work?v=files" class="${files ? 'on' : ''}">Files${dt.files.length ? ' · ' + dt.files.length : ''}</a><a href="/e/${e.id}/work?v=activity" class="${activity ? 'on' : ''}">Activity${dt.runs.length ? ' · ' + dt.runs.length : ''}</a></div>`;
   if (activity) return subs + runsHtml(dt);
-  if (!files) {                                   // the latest results, newest first, with the live view on top
+  if (!files) {          // type at the top; what they're doing now right under it, then results newest first, each with your question
     const live = liveCard(e.id);
-    const mine = dt.chat.filter((m) => m.from_id === e.id).slice(-5).reverse();
-    const results = mine.length ? `<div class="results">${mine.map((m) => `<article class="result"><div class="head"><span>${fmtTime(m.ts)}</span>${m.to_id && m.to_id !== 'owner' && m.to_id !== e.id ? `<span>→ ${esc(nameOf(m.to_id))}</span>` : ''}${channelBadge(m.channel)}</div><div class="body md rich">${bodyHtml(m.body, e.id)}</div>${receiptHtml(m.receipt, 'res:' + (m.id || m.ts))}</article>`).join('')}</div>`
+    let asked = null;
+    const pairs = [];
+    for (const m of dt.chat) {                    // oldest first: each answer takes the question just before it
+      if (m.from_id === e.id) { pairs.push({ m, q: asked }); asked = null; } else if (m.to_id === e.id) asked = m;
+    }
+    const recent = pairs.slice(-5).reverse();
+    const results = recent.length ? `<div class="results">${recent.map(({ m, q }) => `<article class="result">${q ? `<p class="asked"><span>${esc(nameOf(q.from_id) || 'You')} asked</span> ${esc(String(q.body || '').replace(/\s+/g, ' ').slice(0, 220))}</p>` : ''}<div class="head"><span>${fmtTime(m.ts)}</span>${m.to_id && m.to_id !== 'owner' && m.to_id !== e.id ? `<span>→ ${esc(nameOf(m.to_id))}</span>` : ''}${channelBadge(m.channel)}</div><div class="body md rich">${bodyHtml(m.body, e.id)}</div>${receiptHtml(m.receipt, 'res:' + (m.id || m.ts))}</article>`).join('')}</div>`
       : live ? '' : `<div class="empty"><b>Nothing yet.</b><p>${esc(e.name)}'s results show up here as they finish.</p></div>`;
-    return subs + `<div class="chat"><div class="chat-main"><div data-live-slot="${e.id}">${live}</div>${results}
-      <form class="composer" data-form="message" data-emp="${e.id}"><div class="box"><textarea id="composer-${e.id}" name="text" data-grow rows="1" placeholder="Tell ${esc(e.name)} something…" aria-label="Message" maxlength="4000">${esc(v('message:' + e.id, 'text', ''))}</textarea>
-      <div class="bar"><span class="meta">Enter to send</span><button class="btn btn-primary btn-sm" type="submit">${icon('send')}Send</button></div></div></form></div>
+    return subs + `<div class="chat"><div class="chat-main">
+      <form class="composer top" data-form="message" data-emp="${e.id}"><div class="box"><textarea id="composer-${e.id}" name="text" data-grow rows="1" placeholder="Ask ${esc(e.name)} for something…" aria-label="Message" maxlength="4000">${esc(v('message:' + e.id, 'text', ''))}</textarea>
+      <div class="bar"><span class="meta">Enter to send · answers appear below</span><button class="btn btn-primary btn-sm" type="submit">${icon('send')}Send</button></div></div></form>
+      ${reachCard(e)}<div data-live-slot="${e.id}">${live}</div>${results}</div>
       <aside class="rail"><section><h3>Try asking</h3><div class="chips col">${(dt.try || []).map((t) => `<button type="button" class="chip try" data-act="try" data-emp="${e.id}" data-text="${esc(t)}">${esc(t)}</button>`).join('')}</div></section></aside></div>`;
   }
   if (!dt.files.length) return subs + `<div class="empty"><b>No files yet.</b><p>Files ${esc(e.name)} writes (research notes, scrapes, tools, the growth log) appear here, readable in place.</p></div>`;
@@ -877,6 +897,7 @@ document.addEventListener('click', async (ev) => {
   if (!b) return;
   const act = b.dataset.act;
   if (act === 'theme') { setTheme(b.dataset.v); render(true); }
+  if (act === 'hide-reach') { store(() => localStorage.setItem('reach-hidden', '1')); render(true); }
   else if (act === 'more') { const body = b.previousElementSibling; body.classList.remove('clamp'); b.remove(); }
   else if (act === 'job') { pickJob(b.dataset.role); }
   else if (act === 'situation') { ev.preventDefault(); S.situation = b.dataset.id || null; S.job = null; delete S.vals.hire; render(true); }
