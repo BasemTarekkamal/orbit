@@ -125,7 +125,29 @@ def said_of(prompt):
     return re.split(r"\n\nFollow CLAUDE\.md", said)[0].strip()
 
 
+SEEDED = {"sara", "omar", "lina"}       # the invented team; anyone the visitor hires gets honest demo replies
+
+NEW_FIRST_DAY = ("Hi %s, I'm %s, your %s.\n\nThis is the demo, so I haven't done any real work: nothing here runs Claude, and "
+                 "the replies are scripted. In your own Orbit, I'd start right now on what you gave me (\"%s\") for %s, look things "
+                 "up live, and come back with a first finding and its sources in a few minutes.\n\nYour own team: paste the "
+                 "one line from the README into the Claude app, or run  orbit setup .")
+NEW_REPLY = ("Demo reply: nothing was looked up, the demo doesn't run Claude. In your own Orbit I'd work on \"%s\" now, for %s, and "
+             "answer with what I found and the sources. Your own team: paste the one line from the README into the Claude app, "
+             "or run  orbit setup .")
+
+
+def _owner_and_team():
+    reg = engine.registry()
+    owner = next(iter(reg.get("owners", {}).values()), {}).get("name") or OWNER
+    return owner, reg.get("team_name") or TEAM_NAME
+
+
 def canned(emp, prompt, job):
+    if emp.get("id") not in SEEDED and job != "minutes":   # hired in the demo: say plainly it's pretend, in their words
+        owner, team_name = _owner_and_team()
+        if job == "first_day":
+            return NEW_FIRST_DAY % (owner, emp["name"], emp["role"].lower(), (emp.get("scope") or emp["role"])[:160], team_name)
+        return NEW_REPLY % (said_of(prompt)[:120], team_name)
     if job in JOB_TEXT:
         return JOB_TEXT[job]
     if job == "first_day":

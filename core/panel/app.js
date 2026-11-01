@@ -208,7 +208,9 @@ async function render(nav) {
   const chat = r.page === 'employee' && r.tab === 'chat';
   const cm = chat && $('.chat-main', main);
   const following = !!cm && cm.getBoundingClientRect().bottom <= window.innerHeight + 60;   // you're at the latest message
-  const html = (PAGES[r.page] || PAGES.missing)(r);
+  const pretend = S.data && S.data.demo && r.page !== 'today'   // Mission Control has the long note
+    ? '<div class="demo-bar"><b>Demo: a pretend team.</b> Replies are scripted, nothing runs Claude, and nothing you type changes what they say. Your own team: run <code>orbit setup</code>, or paste the line from the README into the Claude app.</div>' : '';
+  const html = pretend + (PAGES[r.page] || PAGES.missing)(r);
   if (nav || html !== S.lastHtml) {
     const y = window.scrollY;
     main.innerHTML = html;
@@ -487,7 +489,7 @@ PAGES.today = () => {
   if (!emps.length) sub += ' · no employees yet';
   else sub += ` · ${plural(emps.length, 'crew member')} · ${Object.keys(d.calls || {}).length ? 'on a call · ' : ''}${live.length ? live.length + ' working' : 'all idle'}`;
   if (!d.online) sub += ' · <span class="badge danger">service stopped</span>';
-  const demo = d.demo ? `<div class="demo-bar"><b>A pretend team, to look around.</b> The business, the people and their findings are invented (links end in .example) and the replies are canned: no Claude run, no bot. Chat with someone anyway, teach a skill, change abilities. Your own team: paste the one line from the README into the Claude app, or run <code>install.sh</code>.</div>` : '';
+  const demo = d.demo ? `<div class="demo-bar"><b>A pretend team, to look around.</b> The business, the people and their findings are invented (links end in .example) and the replies are canned: no Claude run, no bot. Chat with someone anyway, teach a skill, change abilities. Your own team: run <code>orbit setup</code>, or paste the one line from the README into the Claude app.</div>` : '';
   const todo = d.checklist.filter((c) => !c.done && !c.optional);
   const setup = todo.length ? `<div class="setup"><h2>Finish setting up</h2><ol>${d.checklist.filter((c) => !c.done).map((c) => `
     <li>${icon('circle')}<div><span>${esc(c.title)}${c.optional ? ' <span class="meta">optional</span>' : ''}</span><div class="how">${esc(c.how)}</div></div>${c.href ? `<a class="btn btn-sm ${c.optional ? '' : 'btn-primary'}" href="${esc(c.href)}">${esc(c.cta)}</a>` : '<span></span>'}</li>`).join('')}</ol></div>` : '';
