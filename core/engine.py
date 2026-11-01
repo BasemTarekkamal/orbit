@@ -484,7 +484,10 @@ def claude_session(emp_id: str) -> dict:
                   ["plugin", "install", "staff-guard@orbit", "--scope", "local"]] if not installed else
                  [["plugin", "marketplace", "update", "orbit"], ["plugin", "update", "staff-guard@orbit", "--scope", "local"]])
         for args in steps:
-            r = subprocess.run([resolve_claude()] + args, cwd=ws, capture_output=True, text=True, timeout=120, env=env_cli)
+            try:
+                r = subprocess.run([resolve_claude()] + args, cwd=ws, capture_output=True, text=True, timeout=120, env=env_cli)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                raise RuntimeError("couldn't run Claude Code to add the guard (%s). Is it installed? `orbit doctor`" % e)
             if r.returncode != 0 and not re.search(r"already|up to date|latest", r.stdout + r.stderr, re.I):
                 raise RuntimeError("couldn't add the guard to %s's folder: %s" % (emp["name"], (r.stderr or r.stdout).strip()[-200:]))
         with open(stamp, "w") as fh:
