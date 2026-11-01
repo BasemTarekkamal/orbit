@@ -115,7 +115,7 @@ def members():
                     "runs_today": s["runs_today"], "failures_today": s["failures_today"],
                     "use_today": round(s["use_today"], 3), "use_7d": round(s["use_7d"], 3),
                     "tokens_today": s["tokens_today"], "tokens_7d": s["tokens_7d"], "weekly_tokens": int(m.get("weekly_tokens") or 0),
-                    "runs_7d": s["runs_7d"], "failures_7d": s["failures_7d"], "card": m.get("card") or {},
+                    "runs_7d": s["runs_7d"], "failures_7d": s["failures_7d"], "card": m.get("card") or {}, "browser": m.get("browser") or {},
                     "abilities": sorted(abilities.effective(k)), "abilities_on": len(abilities.effective(k)), "abilities_total": total,
                     "model": m.get("model") or emp.get("model", "sonnet"), "effort": m.get("effort") or emp.get("effort", "medium")})
     return out

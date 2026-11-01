@@ -45,7 +45,7 @@ class Abilities(unittest.TestCase):
         default, sup = set(abilities.preset("default")), set(abilities.preset("super"))
         self.assertTrue(default < sup)
         self.assertNotIn("apify", default)                      # paid: never on by default
-        self.assertEqual(sup, {k for k, a in cat.items() if not a.get("locked")})
+        self.assertEqual(sup, {k for k, a in cat.items() if not a.get("locked") and not a.get("consent")})   # consent: only its own switch
         self.assertTrue(all(cat[k].get("default") for k in default))
 
     def test_validate_drops_locked_and_unknown(self):
@@ -117,7 +117,7 @@ class Orders(unittest.TestCase):
         out = orders.execute("Alex", "set_abilities", {"employee_id": "tess", "preset": "super"})
         self.assertIn("(super agent)", out)
         self.assertIn("+Apify scrapers", out)
-        self.assertEqual(abilities.effective("tess"), set(abilities.by_id()))
+        self.assertEqual(abilities.effective("tess"), {k for k, a in abilities.by_id().items() if not a.get("consent")})
         out = orders.execute("Alex", "set_abilities", {"employee_id": "tess", "preset": "default"})
         self.assertIn("−Apify scrapers", out)
         rows = team.tail(team.ORDERS)
@@ -135,7 +135,7 @@ class Orders(unittest.TestCase):
     def test_hire_from_the_panel(self):
         out = orders.execute("Alex", "hire", {"name": "Omar", "role": "Social media", "scope": "x", "preset": "super"})
         self.assertIn("/omar", out)
-        self.assertEqual(abilities.effective("omar"), set(abilities.by_id()))
+        self.assertEqual(abilities.effective("omar"), {k for k, a in abilities.by_id().items() if not a.get("consent")})
 
 
 class Engine(unittest.TestCase):

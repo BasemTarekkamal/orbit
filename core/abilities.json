@@ -4,6 +4,7 @@
     "Talk",
     "Meetings",
     "Research",
+    "Acting for you",
     "Building",
     "Routines"
   ],
@@ -158,6 +159,17 @@
       ],
       "description": "Reads PDFs, scanned documents and images (OCR on this Mac), in any language.",
       "can": "Read scans and photos of documents (OCR)"
+    },
+    {
+      "id": "act_in_browser",
+      "name": "Acts in your browser",
+      "group": "Acting for you",
+      "consent": true,
+      "description": "Uses your own Chrome, where you're already signed in, to post, upload or fill in forms on the sites you pick. It shows you each one first and does it after you approve. It never signs in, types a password, changes account settings or touches money.",
+      "can": "Post, upload and fill in forms for you in your own Chrome, on the sites you pick, after you approve",
+      "tools": [
+        "mcp__claude-in-chrome"
+      ]
     },
     {
       "id": "build_tools",

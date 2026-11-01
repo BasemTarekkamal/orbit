@@ -27,6 +27,8 @@ const ACCESS = [
   ['tools', 'Builds its own small tools', ['build_tools']],
   ['brief', 'A brief every workday morning', ['brief']],
 ];
+const SITES = [['YouTube', 'youtube.com'], ['TikTok', 'tiktok.com'], ['Facebook', 'facebook.com'], ['Instagram', 'instagram.com'],
+  ['X', 'x.com'], ['LinkedIn', 'linkedin.com'], ['Google Business', 'business.google.com'], ['Shopify', 'myshopify.com']];
 const COMING = ['Your own browser, acting as you', 'Email inbox', 'Google Docs and Notion', 'GitHub (private)'];
 const ALWAYS = ['telegram', 'team_room'];
 const SLACK_MANIFEST = `display_information:
@@ -469,6 +471,10 @@ function cardHtml(sel, ob, name, from) {
         <p class="meta">Starts with: ${esc(c.first_task || '')}</p></section>
       ${asks ? `<section class="wide"><h3>Access ${esc(name)} will ask you for</h3><ul class="asks">${asks}</ul>
         <p class="meta">Nothing here is granted yet: ${esc(name)} asks when it's needed, and anything public waits for your Approve. Money is read only, always.</p></section>` : ''}
+      <section class="wide grant"><h3>${icon('key')} Let ${esc(name || 'them')} act in your Chrome <span class="meta">optional</span></h3>
+        <p class="meta">Pick the sites where ${esc(name || 'they')} may post, upload or fill in forms for you, in your own Chrome where you're signed in. They show you each one first and do it after you approve. Never sign-ins, passwords or money.</p>
+        ${sitePicker('ob', ed.browser || [])}
+        <div class="seg" role="group" aria-label="Approval"><button type="button" class="${(ed.approval || 'each') === 'each' ? 'on' : ''}" data-act="ob-approval" data-v="each">Ask me for each one</button><button type="button" class="${ed.approval === 'batch' ? 'on' : ''}" data-act="ob-approval" data-v="batch">Ask me once per batch</button></div></section>
       <section><h3>Tools</h3>${access}</section>
       <section><h3>Routines</h3><div class="chips">${routines}</div><p class="meta">Reports land in the team room and on your phone.</p></section>
       <section class="wide"><h3>Weekly budget on your Claude plan</h3><div class="seg budget" role="group" aria-label="Weekly budget">${budget}</div>
@@ -643,6 +649,25 @@ function tlItem(f) {
 
 // ---- team
 // A crew member's health at a glance: this week's runs and failures, and tokens against their weekly budget
+// "Acts in your browser": the owner's consent, per crew member, per site. Enforced by the guard, not by asking.
+function sitePicker(prefix, sites) {
+  const on = new Set(sites);
+  const extra = [...on].filter((d) => !SITES.some(([, x]) => x === d));
+  return `<div class="chips">${SITES.map(([l, d]) => `<button type="button" class="chip ${on.has(d) ? 'on' : ''}" data-act="${prefix}-site" data-d="${d}" aria-pressed="${on.has(d)}">${esc(l)}</button>`).join('')}
+    ${extra.map((d) => `<button type="button" class="chip on" data-act="${prefix}-site" data-d="${esc(d)}" aria-pressed="true">${esc(d)} ×</button>`).join('')}</div>
+    <div class="row-form"><input class="input" data-site-input="${prefix}" placeholder="Another site, like etsy.com" maxlength="80"><button type="button" class="btn btn-sm" data-act="${prefix}-add">Add</button></div>`;
+}
+function browserSection(e) {
+  const b = e.browser || {};
+  const st = S.browserEdit && S.browserEdit.id === e.id ? S.browserEdit : (S.browserEdit = { id: e.id, sites: [...(b.sites || [])], approval: b.approval || 'each' });
+  const dirty = JSON.stringify(st.sites) !== JSON.stringify(b.sites || []) || st.approval !== (b.approval || 'each');
+  return `<section class="grant"><h2>${icon('key')} Acts in your browser</h2>
+    <p class="desc">${esc(e.name)} uses <b>your own Chrome</b>, where you're already signed in, to post, upload and fill in forms on the sites you pick. They show you each one first and do it after you say “approved”. They never sign in, type a password, change account settings or touch money. ${b.sites && b.sites.length ? `<span class="badge accent">On · ${esc(b.sites.join(', '))}</span>` : '<span class="badge">Off</span>'}</p>
+    <div>${sitePicker('br', st.sites)}
+      <div class="seg mt" role="group" aria-label="Approval"><button type="button" class="${st.approval === 'each' ? 'on' : ''}" data-act="br-approval" data-v="each">Ask me for each one</button><button type="button" class="${st.approval === 'batch' ? 'on' : ''}" data-act="br-approval" data-v="batch">Ask me once per batch</button></div>
+      <div class="save-bar"><button type="button" class="btn btn-primary" data-act="br-save" data-emp="${e.id}" ${dirty ? '' : 'disabled'}>${!dirty ? (st.sites.length ? 'Allowed' : 'Off') : st.sites.length ? 'Allow on ' + plural(st.sites.length, 'site') : 'Turn off'}</button>
+      <span class="meta">Needs the Claude in Chrome extension in your Chrome. Works in their Claude sessions now; from your phone when Chrome is connected to Claude Code.</span></div></div></section>`;
+}
 function healthHtml(e) {
   const cap = e.weekly_tokens || 0, used = e.tokens_7d || 0, pct = cap ? Math.min(100, Math.round(used / cap * 100)) : 0;
   const runs = e.runs_7d ? `${plural(e.runs_7d, 'run')} this week` : 'No runs this week';
@@ -853,7 +878,9 @@ function tabManage(e, dt) {
   const on = new Set(dt.abilities);
   const groups = S.cat.groups.map((g) => {
     const items = S.cat.abilities.filter((a) => a.group === g);
-    return `<div class="ab-group"><h3>${esc(g)}</h3>${items.map((a) => a.locked
+    return `<div class="ab-group"><h3>${esc(g)}</h3>${items.map((a) => a.consent
+      ? `<div class="ab">${icon(on.has(a.id) ? 'check' : 'circle')}<div><div class="n">${esc(a.name)}<span class="badge">${on.has(a.id) ? 'on' : 'off'} · its own switch below</span></div><div class="d">${esc(a.description)}</div></div></div>`
+      : a.locked
       ? `<div class="ab">${icon('check')}<div><div class="n">${esc(a.name)}<span class="badge">always on</span></div><div class="d">${esc(a.description)}</div></div></div>`
       : `<label class="ab"><input type="checkbox" name="abilities" value="${a.id}" ${on.has(a.id) ? 'checked' : ''} form="ab-${e.id}"><div><div class="n">${esc(a.name)}${a.paid ? '<span class="badge warn">paid</span>' : ''}${a.job ? '<span class="badge">routine</span>' : ''}</div><div class="d">${esc(a.description)}</div></div></label>`).join('')}</div>`;
   }).join('');
@@ -863,6 +890,7 @@ function tabManage(e, dt) {
     <section><h2>Run a routine now</h2><p class="desc">The result shows up in the chat and the team room.</p>
       <div class="save-bar"><select class="select auto" id="run-job" aria-label="Routine">${jobs}</select><button class="btn" data-act="order" data-kind="run_job" data-emp="${e.id}" data-from="#run-job" ${paused ? 'disabled' : ''}>Launch now</button></div></section>
     <section><h2>Model</h2><p class="desc">${esc(e.name)} switches to the lightest model on their own when your plan is nearly used up.</p><div><select class="select auto" data-field="model" data-emp="${e.id}" aria-label="Model">${models}</select></div></section>
+    ${browserSection(e)}
     <section><h2>Weekly budget</h2><p class="desc">Tokens a week on your Claude plan. When it's used up, routines wait and ${esc(e.name)} still answers you. This week: ${fmtTok(e.tokens_7d)} tokens.</p><div><select class="select auto" data-field="weekly_tokens" data-emp="${e.id}" aria-label="Weekly budget">${[[0, 'No cap'], [1000000, 'Light · 1M tokens'], [3000000, 'Regular · 3M tokens'], [8000000, 'Heavy · 8M tokens'], [20000000, 'Very heavy · 20M tokens']].map(([n, l]) => `<option value="${n}" ${Number(e.weekly_tokens || 0) === n ? 'selected' : ''}>${l}</option>`).join('')}</select></div></section>
     <section><h2>Abilities</h2><p class="desc">What ${esc(e.name)} may do. These are locks: anything off is blocked, whatever anyone says in chat. Changes apply on their next run.</p>
       <form id="ab-${e.id}" data-form="abilities" data-emp="${e.id}"><div class="ab-bar"><button class="btn btn-primary" type="submit">Save</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="default">Default</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="super">Super agent</button><span class="meta">${on.size} of ${S.cat.abilities.length} on</span></div></form>
@@ -879,7 +907,9 @@ PAGES.abilities = () => {
   const head = emps.map((e) => `<th><div>${esc(e.name)}</div><div class="acts"><button class="btn btn-sm btn-primary" type="submit" form="mx-${e.id}">Save</button><button class="btn btn-sm" type="button" data-act="preset" data-emp="${e.id}" data-preset="default">Default</button><button class="btn btn-sm" type="button" data-act="preset" data-emp="${e.id}" data-preset="super">Super</button></div></th>`).join('');
   const rows = S.cat.groups.map((g) => {
     const items = S.cat.abilities.filter((a) => a.group === g);
-    return `<tr class="g"><th colspan="${emps.length + 1}">${esc(g)}</th></tr>` + items.map((a) => `<tr><td><div>${esc(a.name)}${a.paid ? ' <span class="badge warn">paid</span>' : ''}</div><div class="d">${esc(a.description)}</div></td>${emps.map((e) => a.locked
+    return `<tr class="g"><th colspan="${emps.length + 1}">${esc(g)}</th></tr>` + items.map((a) => `<tr><td><div>${esc(a.name)}${a.paid ? ' <span class="badge warn">paid</span>' : ''}</div><div class="d">${esc(a.description)}</div></td>${emps.map((e) => a.consent
+      ? `<td class="c"><a class="link small" href="/e/${e.id}/manage" title="Its own switch, in Manage">${(e.abilities || []).includes(a.id) ? 'On' : 'Off'}</a></td>`
+      : a.locked
       ? `<td class="c" title="Always on">${icon('check')}</td>`
       : `<td class="c"><input type="checkbox" form="mx-${e.id}" name="abilities" value="${a.id}" ${(e.abilities || []).includes(a.id) ? 'checked' : ''} aria-label="${esc(a.name)} for ${esc(e.name)}"></td>`).join('')}</tr>`).join('');
   }).join('');
@@ -1035,6 +1065,26 @@ document.addEventListener('click', async (ev) => {
   else if (act === 'ob-routine' && S.ob) { S.ob.edit.routines[b.dataset.k] = !S.ob.edit.routines[b.dataset.k]; keepCard(); render(true); }
   else if (act === 'ob-budget' && S.ob) { S.ob.edit.budget = b.dataset.k; keepCard(); render(true); }
   else if (act === 'open-claude') { openClaude(b.dataset.emp, b); }
+  else if ((act === 'br-site' || act === 'ob-site') && b.dataset.d) {
+    const st = act === 'br-site' ? S.browserEdit : S.ob.edit; const set = new Set(act === 'br-site' ? st.sites : st.browser);
+    set.has(b.dataset.d) ? set.delete(b.dataset.d) : set.add(b.dataset.d);
+    if (act === 'br-site') st.sites = [...set]; else { keepCard(); st.browser = [...set]; }
+    render(true);
+  }
+  else if (act === 'br-add' || act === 'ob-add') {
+    const inp = document.querySelector(`[data-site-input="${act === 'br-add' ? 'br' : 'ob'}"]`);
+    const d = (inp && inp.value || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) { toast('Type a site like etsy.com'); return; }
+    if (act === 'br-add') S.browserEdit.sites = [...new Set([...S.browserEdit.sites, d])]; else { keepCard(); S.ob.edit.browser = [...new Set([...(S.ob.edit.browser || []), d])]; }
+    render(true);
+  }
+  else if (act === 'br-approval') { S.browserEdit.approval = b.dataset.v; render(true); }
+  else if (act === 'ob-approval') { keepCard(); S.ob.edit.approval = b.dataset.v; render(true); }
+  else if (act === 'br-save') {
+    const st = S.browserEdit;
+    await order({ kind: 'set_browser', employee_id: b.dataset.emp, sites: st.sites, approval: st.approval });
+    S.browserEdit = null;
+  }
   else if (act === 'close-launch') { S.launched = null; const l = document.getElementById('launch-layer'); if (l) l.remove(); }
   else if (act === 'try') {
     const emp = b.dataset.emp;
@@ -1149,7 +1199,9 @@ document.addEventListener('submit', async (ev) => {
         const ids = new Set(c.abilities || []);
         ob.card = c; ob.stage = 'card';
         ob.edit = { role: c.role || h.role, scope: c.scope || h.scope, routines: { ...(c.routines || {}) }, budget: c.budget || 'regular', model: c.model || 'sonnet',
-          access: ACCESS.filter(([k, , a]) => k !== 'brief' && a.some((x) => ids.has(x))).map(([k]) => k) };
+          access: ACCESS.filter(([k, , a]) => k !== 'brief' && a.some((x) => ids.has(x))).map(([k]) => k),
+          browser: SITES.filter(([l]) => (c.access || []).some((a) => a.kind === 'post_with_approval' && new RegExp('\\b' + l + '\\b', 'i').test(`${a.site || ''} ${a.what || ''}`))).map(([, d]) => d),
+          approval: 'each' };
       } catch (e) { ob.stage = 'questions'; toast(e.message); }
       render(true).then(() => { const x = $('.idcard, .interview'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     } else if (kind === 'hire') {
@@ -1163,6 +1215,7 @@ document.addEventListener('submit', async (ev) => {
       const btn = f.querySelector('[data-hire-label]'); if (btn) { btn.disabled = true; btn.textContent = 'Launching…'; }
       const r = await api('/api/order', body);
       const id = (r.message.match(/\/([a-z0-9-]+)$/) || [])[1];
+      if (id && (ed.browser || []).length) await api('/api/order', { kind: 'set_browser', employee_id: id, sites: ed.browser, approval: ed.approval || 'each' });
       delete S.vals.hire; S.job = null; S.ob = null;
       S.data = await api('/api/state');
       S.launched = id || null;
