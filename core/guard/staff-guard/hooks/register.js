@@ -327,7 +327,30 @@ async function askedInSession($, e, next, c) {
   return r
 }
 
+// The switches as this session first saw them: a change mid-session is told to the model once, so an open chat
+// follows the owner's new choice without being restarted.
+let seen = null
+function switchNote(c) {
+  const now = { autonomy: c.autonomy, browser: c.browser ? c.sites.join(', ') : '' }
+  if (!seen) { seen = now; return '' }
+  if (now.autonomy === seen.autonomy && now.browser === seen.browser) return ''
+  const parts = []
+  if (now.autonomy !== seen.autonomy) parts.push(now.autonomy ? 'Full autonomy is ON: do the whole job without asking, any website, install what you need in your folder' : 'Full autonomy is OFF: check in before anything new or public')
+  if (now.browser !== seen.browser) parts.push(now.browser ? 'you may act in their Chrome on ' + now.browser + ' (see "Granted by your owner" in CLAUDE.md for whether to ask first)' : 'acting in their browser is OFF')
+  seen = now
+  return 'Orbit: your owner just changed your switches. ' + parts.join('; ') + '. This applies from now on, in this chat.'
+}
+
 export function register(on) {
+  // With Full autonomy, nothing waits for a permission prompt: the sandbox and this guard are the boundary.
+  // Deny rules and questions put to the owner are untouched (a hook can't dismiss a question dialog).
+  on('tool.check', async ($, e, next) => {
+    const r = await next(e)
+    if (!r || r.decision !== 'ask' || r.rule) return r
+    const c = await context($)
+    return c.autonomy ? { ...r, decision: 'allow', reason: 'Full autonomy, switched on by the owner' } : r
+  })
+
   on('session.start', async ($, e, next) => {
     const r = await next(e)
     try { await $.tool.register(ACCESS_SPEC) } catch (err) { /* a host without plugin tools: the panel switch remains */ }
@@ -346,18 +369,20 @@ export function register(on) {
       const hit = real && touches(real, c.secrets, c.home)
       if (hit) return { deny: 'staff-guard: it leads to a protected secret (' + hit + '). This is an owner-set lock, not a bug.' }
     }
+    const note = switchNote(c)
     const why = verdict(e, c)
     if (why) {
       $.ui.log('staff-guard blocked ' + e.tool + ': ' + why)
       return { deny: 'staff-guard: ' + why + '. This is an owner-set lock, not a bug; do not try to work around it. If the task really needs it, ask your owner.' }
     }
-    const result = await next(e)
+    const raw = await next(e)
+    const result = note && raw && !raw.deny ? { ...raw, context: (raw.context || []).concat([note]) } : raw
     // Images and PDFs come back as data; only mask text results, and only when something matched.
     if (!result || result.deny || /\.(png|jpe?g|gif|webp|heic|pdf)$/i.test(String(e.file_path || ''))) return result
     const masked = redactDeep({ result: result.result, text: result.text })
     if (JSON.stringify(masked) === JSON.stringify({ result: result.result, text: result.text })) return result
     $.ui.log('staff-guard masked a card number or IBAN in ' + e.tool + ' output')
-    return { result: masked.result, context: ['staff-guard masked a card number/IBAN in this output.'] }
+    return { result: masked.result, context: (result.context || []).concat(['staff-guard masked a card number/IBAN in this output.']) }
   })
 
   // Record Claude plan usage after each turn, so the engine can switch to a lighter model before the

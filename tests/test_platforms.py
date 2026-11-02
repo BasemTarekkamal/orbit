@@ -535,3 +535,24 @@ class Updates(unittest.TestCase):
         self.assertFalse(update.announce_once("99.0.0"))
         update._save({"latest": "0.0.1", "checked": time.time()})
         self.assertFalse(update.status()["newer"])
+
+
+class ContentKit(unittest.TestCase):
+    """The content creator comes trained: the skill loads with the ability, and the kit is whole."""
+
+    def test_skill_and_kit(self):
+        import abilities
+        kit = os.path.join(engine.KIT, "core", "skills", "content-creator")
+        with open(os.path.join(kit, "SKILL.md"), encoding="utf-8") as fh:
+            self.assertIn("abilities: content", fh.read())
+        for f in ("setup.sh", "make.sh", "vo.py", "mix.py", "render.js", "short.html", "script.json", "short.json",
+                  "fonts/Poppins-Bold.ttf", "fonts/Poppins-BoldItalic.ttf"):
+            self.assertTrue(os.path.exists(os.path.join(kit, "kit", f)), f)
+        for f in ("vo.py", "mix.py"):
+            subprocess.run([sys.executable, "-m", "py_compile", os.path.join(kit, "kit", f)], check=True)
+        for f in ("setup.sh", "make.sh"):
+            subprocess.run(["sh", "-n", os.path.join(kit, "kit", f)], check=True)
+        self.assertIn("content-creator", [s for a in abilities.catalog() if a["id"] == "content" for s in a["skills"]])
+        with open(os.path.join(engine.KIT, "core", "roles.json"), encoding="utf-8") as fh:
+            role = next(r for r in json.load(fh)["roles"] if r["id"] == "creator")
+        self.assertIn("content", role["abilities"])

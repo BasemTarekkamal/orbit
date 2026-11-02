@@ -13,6 +13,8 @@ anyone but you. Early: built in the open, tested by a few people; tell us what b
 drowning in reviews and threads, agencies and recruiters. You say what you do; it proposes the jobs:
 
 - Research where normal AI can't: TikTok, Instagram, Facebook, X, Reddit, YouTube, Maps
+- Make and post your short videos like an experienced creator: comes with a ready, free video kit (3D
+  visuals, voice-over, music, captions) and studies the videos you point it at
 - Watch competitors and speak only when something changes
 - Keep your books from the statements you send, read-only
 - Review designs against the PRD; keep you posted on PRD and commit changes

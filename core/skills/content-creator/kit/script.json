@@ -1,0 +1,7 @@
+{"voice": "am_michael", "speed": 1.12, "lang": "en-us",
+ "lines": [
+  ["l0", "Your engine fires about fifty times a second.", 0.35],
+  ["l1", "Each piston gets pushed down by a tiny explosion.", 0.45],
+  ["l2", "The crankshaft turns all that up and down into spin.", 0.45],
+  ["l3", "Follow for more.", 0.5]
+ ]}
