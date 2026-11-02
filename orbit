@@ -14,6 +14,7 @@
   orbit run <handle> "<message>"   talk to someone right here in the terminal
   orbit secret telegram | slack | discord | apify | anthropic    save a token (typed hidden, stored only on this computer)
   orbit group <chat id> [--channel telegram|slack|discord]      use a group or channel as the team chat
+  orbit roles list | save <handle> [title] | export <role> [folder] | import <folder>   roles you can hire from
   orbit doctor                     check everything the team needs
   orbit doctor --get-voice-model   download the speech model for voice notes and calls (~550 MB)
   orbit doctor --get-whisper       Windows/Linux: build the speech engine (whisper.cpp) for this computer
@@ -591,8 +592,10 @@ def main():
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("setup").add_argument("--no-start", action="store_true", help="don't install or start the service")
     sub.add_parser("demo").add_argument("--stop", action="store_true", help="end the demo")
+    ro = sub.add_parser("roles")                         # your own roles: save, share, import
+    ro.add_argument("action", choices=["list", "save", "export", "import"]); ro.add_argument("args", nargs="*")
     gr = sub.add_parser("grant")                         # called by the guard after an owner's Yes in Claude
-    gr.add_argument("handle"); gr.add_argument("kind", choices=["autonomy", "browser", "connect"]); gr.add_argument("args", nargs="*")
+    gr.add_argument("handle"); gr.add_argument("kind", choices=["autonomy", "browser", "connect", "connector"]); gr.add_argument("args", nargs="*")
     for c in ("start", "stop", "restart", "status", "panel", "list", "logs", "service-run"):
         sub.add_parser(c)
     d = sub.add_parser("doctor")
@@ -629,6 +632,22 @@ def main():
         return start()
     if args.cmd == "service-run":
         return service_run()
+    if args.cmd == "roles":
+        import rolebook
+        a = args.args
+        try:
+            if args.action == "list":
+                for r in rolebook.all_roles()["roles"]:
+                    say("%-22s %-10s %s" % (r["id"], r.get("source", "kit"), r.get("title", "")))
+            elif args.action == "save":
+                say(rolebook.save_role(a[0], " ".join(a[1:]), "terminal"))
+            elif args.action == "export":
+                say("Exported to %s. Share the folder, or open a pull request adding it to core/roles.d/." % rolebook.export_role(a[0], a[1] if len(a) > 1 else "."))
+            else:
+                say(rolebook.import_role(a[0]))
+        except (IndexError, rolebook.RoleError) as e:
+            sys.exit(str(e) or "orbit roles list | save <handle> [title] | export <role> [folder] | import <folder>")
+        return
     if args.cmd == "grant":
         import grants
         import hmac
@@ -637,6 +656,7 @@ def main():
         owner = next(iter(engine.registry().get("owners", {}).values()), {}).get("name", "Owner")
         a = args.args
         kw = {"on": (a[0] if a else "on") == "on"} if args.kind == "autonomy" else \
+             {"ref": a[0] if a else "", "name": " ".join(a[1:])} if args.kind == "connector" else \
              {"sites": [x for x in (a[0] if a else "").split(",") if x], "approval": a[1] if len(a) > 1 else "each"} if args.kind == "browser" else \
              {"other": a[0] if a else "", "note": " ".join(a[1:])}
         try:

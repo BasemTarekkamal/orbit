@@ -671,3 +671,12 @@ details.adv > summary:hover { color: var(--ink); }
 .update { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; padding: 14px 16px; margin-bottom: 18px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--accent-soft); }
 .update .actions { display: flex; gap: 8px; align-items: center; }
 .update-notes { margin-top: 6px; max-width: 70ch; color: var(--ink-2); }
+
+.connectors h3 { margin: 14px 0 6px; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.conn { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 6px; max-width: 80ch; }
+.conn li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.conn li b { font-weight: 600; }
+.warn-text { color: var(--warn); }
+.connectors .row-form { display: flex; gap: 8px; margin-top: 8px; max-width: 80ch; flex-wrap: wrap; }
+.connectors .row-form .input { flex: 1; min-width: 160px; }
+.manage section h2 svg, .connectors h2 svg { width: 16px; height: 16px; vertical-align: -3px; color: var(--accent-text); }

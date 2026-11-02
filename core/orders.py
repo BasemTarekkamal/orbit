@@ -3,7 +3,9 @@ Every order is logged in team/orders.jsonl. Harness-owned: only owners reach thi
 """
 from __future__ import annotations
 
+import os
 import re
+import time
 
 import abilities
 import engine
@@ -11,7 +13,7 @@ import hire
 import team
 
 KINDS = ("message", "hire", "pause", "resume", "retire", "run_job", "set_abilities", "set_field", "set_browser", "set_autonomy",
-         "connect", "call_start", "call_stop")
+         "connect", "connector", "teach", "save_role", "call_start", "call_stop")
 
 
 class OrderError(ValueError):
@@ -71,6 +73,9 @@ def execute(by, kind, p):
             card = p.get("card") if isinstance(p.get("card"), dict) else None
             new = hire.hire(p.get("name", ""), p.get("role", ""), p.get("scope", ""), supervisor=sup, preset=preset,
                             picked=picked, model=p.get("model") or None, card=card)
+            if p.get("template"):                         # a saved or community role: its skills and rules come along
+                import rolebook
+                rolebook.apply_template(new, re.sub(r"[^a-z0-9-]", "", str(p["template"]))[:40])
             e = engine.registry()["employees"][new]
             team.feed("staff", "Orbit", "team", "%s joined as %s, reporting to %s. Message them here, or /%s (@%s on "
                       "Slack and Discord) in your chat." % (e["name"], e["role"], e["supervisor"], new, new), "panel")
@@ -130,6 +135,37 @@ def execute(by, kind, p):
             res = ("On for %s, %s" % (", ".join(b["sites"]), {"none": "without asking you", "batch": "after you approve each batch"}
                                      .get(b.get("approval"), "after you approve each one"))) if b else "Off"
             team.feed("staff", "Orbit", eid, "%s: %s. %s" % (summary, res, "Open them in Claude again to use it there." if b else ""), "panel")
+        elif kind == "connector":
+            e = _emp(eid, want_active=False)
+            import connectors
+            try:
+                res = (connectors.revoke(eid, str(p.get("ref") or ""), by) if p.get("off") else
+                       connectors.grant(eid, str(p.get("ref") or ""), by, str(p.get("name") or "")))
+            except ValueError as ex:
+                raise OrderError(str(ex))
+            summary = "Connector for %s" % e["name"]
+        elif kind == "teach":                             # the owner's own know-how → the crew member's skills
+            e = _emp(eid)
+            text = str(p.get("text") or "").strip()[:200000]
+            if len(text) < 40:
+                raise OrderError("Paste the playbook, notes or process (a few lines at least)")
+            ws = engine.employee(eid)["workspace"]
+            slug = re.sub(r"[^a-z0-9]+", "-", str(p.get("title") or "experience").lower()).strip("-")[:40] or "experience"
+            rel = os.path.join("notes", "teach", "%s-%s.md" % (time.strftime("%Y-%m-%d"), slug))
+            os.makedirs(os.path.join(ws, "notes", "teach"), exist_ok=True)
+            with open(os.path.join(ws, rel), "w", encoding="utf-8") as fh:
+                fh.write(text + "\n")
+            prompt = team.job_prompt(eid, engine.employee(eid), "learn").replace("$FILE", rel)
+            team.run_async(eid, prompt, "learn", None, [], who=by, on_done=team.to_room(eid, e["name"], by, "panel"))
+            summary, res = "Teach %s" % e["name"], "%s is reading it and turning it into skills" % e["name"]
+        elif kind == "save_role":
+            _emp(eid, want_active=False)
+            import rolebook
+            try:
+                res = rolebook.save_role(eid, str(p.get("title") or ""), by)
+            except rolebook.RoleError as ex:
+                raise OrderError(str(ex))
+            summary = "Save a role"
         elif kind == "connect":
             e = _emp(eid, want_active=False)
             res = hire.connect(eid, str(p.get("other") or ""), str(p.get("note") or ""), by)

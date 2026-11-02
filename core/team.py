@@ -29,7 +29,7 @@ CHATLOG = os.path.join(TEAM, "chatlog.jsonl")
 DAYS = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
 JOBS = {"brief": "Morning brief", "standup": "Standup", "eod": "End of day", "scout": "Self-improvement",
         "evals": "Weekly self-test"}
-LABELS = {**JOBS, "first_day": "First day", "minutes": "Meeting minutes", "followup": "a follow-up",
+LABELS = {**JOBS, "first_day": "First day", "minutes": "Meeting minutes", "followup": "a follow-up", "learn": "your know-how",
           "bus": "a colleague's question"}
 PAIRING = os.path.join(TEAM, "pairing.json")     # the one-time code that links an owner's phone to the team
 DEFAULT_JOBS = {"brief": {"at": "08:30", "days": "work"}, "standup": {"at": "09:00", "days": "work"},

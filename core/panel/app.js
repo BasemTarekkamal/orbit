@@ -398,7 +398,7 @@ function jobPicker(from) {
     return `<div class="jobs sits">${sits.map((x) => `<button type="button" class="job" data-act="situation" data-id="${x.id}"><b>${esc(x.title)}</b><span>${esc(x.blurb)}</span></button>`).join('')}</div>`;
   }
   const order = sit.jobs.map((id) => roles.find((r) => r.id === id)).filter(Boolean);
-  const cards = order.map((x) => `<button type="button" class="job ${S.job === x.id ? 'on' : ''}" data-act="job" data-role="${x.id}" aria-pressed="${S.job === x.id}"><b>${esc(x.title)}</b><span>${esc(x.role || 'Your own job')}</span></button>`).join('');
+  const cards = order.map((x) => `<button type="button" class="job ${S.job === x.id ? 'on' : ''}" data-act="job" data-role="${x.id}" aria-pressed="${S.job === x.id}"><b>${esc(x.title)}</b><span>${esc(x.role || 'Your own job')}${x.source ? ` · <em>${x.source === 'yours' ? 'your role' : 'community'}</em>` : ''}</span></button>`).join('');
   const back = `<p class="meta sit-line">${esc(sit.title)} · <a class="link" href="#" data-act="situation" data-id="">change</a>${sit.id === 'other' ? '' : ` · <a class="link" href="#" data-act="situation" data-id="other">all jobs</a>`}</p>`;
   const sel = roles.find((x) => x.id === S.job);
   if (!sel) return back + `<div class="jobs">${cards}</div>`;
@@ -478,6 +478,8 @@ function cardHtml(sel, ob, name, from) {
       ${S.data.employees.length ? `<section class="wide"><h3>${icon('users')} Works with</h3>
         <div class="chips">${S.data.employees.map((x) => `<button type="button" class="chip ${(ed.with || []).includes(x.id) ? 'on' : ''}" data-act="ob-with" data-id="${x.id}" aria-pressed="${(ed.with || []).includes(x.id)}">${esc(x.name)} <span class="faint">${esc(x.role)}</span></button>`).join('')}</div>
         <p class="meta">Everyone on the crew can always ask anyone. These become part of the job: who hands what to whom.</p></section>` : ''}
+      ${(ob.conn || []).length ? `<section class="wide"><h3>${icon('grid')} Connectors</h3><div class="chips">${ob.conn.map((x) => `<button type="button" class="chip ${(ed.connectors || []).includes(x.id) ? 'on' : ''}" data-act="ob-conn" data-id="${x.id}" aria-pressed="${(ed.connectors || []).includes(x.id)}" title="${esc(x.what)}">${esc(x.name)}</button>`).join('')}</div>
+        <p class="meta">Apps ${esc(name || 'they')} can work in. The first time, you sign in to each in a Claude session with them. More in Manage, any time.</p></section>` : ''}
       <section class="wide grant"><h3>${icon('claude')} How independent?</h3>
         <div class="seg budget" role="group" aria-label="Independence"><button type="button" class="${ed.autonomy ? '' : 'on'}" data-act="ob-autonomy" data-v=""><b>Checks in with me</b><span>Asks before anything new or public</span></button><button type="button" class="${ed.autonomy ? 'on' : ''}" data-act="ob-autonomy" data-v="1"><b>Full autonomy</b><span>Does the whole job, finds its own tools; the sandbox keeps it in its folder</span></button></div></section>
       <section><h3>Tools</h3>${access}</section>
@@ -667,6 +669,27 @@ function sitePicker(prefix, sites) {
     ${extra.map((d) => `<button type="button" class="chip on" data-act="${prefix}-site" data-d="${esc(d)}" aria-pressed="true">${esc(d)} ×</button>`).join('')}</div>
     <div class="row-form"><input class="input" data-site-input="${prefix}" placeholder="Another site, like etsy.com" maxlength="80"><button type="button" class="btn btn-sm" data-act="${prefix}-add">Add</button></div>`;
 }
+// Connectors (MCP servers): the apps a crew member works in. Granted here, by chat, or with a Yes in Claude.
+function connectorsSection(e) {
+  const c = (S.conn || {})[e.id];
+  if (!c) { loadConnectors(e.id); return `<section><h2>${icon('grid')} Connectors</h2><p class="quiet">Loading…</p></section>`; }
+  const row = (x, on) => `<li><div><b>${esc(x.name)}</b> <span class="meta">${esc(x.what || x.url || '')}${x.money ? ' · read-only on money' : ''}</span>${x.source && String(x.source).startsWith('registry') ? `<div class="meta warn-text">${esc(x.source)}</div>` : ''}</div>
+    <button type="button" class="btn btn-sm ${on ? 'btn-ghost' : ''}" data-act="connector" data-emp="${e.id}" data-ref="${esc(on ? x.id : (x.source && String(x.source).startsWith('registry') ? x.url : x.id))}" data-name="${esc(x.name)}" data-off="${on ? 1 : ''}">${on ? 'Remove' : 'Add'}</button></li>`;
+  return `<section class="connectors"><h2>${icon('grid')} Connectors</h2>
+    <p class="desc">Apps ${esc(e.name)} works in directly: your Drive, inbox, CRM, design or analytics tools. The first time, open ${esc(e.name)} in Claude and sign in to the app when it asks; Orbit never sees that sign-in. ${esc(e.name)} also asks for one when it would help.</p>
+    ${c.granted.length ? `<h3>Connected</h3><ul class="conn">${c.granted.map((x) => row(x, true)).join('')}</ul>` : ''}
+    ${c.suggested.length ? `<h3>Suggested for this job</h3><ul class="conn">${c.suggested.map((x) => row(x, false)).join('')}</ul>` : ''}
+    <form class="row-form" data-form="conn-search" data-emp="${e.id}"><input class="input" name="q" maxlength="80" placeholder="Search apps: invoices, newsletter, Figma…" value="${esc(c.q || '')}"><button class="btn btn-sm" type="submit">Search</button></form>
+    ${c.results && c.results.length ? `<ul class="conn">${c.results.map((x) => row(x, false)).join('')}</ul>` : c.q ? '<p class="quiet small">Nothing found. Paste the app\'s MCP link below.</p>' : ''}
+    <form class="row-form" data-form="conn-link" data-emp="${e.id}"><input class="input" name="url" type="url" placeholder="https://… an app's MCP link" pattern="https://.*"><input class="input" name="name" maxlength="40" placeholder="Name"><button class="btn btn-sm" type="submit">Add by link</button></form></section>`;
+}
+async function loadConnectors(emp, q = '') {
+  if (S.connLoading === emp + q) return;
+  S.connLoading = emp + q;
+  try { S.conn = { ...(S.conn || {}), [emp]: { ...(await api(`/api/connectors?emp=${encodeURIComponent(emp)}&q=${encodeURIComponent(q)}`)), q } }; }
+  catch (err) { S.conn = { ...(S.conn || {}), [emp]: { granted: [], suggested: [], results: [], q } }; }
+  S.connLoading = ''; render(false);
+}
 function autonomySection(e) {
   const on = (e.abilities || []).includes('full_autonomy');
   return `<section class="grant"><h2>${icon('claude')} Full autonomy</h2>
@@ -760,10 +783,20 @@ function tabKnowledge(e, dt, r) {
   const list = `<h3>Notes they keep</h3>${NOTES.map(([f, l]) => link('note:' + f, l)).join('')}${group('Skills they learned', sk.own, 'own')}${group('Team skills', sk.team, 'team')}${group('Playbooks for their abilities', sk.kit, 'kit')}`;
   let preview;
   if (sel === 'teach') preview = teachForm(e);
+  else if (sel === 'experience') preview = experienceForm(e);
   else if (sel.startsWith('note:')) preview = notePreview(e, dt, sel.slice(5));
   else preview = skillPreview(e, sel);
-  return `<div class="ab-bar"><a class="btn btn-primary" href="/e/${e.id}/knowledge?f=teach">${icon('plus')}Teach a skill</a><span class="meta">Notes they keep, skills they learned or were taught, and playbooks for their abilities. All loaded on every run.</span></div>
+  return `<div class="ab-bar"><a class="btn btn-primary" href="/e/${e.id}/knowledge?f=experience">${icon('plus')}Teach from your experience</a><a class="btn" href="/e/${e.id}/knowledge?f=teach">Write a skill</a><span class="meta">Notes they keep, skills they learned or were taught, and playbooks for their abilities. All loaded on every run.</span></div>
     <div class="work"><div class="files">${list}</div><div class="preview">${preview}</div></div>`;
+}
+function experienceForm(e) {
+  return `<form class="form prose" data-form="experience" data-emp="${e.id}">
+    <h2>Teach ${esc(e.name)} from your experience</h2>
+    <p class="muted small">Paste your playbook, process, notes or a handoff doc: how you do this work, what you've learned, what you never want. ${esc(e.name)} reads it, turns it into skills and rules, and tells you what they took from it. Leave out passwords and private data.</p>
+    <div class="field"><label for="xp-title">What is it</label><input id="xp-title" class="input" name="title" maxlength="80" placeholder="My content playbook"></div>
+    <div class="field"><label for="xp-text">Your know-how</label><textarea id="xp-text" class="textarea" name="text" rows="16" required minlength="40" placeholder="How I work… What worked… What I never want…"></textarea>
+      <span class="hint">Or attach a file: <input type="file" accept=".md,.txt,.markdown,.csv,.json" data-xp-file></span></div>
+    <div class="save-bar"><button class="btn btn-primary" type="submit">Teach ${esc(e.name)}</button><span class="meta">Takes a minute or two; the result shows in their Work tab.</span></div></form>`;
 }
 function notePreview(e, dt, f) {
   const text = dt.memory[f] || '';
@@ -912,6 +945,9 @@ function tabManage(e, dt) {
     <section><h2>Abilities</h2><p class="desc">What ${esc(e.name)} may do. These are locks: anything off is blocked, whatever anyone says in chat. Changes apply on their next run.</p>
       <form id="ab-${e.id}" data-form="abilities" data-emp="${e.id}"><div class="ab-bar"><button class="btn btn-primary" type="submit">Save</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="default">Default</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="super">Super agent</button><span class="meta">${on.size} of ${S.cat.abilities.length} on</span></div></form>
       <div class="ab-groups">${groups}</div></section>
+    ${connectorsSection(e)}
+    <section><h2>${icon('file')} Save as a role</h2><p class="desc">Turn ${esc(e.name)}'s job, skills and rules into a role you can hire from again, or share. Their notes, files and access stay private.</p>
+      <form class="row-form" data-form="save-role" data-emp="${e.id}"><input class="input" name="title" maxlength="80" placeholder="${esc(e.role)}" aria-label="Role name"><button class="btn" type="submit">Save as a role</button></form></section>
     <section><h2>Retire</h2><p class="desc">They stop working; their folder and memory stay on this ${MAC()}.</p><div><button class="btn btn-danger" data-act="retire" data-emp="${e.id}" data-name="${esc(e.name)}">Retire ${esc(e.name)}…</button></div></section>
   </div>`;
 }
@@ -1082,6 +1118,11 @@ document.addEventListener('click', async (ev) => {
   else if (act === 'ob-routine' && S.ob) { S.ob.edit.routines[b.dataset.k] = !S.ob.edit.routines[b.dataset.k]; keepCard(); render(true); }
   else if (act === 'ob-budget' && S.ob) { S.ob.edit.budget = b.dataset.k; keepCard(); render(true); }
   else if (act === 'open-claude') { openClaude(b.dataset.emp, b); }
+  else if (act === 'connector') {
+    b.disabled = true;
+    await order({ kind: 'connector', employee_id: b.dataset.emp, ref: b.dataset.ref, name: b.dataset.name, off: !!b.dataset.off });
+    const q = ((S.conn || {})[b.dataset.emp] || {}).q || ''; delete S.conn[b.dataset.emp]; loadConnectors(b.dataset.emp, q);
+  }
   else if (act === 'update-later') { await api('/api/update', { action: 'dismiss' }); S.data = await api('/api/state'); render(true); }
   else if (act === 'update-now') {
     b.disabled = true; b.textContent = 'Updating…';
@@ -1102,6 +1143,7 @@ document.addEventListener('click', async (ev) => {
     render(true);
   }
   else if (act === 'br-approval') { S.browserEdit.approval = b.dataset.v; render(true); }
+  else if (act === 'ob-conn') { keepCard(); const w = new Set(S.ob.edit.connectors || []); w.has(b.dataset.id) ? w.delete(b.dataset.id) : w.add(b.dataset.id); S.ob.edit.connectors = [...w]; render(true); }
   else if (act === 'ob-with') { keepCard(); const w = new Set(S.ob.edit.with || []); w.has(b.dataset.id) ? w.delete(b.dataset.id) : w.add(b.dataset.id); S.ob.edit.with = [...w]; render(true); }
   else if (act === 'ob-autonomy') { keepCard(); S.ob.edit.autonomy = !!b.dataset.v; render(true); }
   else if (act === 'ob-approval') { keepCard(); S.ob.edit.approval = b.dataset.v; render(true); }
@@ -1160,6 +1202,11 @@ document.addEventListener('toggle', (ev) => {              // keep "How I did it
 }, true);
 
 document.addEventListener('change', async (ev) => {
+  if (ev.target.matches && ev.target.matches('[data-xp-file]') && ev.target.files[0]) {
+    const box = document.getElementById('xp-text'); box.value = await ev.target.files[0].text();
+    const t = document.getElementById('xp-title'); if (t && !t.value) t.value = ev.target.files[0].name.replace(/\.[^.]+$/, '');
+    return;
+  }
   const sel = ev.target.closest('select[data-field]');
   if (sel) { await order({ kind: 'set_field', employee_id: sel.dataset.emp, field: sel.dataset.field, value: sel.value }); return; }
   const into = ev.target.closest('select[data-into]');
@@ -1224,6 +1271,7 @@ document.addEventListener('submit', async (ev) => {
         const c = await api('/api/onboard/card', { name: h.name, role: h.role, scope: h.scope, answers });
         const ids = new Set(c.abilities || []);
         ob.card = c; ob.stage = 'card';
+        try { ob.conn = (await api(`/api/connectors?role=${encodeURIComponent(S.job || '')}&text=${encodeURIComponent((c.role || '') + ' ' + (c.scope || ''))}`)).suggested || []; } catch (err) { ob.conn = []; }
         ob.edit = { role: c.role || h.role, scope: c.scope || h.scope, routines: { ...(c.routines || {}) }, budget: c.budget || 'regular', model: c.model || 'sonnet',
           access: ACCESS.filter(([k, , a]) => k !== 'brief' && a.some((x) => ids.has(x))).map(([k]) => k),
           browser: SITES.filter(([l]) => (c.access || []).some((a) => a.kind === 'post_with_approval' && new RegExp('\\b' + l + '\\b', 'i').test(`${a.site || ''} ${a.what || ''}`))).map(([, d]) => d),
@@ -1234,7 +1282,8 @@ document.addEventListener('submit', async (ev) => {
       const h = S.vals.hire || {}, ob = S.ob || {}, ed = ob.edit || {}, c = ob.card || {};
       const picked = new Set(ed.access || []);
       const routines = Object.entries(ed.routines || {}).filter(([, on]) => on).map(([k]) => k);
-      const body = { kind: 'hire', name: h.name, role: fd.get('role') || ed.role || h.role, scope: fd.get('scope') || ed.scope || h.scope,
+      const tpl = (S.roles.roles.find((x) => x.id === S.job) || {}).template;
+      const body = { kind: 'hire', template: tpl, name: h.name, role: fd.get('role') || ed.role || h.role, scope: fd.get('scope') || ed.scope || h.scope,
         supervisor: S.data.me, model: ed.model || 'sonnet',
         abilities: ALWAYS.concat(...ACCESS.filter(([k]) => picked.has(k) && k !== 'brief').map(([, , ids]) => ids), routines),
         card: { ...c, weekly_tokens: { light: 1e6, regular: 3e6, heavy: 8e6 }[ed.budget] || 3e6 } };
@@ -1244,6 +1293,7 @@ document.addEventListener('submit', async (ev) => {
       if (id && (ed.browser || []).length) await api('/api/order', { kind: 'set_browser', employee_id: id, sites: ed.browser, approval: ed.approval || 'each' });
       if (id && ed.autonomy) await api('/api/order', { kind: 'set_autonomy', employee_id: id, on: true });
       for (const other of (id ? ed.with || [] : [])) await api('/api/order', { kind: 'connect', employee_id: id, other });
+      for (const ref of (id ? ed.connectors || [] : [])) await api('/api/order', { kind: 'connector', employee_id: id, ref });
       delete S.vals.hire; S.job = null; S.ob = null;
       S.data = await api('/api/state');
       S.launched = id || null;
@@ -1265,6 +1315,17 @@ document.addEventListener('submit', async (ev) => {
       const r = await api('/api/skill', { emp, do: 'create', name, description: fd.get('description') || '', text: fd.get('text') || '' });
       toast(r.message); delete S.vals['teach:' + emp]; await loadDetail(emp); S.data = await api('/api/state');
       go(`/e/${emp}/knowledge?f=own:${name}`);
+    } else if (kind === 'experience') {
+      const r = await api('/api/order', { kind: 'teach', employee_id: emp, title: fd.get('title') || '', text: fd.get('text') || '' });
+      toast(r.message); go(`/e/${emp}`); schedule();
+    } else if (kind === 'save-role') {
+      const r = await api('/api/order', { kind: 'save_role', employee_id: emp, title: fd.get('title') || '' });
+      toast(r.message); S.roles = null;
+    } else if (kind === 'conn-search') {
+      delete S.conn[emp]; loadConnectors(emp, String(fd.get('q') || '').trim());
+    } else if (kind === 'conn-link') {
+      const r = await api('/api/order', { kind: 'connector', employee_id: emp, ref: String(fd.get('url') || '').trim(), name: String(fd.get('name') || '').trim() });
+      toast(r.message); delete S.conn[emp]; loadConnectors(emp);
     } else if (kind === 'rules') {
       const r = await api(`/api/employee/${emp}/rules`, { text: fd.get('text') || '' });
       toast(r.message); delete S.vals['rules:' + emp]; await loadDetail(emp); render(true);
