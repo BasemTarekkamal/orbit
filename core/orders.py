@@ -127,7 +127,8 @@ def execute(by, kind, p):
             except Exception as ex:  # noqa: BLE001
                 team.log("claude_session after set_browser: %r" % ex)
             summary = "Acts in your browser for %s" % e["name"]
-            res = ("On for %s, after your approval" % ", ".join(b["sites"])) if b else "Off"
+            res = ("On for %s, %s" % (", ".join(b["sites"]), {"none": "without asking you", "batch": "after you approve each batch"}
+                                     .get(b.get("approval"), "after you approve each one"))) if b else "Off"
             team.feed("staff", "Orbit", eid, "%s: %s. %s" % (summary, res, "Open them in Claude again to use it there." if b else ""), "panel")
         elif kind == "connect":
             e = _emp(eid, want_active=False)

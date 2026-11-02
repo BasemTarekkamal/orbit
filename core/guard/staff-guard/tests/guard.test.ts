@@ -140,3 +140,31 @@ test('request_access: only a Yes clicked by the owner runs orbit grant; a No or 
   expect(ran.length).toEqual(1)
   expect(ran[0].slice(2)).toEqual(['/Users/owner/staffroom/orbit', 'grant', 'sara', 'autonomy', 'on'])
 })
+
+test('where the button cannot open, the owner answers the same question in the session and only their Yes applies it', async ($, on) => {
+  mock.env(on, { ...ENV, STAFF_EMPLOYEE: 'sara' })
+  const ran: string[][] = []
+  on('process.run', ($, e) => { ran.push([...(e as { argv: string[] }).argv]); return { value: { exitCode: 0, stdout: 'Done: Sara has full autonomy now.', stderr: '' } } })
+  let surface = false
+  let pick = 'Yes, allow it'
+  let afk = false
+  on('tool.call', { tool: 'AskUserQuestion' }, ($, e) => {
+    if (!surface) throw new Error('no surface')            // the plugin dialog can't open here
+    const q = (e as { questions: Array<{ question: string }> }).questions[0].question
+    return { result: { questions: (e as { questions: unknown[] }).questions, answers: { [q]: pick }, ...(afk ? { afkTimeoutMs: 60000 } : {}) } }
+  })
+  const r = (await $.tool.call({ tool: 'mcp__staff-guard__request_access', kind: 'full_autonomy', why: 'voice-over tool' } as never)) as { result?: string }
+  expect(String(r.result)).toContain('AskUserQuestion')
+  const q = String(r.result).match(/question "([^"]+)"/)![1]
+  surface = true
+  const ask = (extra: Record<string, unknown> = {}) => $.tool.call({ tool: 'AskUserQuestion', questions: [{ question: q, header: 'Orbit access', options: [{ label: 'Not now' }, { label: 'Yes, allow it' }], multiSelect: false }], ...extra } as never) as Promise<{ deny?: string, context?: string[] }>
+  expect(String((await ask({ answers: { [q]: 'Yes, allow it' } })).deny)).toContain('comes from your owner')   // it can't answer for them
+  afk = true
+  await ask()                                                // auto-resolved while they were away: nothing
+  expect(ran.length).toEqual(0)
+  surface = false; await $.tool.call({ tool: 'mcp__staff-guard__request_access', kind: 'full_autonomy', why: 'voice-over tool' } as never); surface = true
+  afk = false
+  const yes = await ask()
+  expect(String(yes.context)).toContain('full autonomy')
+  expect(ran.length).toEqual(1)
+})

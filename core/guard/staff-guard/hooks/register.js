@@ -284,19 +284,47 @@ async function requestAccess($, e) {
   try {
     answer = await $.ui.ask(q, { header: 'Orbit access', options: ['Not now', YES] })
   } catch (err) {
-    return { result: 'Nobody can be asked here (a background run). Tell your owner in one line what you need and why; ' +
-      'they can say "' + who + ' full autonomy on" in chat, or use your Manage tab in the panel.' }
+    // Where the button can't open (some remote surfaces), the session's own question tool can: the owner's
+    // answer to exactly this question applies it (see the AskUserQuestion hook below).
+    PENDING.set(q, { args, at: Date.now() })
+    return { result: 'The button could not open here. Ask your owner right now with the AskUserQuestion tool, exactly: ' +
+      'header "Orbit access", question "' + q + '", options "Not now" and "' + YES + '" (in that order, no answers ' +
+      'filled in). Their Yes applies it at once. If no one can be asked (a background run), tell them in one line; they ' +
+      'can say "' + who + ' full autonomy on" in chat or use your Manage tab in the panel.' }
   }
   if (answer !== YES) return { result: 'Your owner said not now. Carry on without it; ask again only with a stronger reason.' }
+  return { result: await applyGrant($, c, args) }
+}
+
+const PENDING = new Map()   // access questions waiting for the owner's answer in the session's own question tool
+async function applyGrant($, c, args) {
   let key = ''
   try { key = (await $.fs.read(c.data + '/.secrets/grant_key')).trim() } catch (err) { /* made by orbit grant itself */ }
   try {
     const r = await $.process.run(['/usr/bin/env', 'python3', c.kit + '/orbit', 'grant', base.employee].concat(args),
       { env: { ORBIT_GRANT_KEY: key, STAFFROOM_HOME: c.data }, timeoutMs: 180000 })
-    return { result: r.exitCode === 0 ? r.stdout.trim() + ' It applies now.' : "It didn't go through: " + (r.stderr || r.stdout).trim().slice(-300) }
+    return r.exitCode === 0 ? r.stdout.trim() + ' It applies now.' : "It didn't go through: " + (r.stderr || r.stdout).trim().slice(-300)
   } catch (err) {
-    return { result: 'Your owner said yes, but Orbit could not apply it here (' + String(err).slice(0, 120) + '). Ask them to switch it on in your Manage tab.' }
+    return 'Your owner said yes, but Orbit could not apply it here (' + String(err).slice(0, 120) + '). Ask them to switch it on in your Manage tab.'
   }
+}
+
+async function askedInSession($, e, next, c) {
+  const pending = (Array.isArray(e.questions) ? e.questions : []).map((x) => x && x.question).filter((q) => PENDING.has(q))
+  if (!pending.length) return null
+  if (e.answers && Object.keys(e.answers).length) {
+    return { deny: 'staff-guard: the answer to an Orbit access question comes from your owner, not from you. Ask without answers.' }
+  }
+  const r = await next(e)
+  const res = (r && r.result && typeof r.result === 'object') ? r.result : {}
+  for (const q of pending) {
+    const job = PENDING.get(q)
+    PENDING.delete(q)
+    if (!res.afkTimeoutMs && String((res.answers || {})[q] || '') === YES) {
+      return { ...r, context: ['Orbit: ' + (await applyGrant($, c, job.args))] }
+    }
+  }
+  return r
 }
 
 export function register(on) {
@@ -309,6 +337,10 @@ export function register(on) {
   on('tool.call', async ($, e, next) => {
     if (String(e.tool || '').endsWith('__' + ACCESS_TOOL)) return requestAccess($, e)
     const c = await context($)
+    if (e.tool === 'AskUserQuestion') {
+      const handled = await askedInSession($, e, next, c)
+      if (handled) return handled
+    }
     if (FILE_TOOLS.includes(e.tool)) {
       const real = await realTarget($, e)
       const hit = real && touches(real, c.secrets, c.home)

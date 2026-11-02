@@ -452,6 +452,18 @@ def supervise():
         log("listening on %s" % n)
 
 
+def refresh_sessions():
+    """After a start (so after every update): each crew member's folder gets the kit's current guard, settings
+    and switches, so a Claude session opened there (from the panel, the app or a phone) is never a version behind."""
+    for emp_id, e in engine.registry().get("employees", {}).items():
+        if e.get("status") == "retired":
+            continue
+        try:
+            engine.claude_session(emp_id)
+        except Exception as ex:  # noqa: BLE001
+            log("session refresh %s: %s" % (emp_id, ex))
+
+
 def tick_update():
     """Once a day: is there a newer Orbit release? The panel shows it; nothing updates without the owner."""
     import update
@@ -475,6 +487,7 @@ def main():
         calls.recover(on_end=team.call_ended)            # a listener left over from before a restart
     except Exception:  # noqa: BLE001
         log("call recovery failed: %s" % traceback.format_exc()[-300:])
+    threading.Thread(target=refresh_sessions, daemon=True).start()
     last = {}
     while True:
         with open(os.path.join(team.TEAM, "staffd_alive"), "w") as fh:
