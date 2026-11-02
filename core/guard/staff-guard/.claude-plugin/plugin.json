@@ -1,6 +1,6 @@
 {
   "name": "staff-guard",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Block-only safety locks for every Staffroom employee: no money movement, no outside contact, no secrets, no tampering with the kit, its registry or this guard.",
   "author": { "name": "Staffroom" }
 }

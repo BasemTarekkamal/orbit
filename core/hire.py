@@ -229,6 +229,44 @@ def set_autonomy(emp_id: str, on: bool, by: str = "owner") -> bool:
     return on
 
 
+def works_with_md(emp_id: str, reg: dict) -> str:
+    links = reg["employees"][emp_id].get("works_with") or {}
+    if not links:
+        return ""
+    out = ["", "## Works with (set by your owner)"]
+    for other, note in links.items():
+        o = reg["employees"].get(other)
+        if o and o.get("status") != "retired":
+            out.append("- **%s** (%s, handle `%s`)%s. Reach them any time: `staff-bus ask %s \"…\"`."
+                       % (o["name"], o["role"], other, (": " + note) if note else "", other))
+    return "\n".join(out) + "\n"
+
+
+def connect(a: str, b: str, note: str = "", by: str = "owner") -> str:
+    """The owner links two crew members: each one's CLAUDE.md says who the other is, what they hand each other
+    and how to reach them (the team bus). Everyone can always ask anyone; this makes it part of the job."""
+    reg = engine.registry()
+    emps = reg.get("employees", {})
+    if a == b or a not in emps or b not in emps:
+        raise HireError("Pick two different crew members")
+    note = " ".join(str(note or "").split())[:300]
+    emps[a].setdefault("works_with", {})[b] = note
+    emps[b].setdefault("works_with", {})[a] = note
+    engine.save_registry(reg, "connect: %s and %s (by %s)" % (a, b, by))
+    for k in (a, b):
+        path = os.path.join(engine.employee(k)["workspace"], "CLAUDE.md")
+        try:
+            with open(path, encoding="utf-8") as fh:
+                md = fh.read()
+        except OSError:
+            md = ""
+        md = re.sub(r"\n## Works with \(set by your owner\)\n.*?(?=\n## |\Z)", "", md, flags=re.S).rstrip("\n") + "\n"
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(md + works_with_md(k, reg))
+    return "Done: %s and %s work together now%s. Each knows how to reach the other." % (
+        emps[a]["name"], emps[b]["name"], (" (" + note + ")") if note else "")
+
+
 def set_status(emp_id: str, status: str) -> None:
     if status not in STATUS:
         raise HireError("Unknown status %r" % status)
