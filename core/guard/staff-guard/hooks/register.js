@@ -54,6 +54,7 @@ const BLOCKED_COMMANDS = [
 // Banking, payment and crypto hosts: never reached, whatever the reason
 const MONEY_HOSTS = /(^|\.)(paypal|stripe|wise|revolut|venmo|cash\.app|zelle|payoneer|skrill|westernunion|moneygram|remitly|klarna|afterpay|alipay|wechatpay|paytm|phonepe|razorpay|mpesa|instapay|fawry|paymob|valu|binance|coinbase|kraken|bybit|okx|kucoin|crypto\.com|metamask|blockchain\.com|chase|bankofamerica|wellsfargo|citi|hsbc|barclays|santander|lloydsbank|natwest|monzo|starlingbank|n26|bnpparibas|societegenerale|deutsche-bank|ing|rabobank|ubs|emiratesnbd|alrajhibank|qnb|cibeg|banquemisr|nbe)\.[a-z.]+$/i
 const WRITE_WORDS = /(>|\btee\b|\bsed\s+-i|\bperl\s+-[a-z]*i|\bmv\b|\bcp\b|\brm\b|\bln\b|\bchmod\b|\btouch\b|\btruncate\b|\binstall\b|\bunlink\b|open\(|write)/i
+const MONEY_ACTION = /(refund|payout|transfer|send_?money|pay_?(invoice|bill)|create_?(payment|charge|bill_?payment|transfer|payout)|capture_?payment|charge_?(card|customer))/i
 const BROWSER_TOOL = /^mcp__(claude-in-chrome|Claude_Browser|remote-devices__Claude_Browser)__/i
 const DESKTOP_TOOL = /^mcp__(computer-use|remote-devices__computer)/i
 const NETWORK_CODE = /urllib|requests\.|http\.client|httpx|aiohttp|socket\.|fetch\(|smtplib|subprocess|os\.system|os\.popen|child_process|playwright|selenium/
@@ -138,6 +139,8 @@ export function verdict(e, c) {
     : tool === 'Bash' ? (text.match(/https?:\/\/[^\s'"]+/gi) || []) : []
   if (urls.some((u) => MONEY_HOSTS.test(hostOf(u)))) return 'banking, payment and crypto sites are off-limits'
   if (DESKTOP_TOOL.test(tool)) return 'controlling the whole computer'
+  // Connectors to financial services are read-only: nothing that pays, refunds or moves money
+  if (/^mcp__/.test(tool) && !BROWSER_TOOL.test(tool) && MONEY_ACTION.test(tool.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, ''))) return 'moving money through a connector (read-only on money)'
   if (BROWSER_TOOL.test(tool)) {
     if (!c.browser) return 'using your browser needs "Acts in your browser", which your owner switches on in the panel (Manage)'
     // Where it goes, not what it types: a post may carry links to anywhere, a navigation may not.
@@ -247,9 +250,12 @@ const ACCESS_SPEC = {
   name: ACCESS_TOOL, isDeferred: false,
   description: 'Ask your owner for more access, with a Yes/No button in their Claude window. Use it instead of saying ' +
     "you can't: kind full_autonomy (do the whole job without asking, any website, install tools), browser (act in " +
-    'their Chrome on these sites; approval each, batch or none) or connect (work with a colleague). Say why in one line.',
+    'their Chrome on these sites; approval each, batch or none), connect (work with a colleague) or connector (an app ' +
+    'like Notion, Gmail, HubSpot or Canva: find one with staff-connectors). Say why in one line.',
   inputSchema: { type: 'object', required: ['kind', 'why'], properties: {
-    kind: { type: 'string', enum: ['full_autonomy', 'browser', 'connect'] },
+    kind: { type: 'string', enum: ['full_autonomy', 'browser', 'connect', 'connector'] },
+    connector: { type: 'string', description: 'connector: its id from staff-connectors, or its https link' },
+    name: { type: 'string', description: 'connector: its name, when you give a link' },
     why: { type: 'string', description: 'One line: what it lets you finish' },
     sites: { type: 'array', items: { type: 'string' }, description: 'browser: sites like youtube.com' },
     approval: { type: 'string', enum: ['each', 'batch', 'none'], description: 'browser: ask each time, once per batch, or not at all' },
@@ -277,8 +283,14 @@ async function requestAccess($, e) {
     if (!col) return { result: 'Say which colleague (their handle).' }
     q = 'Connect ' + who + ' with ' + col + '? ' + why
     args = ['connect', col, String(e.note || why).slice(0, 300)]
+  } else if (e.kind === 'connector') {
+    const ref = String(e.connector || '').trim()
+    if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(ref) && !/^https:\/\/[\w.-]+(\/\S*)?$/.test(ref)) return { result: 'Give the connector id from staff-connectors, or its https link.' }
+    const label = String(e.name || ref).slice(0, 60)
+    q = 'Connect ' + who + ' to ' + label + (ref.startsWith('https://') ? ' (' + ref + ')' : '') + '? ' + why
+    args = ['connector', ref].concat(e.name ? [String(e.name).slice(0, 60)] : [])
   } else {
-    return { result: 'kind must be full_autonomy, browser or connect.' }
+    return { result: 'kind must be full_autonomy, browser, connect or connector.' }
   }
   let answer
   try {

@@ -23,6 +23,9 @@ const ALLOWED: Array<Record<string, unknown>> = [
   // payment words in notes and ledgers are bookkeeping, not access
   { tool: 'Write', file_path: WS + '/notes/payments.md', content: 'Stripe, PayPal and Wise transfers are recorded as ledger rows.' },
   { tool: 'Bash', command: 'echo \'{"kind":"post","from":"sara"}\' >> ~/Staff/team/bus.jsonl' },
+  // reading money through a connector is fine
+  { tool: 'mcp__xero__get_profit_and_loss', period: 'month' },
+  { tool: 'mcp__stripe__get_balance_summary' },
 ]
 
 const BLOCKED: Array<[Record<string, unknown>, string]> = [
@@ -46,6 +49,8 @@ const BLOCKED: Array<[Record<string, unknown>, string]> = [
   [{ tool: 'Bash', command: 'launchctl bootout gui/501/com.staffroom.staffd' }, 'scheduled'],
   [{ tool: 'mcp__claude-in-chrome__navigate', url: 'https://studio.youtube.com' }, 'Acts in your browser'],
   [{ tool: 'mcp__computer-use__left_click', coordinate: [10, 10] }, 'whole computer'],
+  [{ tool: 'mcp__stripe__create_refund', charge: 'ch_1' }, 'moving money'],
+  [{ tool: 'mcp__quickbooks__create_bill_payment', amount: 10 }, 'moving money'],
   [{ tool: 'Bash', command: 'systemctl --user stop orbit.service' }, 'scheduled'],
   [{ tool: 'Bash', command: 'powershell.exe -Command Get-ChildItem' }, 'Windows'],
   [{ tool: 'Bash', command: 'cmd.exe /c dir C:\\Users' }, 'Windows'],

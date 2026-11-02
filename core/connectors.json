@@ -1,0 +1,825 @@
+{
+ "about": "Orbit's connector library: remote MCP servers from the official connector directory, matched to roles. A crew member asks for one with request_access (kind connector); the owner says yes in Claude, in chat or in the panel; the first time, the owner signs in to the service in a Claude session with that crew member. Anything not listed: `staff-connectors search` (this list and the public MCP registry). money: true marks financial services, which crew members use read-only.",
+ "categories": [
+  "Email and calendar",
+  "Files and docs",
+  "Team chat",
+  "Projects and tasks",
+  "CRM and sales",
+  "Social and creators",
+  "Ads and marketing",
+  "Analytics and SEO",
+  "Design and media",
+  "Money and accounting",
+  "Store and support",
+  "Meetings",
+  "Hiring and HR",
+  "Legal and contracts",
+  "Developer",
+  "Research and web",
+  "Automation"
+ ],
+ "connectors": [
+  {
+   "id": "gmail",
+   "name": "Gmail",
+   "url": "https://gmailmcp.googleapis.com/mcp/v1",
+   "what": "Search, read and draft email",
+   "category": "Email and calendar",
+   "roles": [
+    "assistant",
+    "client",
+    "recruiter",
+    "jobs",
+    "leads",
+    "bookkeeper",
+    "calls",
+    "creator",
+    "marketing"
+   ],
+   "keywords": "email inbox mail"
+  },
+  {
+   "id": "google-calendar",
+   "name": "Google Calendar",
+   "url": "https://calendarmcp.googleapis.com/mcp/v1",
+   "what": "Read and create events, find free time",
+   "category": "Email and calendar",
+   "roles": [
+    "assistant",
+    "recruiter",
+    "calls",
+    "client",
+    "jobs"
+   ],
+   "keywords": "calendar schedule meetings"
+  },
+  {
+   "id": "microsoft-365",
+   "name": "Microsoft 365",
+   "url": "https://microsoft365.mcp.claude.com/mcp",
+   "what": "Outlook mail and calendar, SharePoint, OneDrive, Teams",
+   "category": "Email and calendar",
+   "roles": [
+    "assistant",
+    "client",
+    "recruiter",
+    "calls",
+    "updates",
+    "bookkeeper"
+   ],
+   "keywords": "outlook teams sharepoint onedrive"
+  },
+  {
+   "id": "google-drive",
+   "name": "Google Drive",
+   "url": "https://drivemcp.googleapis.com/mcp/v1",
+   "what": "Search, read and create files",
+   "category": "Files and docs",
+   "roles": [
+    "*"
+   ],
+   "keywords": "drive docs sheets files"
+  },
+  {
+   "id": "dropbox",
+   "name": "Dropbox",
+   "url": "https://mcp.dropbox.com/claude_app_mcp",
+   "what": "Search and organize files, share links",
+   "category": "Files and docs",
+   "roles": [
+    "*"
+   ],
+   "keywords": "files storage"
+  },
+  {
+   "id": "box",
+   "name": "Box",
+   "url": "https://mcp.box.com/",
+   "what": "Search and read files, ask questions about them",
+   "category": "Files and docs",
+   "roles": [
+    "*"
+   ],
+   "keywords": "files storage"
+  },
+  {
+   "id": "notion",
+   "name": "Notion",
+   "url": "https://mcp.notion.com/mcp",
+   "what": "Search, read and write pages and databases",
+   "category": "Files and docs",
+   "roles": [
+    "*"
+   ],
+   "keywords": "wiki notes docs database"
+  },
+  {
+   "id": "airtable",
+   "name": "Airtable",
+   "url": "https://mcp.airtable.com/mcp",
+   "what": "Read and write bases, tables and records",
+   "category": "Files and docs",
+   "roles": [
+    "leads",
+    "recruiter",
+    "creator",
+    "marketing",
+    "assistant",
+    "bookkeeper"
+   ],
+   "keywords": "tables database spreadsheet"
+  },
+  {
+   "id": "slack",
+   "name": "Slack",
+   "url": "https://mcp.slack.com/mcp",
+   "what": "Read channels and threads, search, send messages",
+   "category": "Team chat",
+   "roles": [
+    "updates",
+    "assistant",
+    "client",
+    "reviewer",
+    "calls"
+   ],
+   "keywords": "chat messages team"
+  },
+  {
+   "id": "linear",
+   "name": "Linear",
+   "url": "https://mcp.linear.app/mcp",
+   "what": "Issues, projects and cycles",
+   "category": "Projects and tasks",
+   "roles": [
+    "updates",
+    "reviewer",
+    "assistant"
+   ],
+   "keywords": "issues tickets product"
+  },
+  {
+   "id": "atlassian",
+   "name": "Atlassian (Jira, Confluence)",
+   "url": "https://mcp.atlassian.com/v2/mcp",
+   "what": "Jira issues, Confluence pages, Bitbucket",
+   "category": "Projects and tasks",
+   "roles": [
+    "updates",
+    "reviewer",
+    "assistant"
+   ],
+   "keywords": "jira confluence tickets"
+  },
+  {
+   "id": "asana",
+   "name": "Asana",
+   "url": "https://mcp.asana.com/v2/mcp",
+   "what": "Tasks, projects, goals and status",
+   "category": "Projects and tasks",
+   "roles": [
+    "assistant",
+    "updates",
+    "client"
+   ],
+   "keywords": "tasks projects"
+  },
+  {
+   "id": "clickup",
+   "name": "ClickUp",
+   "url": "https://mcp.clickup.com/mcp",
+   "what": "Tasks, docs and comments",
+   "category": "Projects and tasks",
+   "roles": [
+    "assistant",
+    "updates",
+    "client"
+   ],
+   "keywords": "tasks projects"
+  },
+  {
+   "id": "monday",
+   "name": "monday.com",
+   "url": "https://mcp.monday.com/mcp",
+   "what": "Boards, items, workflows and dashboards",
+   "category": "Projects and tasks",
+   "roles": [
+    "assistant",
+    "updates",
+    "client",
+    "leads"
+   ],
+   "keywords": "boards crm projects"
+  },
+  {
+   "id": "trello",
+   "name": "Trello",
+   "url": "https://mcp.trello.com/v1",
+   "what": "Boards, lists and cards",
+   "category": "Projects and tasks",
+   "roles": [
+    "assistant",
+    "updates",
+    "creator"
+   ],
+   "keywords": "boards cards"
+  },
+  {
+   "id": "hubspot",
+   "name": "HubSpot",
+   "url": "https://mcp.hubspot.com/anthropic",
+   "what": "CRM contacts, deals, marketing email and campaign analytics",
+   "category": "CRM and sales",
+   "roles": [
+    "leads",
+    "client",
+    "marketing",
+    "assistant"
+   ],
+   "keywords": "crm contacts deals"
+  },
+  {
+   "id": "pipedrive",
+   "name": "Pipedrive",
+   "url": "https://mcp.pipedrive.ai/mcp",
+   "what": "Deals, people, organizations and activities",
+   "category": "CRM and sales",
+   "roles": [
+    "leads",
+    "client"
+   ],
+   "keywords": "crm deals pipeline"
+  },
+  {
+   "id": "zoominfo",
+   "name": "ZoomInfo",
+   "url": "https://mcp.zoominfo.com/mcp",
+   "what": "Find and enrich companies and contacts",
+   "category": "CRM and sales",
+   "roles": [
+    "leads",
+    "recruiter",
+    "researcher"
+   ],
+   "keywords": "prospects b2b enrich"
+  },
+  {
+   "id": "vidiq",
+   "name": "vidIQ",
+   "url": "https://mcp.vidiq.com/mcp",
+   "what": "YouTube, TikTok and Instagram research: keywords, outliers, channel stats, earnings estimates",
+   "category": "Social and creators",
+   "roles": [
+    "creator",
+    "social",
+    "content",
+    "marketing"
+   ],
+   "keywords": "youtube tiktok instagram keywords"
+  },
+  {
+   "id": "metricool",
+   "name": "Metricool",
+   "url": "https://ai.metricool.com/mcp",
+   "what": "Schedule posts, analytics and best times to post across networks",
+   "category": "Social and creators",
+   "roles": [
+    "creator",
+    "social",
+    "marketing"
+   ],
+   "keywords": "schedule posts analytics social"
+  },
+  {
+   "id": "typefully",
+   "name": "Typefully",
+   "url": "https://mcp.typefully.com/mcp",
+   "what": "Write and schedule posts for X, LinkedIn, Threads, Bluesky and more",
+   "category": "Social and creators",
+   "roles": [
+    "creator",
+    "marketing"
+   ],
+   "keywords": "x twitter linkedin threads schedule"
+  },
+  {
+   "id": "beehiiv",
+   "name": "beehiiv",
+   "url": "https://mcp.beehiiv.com/mcp",
+   "what": "Newsletter drafts, audience and analytics",
+   "category": "Social and creators",
+   "roles": [
+    "creator",
+    "marketing"
+   ],
+   "keywords": "newsletter email audience"
+  },
+  {
+   "id": "kajabi",
+   "name": "Kajabi",
+   "url": "https://mcp.kajabi.com/mcp",
+   "what": "Courses, products, emails and automations",
+   "category": "Social and creators",
+   "roles": [
+    "creator",
+    "marketing"
+   ],
+   "keywords": "courses products creator business"
+  },
+  {
+   "id": "supermetrics",
+   "name": "Supermetrics",
+   "url": "https://mcp.supermetrics.com/mcp",
+   "what": "Google Ads, Meta Ads, GA4, TikTok, LinkedIn, YouTube and 200+ sources in one place",
+   "category": "Ads and marketing",
+   "roles": [
+    "marketing",
+    "creator",
+    "social"
+   ],
+   "keywords": "ads analytics reporting meta google"
+  },
+  {
+   "id": "tiktok-ads",
+   "name": "TikTok for Business",
+   "url": "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer-anthropic",
+   "what": "TikTok ad campaigns: create, manage, analyze",
+   "category": "Ads and marketing",
+   "roles": [
+    "marketing"
+   ],
+   "money": true,
+   "keywords": "tiktok ads campaigns"
+  },
+  {
+   "id": "mailchimp",
+   "name": "Mailchimp",
+   "url": "https://ai-inc.mailchimp.com/claude/mcp/v2",
+   "what": "Email campaigns",
+   "category": "Ads and marketing",
+   "roles": [
+    "marketing",
+    "creator"
+   ],
+   "keywords": "email campaigns newsletter"
+  },
+  {
+   "id": "klaviyo",
+   "name": "Klaviyo",
+   "url": "https://mcp.klaviyo.com/mcp",
+   "what": "Email and SMS campaigns, flows and metrics",
+   "category": "Ads and marketing",
+   "roles": [
+    "marketing"
+   ],
+   "keywords": "email sms ecommerce"
+  },
+  {
+   "id": "semrush",
+   "name": "Semrush",
+   "url": "https://mcp.semrush.com/claude/v1/mcp",
+   "what": "SEO, keywords, competitors, traffic and PPC research",
+   "category": "Analytics and SEO",
+   "roles": [
+    "marketing",
+    "creator",
+    "researcher",
+    "watcher"
+   ],
+   "keywords": "seo keywords competitors traffic"
+  },
+  {
+   "id": "ahrefs",
+   "name": "Ahrefs",
+   "url": "https://api.ahrefs.com/mcp/mcp",
+   "what": "SEO and AI-search visibility, backlinks, keywords",
+   "category": "Analytics and SEO",
+   "roles": [
+    "marketing",
+    "creator",
+    "researcher",
+    "watcher"
+   ],
+   "keywords": "seo backlinks keywords"
+  },
+  {
+   "id": "posthog",
+   "name": "PostHog",
+   "url": "https://mcp.posthog.com/mcp",
+   "what": "Product analytics, insights and queries",
+   "category": "Analytics and SEO",
+   "roles": [
+    "marketing",
+    "updates",
+    "researcher"
+   ],
+   "keywords": "product analytics events"
+  },
+  {
+   "id": "mixpanel",
+   "name": "Mixpanel",
+   "url": "https://mcp.mixpanel.com/mcp",
+   "what": "Events, funnels and reports",
+   "category": "Analytics and SEO",
+   "roles": [
+    "marketing",
+    "updates"
+   ],
+   "keywords": "product analytics funnels"
+  },
+  {
+   "id": "canva",
+   "name": "Canva",
+   "url": "https://mcp.canva.com/mcp",
+   "what": "Search, create, autofill and export designs",
+   "category": "Design and media",
+   "roles": [
+    "creator",
+    "marketing",
+    "social",
+    "assistant"
+   ],
+   "keywords": "design thumbnails graphics"
+  },
+  {
+   "id": "figma",
+   "name": "Figma",
+   "url": "https://mcp.figma.com/mcp",
+   "what": "Design context, screenshots and FigJam",
+   "category": "Design and media",
+   "roles": [
+    "reviewer",
+    "creator",
+    "updates"
+   ],
+   "keywords": "design ui prototypes"
+  },
+  {
+   "id": "gamma",
+   "name": "Gamma",
+   "url": "https://mcp.gamma.app/mcp",
+   "what": "Presentations, docs, social posts and sites",
+   "category": "Design and media",
+   "roles": [
+    "creator",
+    "marketing",
+    "assistant",
+    "client"
+   ],
+   "keywords": "slides presentations decks"
+  },
+  {
+   "id": "brandfetch",
+   "name": "Brandfetch",
+   "url": "https://mcp.brandfetch.io/mcp",
+   "what": "Logos, colours and brand assets of any company",
+   "category": "Design and media",
+   "roles": [
+    "creator",
+    "marketing",
+    "leads",
+    "researcher"
+   ],
+   "keywords": "brand logos colors"
+  },
+  {
+   "id": "elevenlabs",
+   "name": "ElevenLabs",
+   "url": "https://api.elevenlabs.io/v1/mcp-claude-marketplace",
+   "what": "Voice agents and voice tools",
+   "category": "Design and media",
+   "roles": [
+    "creator",
+    "client"
+   ],
+   "keywords": "voice tts audio"
+  },
+  {
+   "id": "huggingface",
+   "name": "Hugging Face",
+   "url": "https://huggingface.co/mcp",
+   "what": "Models, datasets, papers and Gradio apps (image, voice, video tools)",
+   "category": "Design and media",
+   "roles": [
+    "creator",
+    "researcher"
+   ],
+   "keywords": "models ai tools images voice"
+  },
+  {
+   "id": "quickbooks",
+   "name": "Intuit QuickBooks",
+   "url": "https://ai-inc.quickbooks.intuit.com/v1/mcp",
+   "what": "Profit and loss, cash flow, transactions",
+   "category": "Money and accounting",
+   "roles": [
+    "bookkeeper"
+   ],
+   "money": true,
+   "keywords": "accounting books p&l"
+  },
+  {
+   "id": "xero",
+   "name": "Xero",
+   "url": "https://mcp.xero.com/mcp",
+   "what": "Financial position, cash, P&L, receivables and payables",
+   "category": "Money and accounting",
+   "roles": [
+    "bookkeeper"
+   ],
+   "money": true,
+   "keywords": "accounting books"
+  },
+  {
+   "id": "freshbooks",
+   "name": "FreshBooks",
+   "url": "https://mcp.freshbooks.com/v1",
+   "what": "Invoices, expenses and accounting reports",
+   "category": "Money and accounting",
+   "roles": [
+    "bookkeeper",
+    "client"
+   ],
+   "money": true,
+   "keywords": "invoices accounting"
+  },
+  {
+   "id": "stripe",
+   "name": "Stripe",
+   "url": "https://mcp.stripe.com/",
+   "what": "Payments data: balance, charges, customers",
+   "category": "Money and accounting",
+   "roles": [
+    "bookkeeper",
+    "marketing"
+   ],
+   "money": true,
+   "keywords": "payments revenue subscriptions"
+  },
+  {
+   "id": "shopify",
+   "name": "Shopify",
+   "url": "https://setup.shopify.com/mcp",
+   "what": "Products, orders and customers",
+   "category": "Store and support",
+   "roles": [
+    "marketing",
+    "client",
+    "bookkeeper",
+    "creator"
+   ],
+   "keywords": "store ecommerce orders products"
+  },
+  {
+   "id": "intercom",
+   "name": "Intercom",
+   "url": "https://mcp.intercom.com/mcp",
+   "what": "Customer conversations and contacts",
+   "category": "Store and support",
+   "roles": [
+    "client",
+    "updates"
+   ],
+   "keywords": "support conversations customers"
+  },
+  {
+   "id": "zoom",
+   "name": "Zoom",
+   "url": "https://mcp.zoom.us/mcp/zoom/streamable",
+   "what": "Meetings, recordings and recaps",
+   "category": "Meetings",
+   "roles": [
+    "calls",
+    "assistant",
+    "recruiter",
+    "client"
+   ],
+   "keywords": "meetings recordings transcripts"
+  },
+  {
+   "id": "fireflies",
+   "name": "Fireflies",
+   "url": "https://api.fireflies.ai/mcp",
+   "what": "Meeting transcripts and insights",
+   "category": "Meetings",
+   "roles": [
+    "calls",
+    "assistant",
+    "client"
+   ],
+   "keywords": "meetings transcripts notes"
+  },
+  {
+   "id": "tldv",
+   "name": "tl;dv",
+   "url": "https://mcp.tldv.io/mcp",
+   "what": "Meeting notes, transcripts and action items",
+   "category": "Meetings",
+   "roles": [
+    "calls",
+    "assistant"
+   ],
+   "keywords": "meetings notes"
+  },
+  {
+   "id": "greenhouse",
+   "name": "Greenhouse",
+   "url": "https://mcp.greenhouse.io/mcp",
+   "what": "Candidates, jobs, interviews and scorecards",
+   "category": "Hiring and HR",
+   "roles": [
+    "recruiter"
+   ],
+   "keywords": "ats candidates hiring"
+  },
+  {
+   "id": "linkedin-hiring",
+   "name": "LinkedIn Hiring Pro",
+   "url": "https://mcp.linkedin.com/mcp-hiring-pro",
+   "what": "Draft, review and post a LinkedIn job",
+   "category": "Hiring and HR",
+   "roles": [
+    "recruiter"
+   ],
+   "keywords": "linkedin jobs posting"
+  },
+  {
+   "id": "docusign",
+   "name": "Docusign",
+   "url": "https://mcp.docusign.com/mcp",
+   "what": "Agreements and contract workflows",
+   "category": "Legal and contracts",
+   "roles": [
+    "assistant",
+    "client",
+    "recruiter"
+   ],
+   "keywords": "contracts signatures agreements"
+  },
+  {
+   "id": "juro",
+   "name": "Juro",
+   "url": "https://integrations.app.juro.com/mcp",
+   "what": "Contracts across their lifecycle",
+   "category": "Legal and contracts",
+   "roles": [
+    "assistant",
+    "client"
+   ],
+   "keywords": "contracts"
+  },
+  {
+   "id": "github",
+   "name": "GitHub",
+   "url": "https://api.githubcopilot.com/mcp/",
+   "what": "Repositories, issues, pull requests and commits",
+   "category": "Developer",
+   "roles": [
+    "updates",
+    "reviewer"
+   ],
+   "keywords": "code repos commits issues"
+  },
+  {
+   "id": "sentry",
+   "name": "Sentry",
+   "url": "https://mcp.sentry.dev/mcp",
+   "what": "Errors and issues in your apps",
+   "category": "Developer",
+   "roles": [
+    "updates"
+   ],
+   "keywords": "errors monitoring"
+  },
+  {
+   "id": "vercel",
+   "name": "Vercel",
+   "url": "https://mcp.vercel.com/",
+   "what": "Projects and deployments",
+   "category": "Developer",
+   "roles": [
+    "updates"
+   ],
+   "keywords": "deployments hosting"
+  },
+  {
+   "id": "supabase",
+   "name": "Supabase",
+   "url": "https://mcp.supabase.com/mcp",
+   "what": "Databases, auth and storage",
+   "category": "Developer",
+   "roles": [
+    "updates"
+   ],
+   "keywords": "database backend"
+  },
+  {
+   "id": "context7",
+   "name": "Context7",
+   "url": "https://mcp.context7.com/mcp",
+   "what": "Up-to-date docs for any library",
+   "category": "Developer",
+   "roles": [
+    "updates",
+    "creator"
+   ],
+   "keywords": "docs libraries code"
+  },
+  {
+   "id": "apify",
+   "name": "Apify",
+   "url": "https://mcp.apify.com",
+   "what": "Thousands of ready scrapers: social networks, Maps, any site (paid per use)",
+   "category": "Research and web",
+   "roles": [
+    "researcher",
+    "watcher",
+    "social",
+    "leads",
+    "content",
+    "creator",
+    "marketing"
+   ],
+   "money": true,
+   "keywords": "scraping social maps"
+  },
+  {
+   "id": "firecrawl",
+   "name": "Firecrawl",
+   "url": "https://mcp.firecrawl.dev/v2/mcp-search",
+   "what": "Search and extract web data",
+   "category": "Research and web",
+   "roles": [
+    "researcher",
+    "watcher",
+    "leads",
+    "content"
+   ],
+   "keywords": "scraping search crawl"
+  },
+  {
+   "id": "exa",
+   "name": "Exa",
+   "url": "https://mcp.exa.ai/mcp",
+   "what": "Web search built for agents",
+   "category": "Research and web",
+   "roles": [
+    "researcher",
+    "watcher",
+    "leads",
+    "content",
+    "jobs"
+   ],
+   "keywords": "search web"
+  },
+  {
+   "id": "parallel",
+   "name": "Parallel Search",
+   "url": "https://search.parallel.ai/mcp",
+   "what": "Free, token-efficient web search and fetch",
+   "category": "Research and web",
+   "roles": [
+    "researcher",
+    "watcher",
+    "leads",
+    "content",
+    "jobs"
+   ],
+   "keywords": "search web free"
+  },
+  {
+   "id": "mapbox",
+   "name": "Mapbox",
+   "url": "https://mcp.mapbox.com/mcp",
+   "what": "Geocoding, place search and routing",
+   "category": "Research and web",
+   "roles": [
+    "leads",
+    "researcher"
+   ],
+   "keywords": "maps places local"
+  },
+  {
+   "id": "zapier",
+   "name": "Zapier",
+   "url": "https://mcp.zapier.com/api/v1/connect",
+   "what": "Act in thousands of apps through your Zaps",
+   "category": "Automation",
+   "roles": [
+    "*"
+   ],
+   "keywords": "automation apps workflows"
+  },
+  {
+   "id": "make",
+   "name": "Make",
+   "url": "https://mcp.make.com/",
+   "what": "Run and manage Make scenarios",
+   "category": "Automation",
+   "roles": [
+    "*"
+   ],
+   "keywords": "automation scenarios workflows"
+  }
+ ]
+}

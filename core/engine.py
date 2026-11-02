@@ -268,13 +268,23 @@ def command(emp: dict, model: str) -> list:
     allow, block = abilities.tools(emp["id"])
     gateways = abilities.commands(emp["id"])
     bundle = skills_plugin(emp, abilities.skills(emp["id"]))
+    import connectors                                      # the MCP servers the owner granted this crew member
+    servers = connectors.mcp_config(emp)["mcpServers"]
+    mcp = []
+    if servers:
+        path = os.path.join(HOME, ".runtime", emp["id"], "mcp.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"mcpServers": servers}, fh)
+        mcp = ["--mcp-config", path]
     cmd = [resolve_claude(), "-p", "--model", model, "--effort", emp.get("effort", "medium"),
            "--permission-mode", "bypassPermissions" if autonomous(emp) else "dontAsk", "--output-format", "stream-json", "--verbose",
-           "--setting-sources", "project", "--strict-mcp-config",
+           "--setting-sources", "project", "--strict-mcp-config", *mcp,
            "--settings", settings_json(emp, gateways), "--plugin-dir", GUARD, "--plugin-dir", bundle,
            "--append-system-prompt", "Paths: your team folder (~/Staff in the handbook) is %s; the kit (the handbook, "
            "skills and tools) is %s. %s" % (HOME, KIT, abilities.prompt(emp["id"])),
-           "--allowedTools", *([t for t in BASE_ALLOWED if t not in block] + allow + emp.get("extra_tools", [])),
+           "--allowedTools", *([t for t in BASE_ALLOWED if t not in block] + allow + emp.get("extra_tools", []) +
+                               ["mcp__%s" % n for n in servers]),
            "--disallowedTools", *(BASE_DENIED + block + emp.get("extra_denied", []))]
     for extra in emp.get("add_dirs", []):
         cmd += ["--add-dir", os.path.expanduser(extra)]
@@ -466,10 +476,20 @@ def claude_session(emp_id: str) -> dict:
             local = json.load(fh)
     except (OSError, ValueError):
         local = {}
-    perms = {"allow": [t for t in BASE_ALLOWED if t not in block] + allow + emp.get("extra_tools", []), "deny": deny}
+    import connectors
+    servers = connectors.mcp_config(emp)["mcpServers"]
+    mcp_path = os.path.join(ws, ".mcp.json")              # the granted connectors, pre-approved below
+    if servers:
+        with open(mcp_path, "w", encoding="utf-8") as fh:
+            json.dump({"mcpServers": servers}, fh, indent=2)
+    elif os.path.exists(mcp_path):
+        os.remove(mcp_path)
+    perms = {"allow": [t for t in BASE_ALLOWED if t not in block] + allow + emp.get("extra_tools", []) +
+             ["mcp__%s" % n for n in servers], "deny": deny}
     if autonomous(emp):                                    # the owner's choice: no stops; the sandbox is the boundary
         perms["defaultMode"] = "bypassPermissions"
         perms["allow"] += [t for t in ("WebSearch", "WebFetch", "Task", "NotebookEdit") if t not in perms["allow"]]
+    local["enabledMcpjsonServers"] = sorted(servers)
     local.update({
         "sandbox": sandbox,
         "permissions": perms,

@@ -436,9 +436,9 @@ def employee_detail(emp_id):
 
 def role_of(m):
     """The hire template an employee most likely came from (by role title), for its suggestions."""
+    import rolebook
     try:
-        with open(ROLES_F, encoding="utf-8") as fh:
-            roles = json.load(fh)["roles"]
+        roles = rolebook.all_roles()["roles"]
     except (OSError, ValueError, KeyError):
         return None
     low = (m.get("role") or "").lower()
@@ -676,8 +676,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/abilities":
             return self._json(200, {"groups": abilities.groups(), "abilities": abilities.catalog()})
         if path == "/api/roles":
-            with open(ROLES_F, encoding="utf-8") as fh:
-                return self._json(200, json.loads(osinfo.local(fh.read())))
+            import rolebook
+            return self._json(200, json.loads(osinfo.local(json.dumps(rolebook.all_roles(), ensure_ascii=False))))
+        if path == "/api/connectors":
+            import connectors
+            emp, words = q.get("emp", [""])[0], q.get("q", [""])[0][:80]
+            mine = (engine.registry().get("employees", {}).get(emp, {}) or {}).get("connectors") or {}
+            role, text = q.get("role", [""])[0][:40], q.get("text", [""])[0][:600]
+            return self._json(200, {"granted": [dict(c, id=n) for n, c in mine.items()],
+                                    "suggested": connectors.suggest(emp) if emp else connectors.for_job(role, text) if (role or text) else [],
+                                    "results": connectors.search(words) if words else []})
         if path == "/api/settings":
             return self._json(200, settings_view())
         if path == "/api/pairing":

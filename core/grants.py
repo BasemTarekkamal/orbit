@@ -57,6 +57,10 @@ def apply(kind: str, emp_id: str, by: str, **kw) -> str:
                                                   "approval": kw.get("approval") or "each"})
     elif kind == "connect":
         res = hire.connect(emp_id, kw.get("other", ""), kw.get("note", ""), by)
+    elif kind == "connector":
+        import connectors
+        res = (connectors.revoke(emp_id, kw.get("ref", ""), by) if kw.get("off") else
+               connectors.grant(emp_id, kw.get("ref", ""), by, kw.get("name", "")))
     else:
         raise ValueError("unknown switch %r" % kind)
     return res
@@ -68,6 +72,7 @@ AUTONOMY = re.compile(r"^\s*(?:(?:give|turn on|switch on|enable)\s+)?(?:/)?(?P<w
 POST = re.compile(r"^\s*(?:let\s+)?(?P<who>[\w-]+)\s+(?:can|may)?\s*post\s+on\s+(?P<sites>[\w .,&-]+?)"
                   r"(?P<mode>\s+without asking|\s+once per batch|\s+ask(?:ing)? me first)?\s*[.!]?\s*$", re.I)
 NOPOST = re.compile(r"^\s*(?P<who>[\w-]+)\s+(?:stop posting|can'?t post|no browser)\s*[.!]?\s*$", re.I)
+CONNECTOR = re.compile(r"^\s*(?P<verb>give|connect|disconnect|remove)\s+(?P<who>[\w-]+)\s+(?:to\s+|from\s+)?(?P<what>[\w .;:/&-]+?)(?:\s+connector)?\s*[.!]?\s*$", re.I)
 CONNECT = re.compile(r"^\s*connect\s+(?P<a>[\w-]+)\s+(?:with|to|and)\s+(?P<b>[\w-]+)(?:\s*[:,-]\s*(?P<note>.+))?$", re.I)
 
 
@@ -120,7 +125,18 @@ def from_text(by: str, text: str):
     if m:
         a, _ = _who(m.group("a"))
         b, _ = _who(m.group("b"))
-        if not a or not b:
+        if a and b:
+            return apply("connect", a, by, other=b, note=(m.group("note") or "").strip())
+    m = CONNECTOR.match(t)
+    if m:
+        import connectors
+        emp_id, e = _who(m.group("who"))
+        what = m.group("what").strip().lower()
+        if not emp_id:
             return None
-        return apply("connect", a, by, other=b, note=(m.group("note") or "").strip())
+        c = next((x for x in connectors.library() if what in (x["id"], x["name"].lower())), None)
+        ref = c["id"] if c else (what if what.startswith("https://") else None)
+        if not ref:
+            return None
+        return apply("connector", emp_id, by, ref=ref, off=m.group("verb").lower() in ("disconnect", "remove"))
     return None

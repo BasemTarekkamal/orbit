@@ -4,6 +4,7 @@ Never records real audio or calls Claude.  python3 -m unittest tests.test_platfo
 from __future__ import annotations
 
 import io
+import re
 import json
 import os
 import subprocess
@@ -556,3 +557,72 @@ class ContentKit(unittest.TestCase):
         with open(os.path.join(engine.KIT, "core", "roles.json"), encoding="utf-8") as fh:
             role = next(r for r in json.load(fh)["roles"] if r["id"] == "creator")
         self.assertIn("content", role["abilities"])
+
+
+class ConnectorsAndRoles(unittest.TestCase):
+    """The connector library, granting one, and roles saved from a trained crew member."""
+
+    def setUp(self):
+        import hire
+        self.hire = hire
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"111": {"name": "Alex"}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7397}})
+        hire.hire("Suoo", "Content creator", "Videos for YouTube and TikTok", supervisor="Alex", picked=["web", "content"])
+
+    def test_library_is_whole_and_matches_every_role(self):
+        import connectors
+        lib = connectors.library()
+        self.assertGreater(len(lib), 50)
+        self.assertTrue(all(c["url"].startswith("https://") for c in lib))
+        with open(os.path.join(engine.KIT, "core", "roles.json"), encoding="utf-8") as fh:
+            roles = [r["id"] for r in json.load(fh)["roles"] if r["id"] != "blank"]
+        for rid in roles:
+            self.assertTrue(connectors.for_job(rid, ""), rid)            # every defined role has suggestions
+        self.assertTrue(connectors.for_job(None, "manage our restaurant bookings calendar and email"))   # and undefined ones
+
+    def test_grant_reaches_runs_and_revokes(self):
+        import connectors
+        connectors.grant("suoo", "notion", "Alex")
+        cmd = engine.command(engine.employee("suoo"), "sonnet")
+        cfg = cmd[cmd.index("--mcp-config") + 1]
+        with open(cfg) as fh:
+            self.assertEqual(json.load(fh)["mcpServers"]["notion"]["url"], "https://mcp.notion.com/mcp")
+        self.assertIn("mcp__notion", cmd)
+        connectors.grant("suoo", "https://mcp.example-app.com/mcp", "Alex", "Example")
+        self.assertIn("example", engine.registry()["employees"]["suoo"]["connectors"])
+        self.assertIn("no longer", connectors.revoke("suoo", "notion", "Alex"))
+        self.assertNotIn("notion", engine.registry()["employees"]["suoo"]["connectors"])
+        with self.assertRaises(ValueError):
+            connectors.grant("suoo", "not-a-connector", "Alex")
+
+    def test_chat_command_for_a_connector(self):
+        import grants
+        self.assertIn("Canva", grants.from_text("Alex", "connect Suoo to Canva"))
+        self.assertIn("canva", engine.registry()["employees"]["suoo"]["connectors"])
+        self.assertIn("no longer", grants.from_text("Alex", "disconnect Suoo from canva"))
+
+    def test_save_a_role_and_hire_from_it(self):
+        import rolebook
+        ws = engine.employee("suoo")["workspace"]
+        os.makedirs(os.path.join(ws, "skills", "hooks"), exist_ok=True)
+        with open(os.path.join(ws, "skills", "hooks", "SKILL.md"), "w") as fh:
+            fh.write("---\\nname: hooks\\ndescription: Write hooks.\\n---\\nOpen with a question.\\n")
+        with open(os.path.join(ws, "CLAUDE.md"), encoding="utf-8") as fh:
+            md = fh.read()
+        with open(os.path.join(ws, "CLAUDE.md"), "w", encoding="utf-8") as fh:
+            fh.write(re.sub(r"_Your supervisor adds rules here[^\\n]*", "- Shorts are about 20 seconds.", md))
+        self.assertIn("1 skill", rolebook.save_role("suoo", "Channel manager", "Alex"))
+        roles = rolebook.all_roles()
+        self.assertEqual(roles["situations"][0]["id"], "yours")
+        mine = next(r for r in roles["roles"] if r["id"] == "channel-manager")
+        self.assertEqual(mine["source"], "yours")
+        self.assertNotIn("full_autonomy", mine["abilities"])
+        new = self.hire.hire("Zain", "Content creator", mine["scope"], supervisor="Alex", picked=mine["abilities"])
+        rolebook.apply_template(new, "channel-manager")
+        zws = engine.employee(new)["workspace"]
+        self.assertTrue(os.path.exists(os.path.join(zws, "skills", "hooks", "SKILL.md")))
+        with open(os.path.join(zws, "CLAUDE.md"), encoding="utf-8") as fh:
+            self.assertIn("Shorts are about 20 seconds.", fh.read())
+        out = rolebook.export_role("channel-manager", tempfile.mkdtemp(dir=TMP))
+        self.assertTrue(os.path.exists(os.path.join(out, "role.json")))

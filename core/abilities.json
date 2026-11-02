@@ -89,7 +89,8 @@
       "description": "Searches and reads the web, with the research playbook: free first, every claim sourced.",
       "can": "Search and read the web, with sources",
       "commands": [
-        "staff-video"
+        "staff-video",
+        "staff-connectors"
       ]
     },
     {

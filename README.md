@@ -197,6 +197,14 @@ An autonomous agent that reads the open web needs locks, not promises. Every run
   with Nora"), or with one click: when a crew member needs more access in a Claude session, a Yes/No
   button appears there. Orbit flips the switch, never the crew member itself, so a web page can't talk
   them into more. Money and passwords stay off-limits.
+- **Connectors for every job:** a library of 60+ apps from the official connector directory (Gmail, Drive,
+  Calendar, Slack, Notion, HubSpot, Canva, Figma, QuickBooks, Shopify, Zoom, GitHub, Semrush, vidIQ…),
+  matched to every role, plus search of the public MCP registry for anything else. Crew members ask for the
+  ones that would help; you say yes in Claude, in chat ("connect Suoo to Canva") or in their Manage tab, and
+  sign in to the app once. Money apps are read-only.
+- **Your experience, built in:** "Teach from your experience" (paste or attach your playbook; they turn it into
+  skills and rules), and "Save as a role" (a trained crew member becomes a role you hire from again, or share:
+  `orbit roles export`, or a pull request to `core/roles.d/`).
 - **Updates you choose:** when a new release is out, Mission Control shows what's new with Update and
   Later. Only official releases, only for an unmodified copy of the official repository; never automatic.
 - **Owners only:** only people you approve can direct the team. Strangers who message the bot are
