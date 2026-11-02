@@ -184,13 +184,23 @@
     },
     {
       "id": "content",
-      "name": "Makes videos and posts",
+      "name": "Content and channels",
       "group": "Building",
       "skills": [
         "content-creator"
       ],
-      "description": "Comes trained: scripts with hooks, code-made 3D Shorts with voice-over, music and captions (a ready kit, free and local), titles and descriptions, posting and scheduling in your Chrome when you allow it, growth and monetization basics. Studies reference videos to match a style.",
-      "can": "Script, make and post videos and posts like an experienced creator"
+      "description": "Comes experienced: channel strategy, posting and managing pages on YouTube, TikTok, Instagram, Facebook, X and LinkedIn, reading the numbers, creator income and sponsorships, agencies, and making any style of video by studying the references you share (with a free, local video kit).",
+      "can": "Plan, make, post and grow your channels like an experienced creator"
+    },
+    {
+      "id": "marketing",
+      "name": "Paid marketing",
+      "group": "Building",
+      "skills": [
+        "marketing-manager"
+      ],
+      "description": "Comes experienced in performance marketing: campaigns on Meta, Google, TikTok and LinkedIn ads, testing, reading the numbers, agencies, weekly reports. Every launch or budget change waits for your approval.",
+      "can": "Plan and run your ad campaigns and read their numbers, with you approving every spend"
     },
     {
       "id": "build_tools",
