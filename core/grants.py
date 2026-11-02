@@ -1,10 +1,10 @@
 """The owner's switches, from wherever the owner is: the panel, a chat message, or a Yes in a Claude session.
 
     import grants
-    grants.apply("autonomy", "maya", by="Basem", on=True)
-    grants.apply("browser", "maya", by="Basem", sites=["youtube.com"], approval="none")
-    grants.apply("connect", "maya", by="Basem", other="nora", note="send Nora each sponsor deal")
-    grants.from_text("Basem", "Maya full autonomy on")       # → a reply line, or None if it isn't a switch
+    grants.apply("autonomy", "sara", by="Alex", on=True)
+    grants.apply("browser", "sara", by="Alex", sites=["youtube.com"], approval="none")
+    grants.apply("connect", "sara", by="Alex", other="nora", note="send Nora each sponsor deal")
+    grants.from_text("Alex", "Sara full autonomy on")       # → a reply line, or None if it isn't a switch
 
 Only an owner flips a switch: the panel (signed in), the harness reading an owner's own chat message, or the
 guard after the owner clicked Yes in a Claude session (`orbit grant`, with a key employees can't read).

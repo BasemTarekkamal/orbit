@@ -1,10 +1,10 @@
 """Connectors: the MCP servers a crew member may use (Notion, Gmail, HubSpot, Canva, QuickBooks…).
 
     import connectors
-    connectors.suggest("maya")                 # the library's best matches for this crew member's job
+    connectors.suggest("sara")                 # the library's best matches for this crew member's job
     connectors.search("newsletter analytics")  # the library, then the public MCP registry
-    connectors.grant("maya", "notion", by="Basem")   # the owner's yes (panel, chat, or a Yes in Claude)
-    connectors.revoke("maya", "notion", by="Basem")
+    connectors.grant("sara", "notion", by="Alex")   # the owner's yes (panel, chat, or a Yes in Claude)
+    connectors.revoke("sara", "notion", by="Alex")
     connectors.mcp_config(emp)                 # {"mcpServers": {...}} for its runs and Claude sessions
 
 The library is core/connectors.json (remote servers from the official connector directory, matched to roles).
