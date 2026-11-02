@@ -1227,7 +1227,7 @@ document.addEventListener('submit', async (ev) => {
         ob.edit = { role: c.role || h.role, scope: c.scope || h.scope, routines: { ...(c.routines || {}) }, budget: c.budget || 'regular', model: c.model || 'sonnet',
           access: ACCESS.filter(([k, , a]) => k !== 'brief' && a.some((x) => ids.has(x))).map(([k]) => k),
           browser: SITES.filter(([l]) => (c.access || []).some((a) => a.kind === 'post_with_approval' && new RegExp('\\b' + l + '\\b', 'i').test(`${a.site || ''} ${a.what || ''}`))).map(([, d]) => d),
-          approval: 'each' };
+          approval: 'each', autonomy: true };   // the promise is an employee who gets on with it; owners can pick "checks in"
       } catch (e) { ob.stage = 'questions'; toast(e.message); }
       render(true).then(() => { const x = $('.idcard, .interview'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     } else if (kind === 'hire') {

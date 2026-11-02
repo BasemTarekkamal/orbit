@@ -1,0 +1,8 @@
+node_modules/
+.venv/
+.py/
+models/
+out/
+frames/
+final.mp4
+contact.jpg

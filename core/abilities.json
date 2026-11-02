@@ -183,6 +183,16 @@
       ]
     },
     {
+      "id": "content",
+      "name": "Makes videos and posts",
+      "group": "Building",
+      "skills": [
+        "content-creator"
+      ],
+      "description": "Comes trained: scripts with hooks, code-made 3D Shorts with voice-over, music and captions (a ready kit, free and local), titles and descriptions, posting and scheduling in your Chrome when you allow it, growth and monetization basics. Studies reference videos to match a style.",
+      "can": "Script, make and post videos and posts like an experienced creator"
+    },
+    {
       "id": "build_tools",
       "name": "Builds its own tools",
       "group": "Building",

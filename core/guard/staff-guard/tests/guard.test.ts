@@ -168,3 +168,15 @@ test('where the button cannot open, the owner answers the same question in the s
   expect(String(yes.context)).toContain('full autonomy')
   expect(ran.length).toEqual(1)
 })
+
+test('with Full autonomy, permission prompts become yes (never a deny rule or a question to the owner)', async ($, on) => {
+  mock.env(on, { ...ENV, STAFF_ABILITIES: ENV.STAFF_ABILITIES + ',full_autonomy' })
+  on('tool.check', () => ({ decision: 'ask' }))
+  expect((await $.tool.check({ tool: 'Bash', input: { command: 'pip install --target tools/lib kokoro-onnx' } } as never)).decision).toEqual('allow')
+})
+
+test('without it, prompts stay prompts', async ($, on) => {
+  mock.env(on, ENV)
+  on('tool.check', () => ({ decision: 'ask' }))
+  expect((await $.tool.check({ tool: 'Bash', input: { command: 'pip install x' } } as never)).decision).toEqual('ask')
+})

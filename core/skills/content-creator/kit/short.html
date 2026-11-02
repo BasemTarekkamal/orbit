@@ -1,0 +1,111 @@
+<!doctype html>
+<!--
+  A vertical Short as code: a Three.js 3D scene with bloom, and a 2D overlay with the channel's look (headline per
+  voice line, word-by-word captions, a flash on every cut, a watermark, an end call to action).
+  Timing comes from out/lines.json (vo.py); words and colours from short.json. Everything is a pure function of t,
+  so render.js can render it in parallel. Start here and make the 3D your own: replace buildHero() and shot(i, u)
+  with the subject of the video (an engine, a product, a map), built in code, not downloaded (no licensing).
+-->
+<html><head><meta charset="utf-8"><title>Short</title>
+<style>html,body{margin:0;background:#000;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const W = 1080, H = 1920;
+const cfg = await (await fetch('short.json')).json();          // {watermark, accent, cta, headlines: {lineId: [[text, colour, size], ...]}}
+const TL = await (await fetch(cfg.lines || 'out/lines.json')).json();
+for (const f of [['PB', 'fonts/Poppins-Bold.ttf'], ['PBI', 'fonts/Poppins-BoldItalic.ttf']]) {
+  const ff = new FontFace(f[0], `url(${f[1]})`); await ff.load(); document.fonts.add(ff);
+}
+
+// ---------- 3D ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.9;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.background = new THREE.Color(0x05070d); scene.fog = new THREE.Fog(0x05070d, 14, 40);
+const camera = new THREE.PerspectiveCamera(38, W / H, 0.1, 200);
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(6, 10, 6); sun.castShadow = true; scene.add(sun);
+const rim = new THREE.PointLight(new THREE.Color(cfg.accent || '#4fd2ff'), 40, 30); rim.position.set(-5, 3, -4); scene.add(rim);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(30, 64), new THREE.MeshStandardMaterial({ color: 0x0b0f18, roughness: 0.7, metalness: 0.2 }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+function buildHero() {                       // the subject: an exploded "engine" of rings and pistons, made in code
+  const g = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: 0x9aa4b5, metalness: 1, roughness: 0.28 });
+  const glow = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: new THREE.Color(cfg.accent || '#4fd2ff'), emissiveIntensity: 3 });
+  const parts = [];
+  const block = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.2, 1.4), metal); block.castShadow = true; g.add(block); parts.push([block, 0]);
+  for (let i = 0; i < 4; i++) {
+    const p = new THREE.Group();
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.9, 32), metal); rod.castShadow = true;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.03, 12, 48), glow); ring.rotation.x = Math.PI / 2; ring.position.y = 0.3;
+    p.add(rod, ring); p.position.set(-0.9 + i * 0.6, 1.0, 0); g.add(p); parts.push([p, i + 1]);
+  }
+  const crank = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3, 24), metal); crank.rotation.z = Math.PI / 2; crank.position.y = -0.8; g.add(crank); parts.push([crank, 5]);
+  g.userData.parts = parts; g.position.y = 1.4; return g;
+}
+const hero = buildHero(); scene.add(hero);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.5, 0.45, 0.82); composer.addPass(bloom);  // too much bloom washes it out
+composer.addPass(new OutputPass());
+
+const lines = TL.lines, T = TL.T;
+const lineAt = (t) => { let k = 0; for (let i = 0; i < lines.length; i++) if (t >= lines[i].start - 0.15) k = i; return k; };
+function shot(i, u, t) {                      // one camera move per line, so every line is a cut
+  const a = 0.6 + i * 1.3 + u * 0.5, r = 11 - (i % 3) * 1.4, y = 2.6 + (i % 2) * 2.2;   // 3/4 views fit a 9:16 frame
+  camera.position.set(Math.sin(a) * r, y, Math.cos(a) * r); camera.lookAt(0, 2.2, 0);
+  const explode = Math.min(1, Math.max(0, (t - (lines[1] ? lines[1].start : 1)) / 1.2));   // parts fly apart on the second line
+  for (const [m, k] of hero.userData.parts) m.position.y = (m.userData.y0 ??= m.position.y) + explode * k * 0.45;
+  hero.rotation.y = t * 0.35;
+}
+
+// ---------- 2D overlay ----------
+const out = document.createElement('canvas'); out.width = W; out.height = H; const g2 = out.getContext('2d');
+const ease = (x) => 1 + 2.7 * Math.pow(x - 1, 3) + 1.7 * Math.pow(x - 1, 2);      // back-out pop
+function text(s, x, y, size, col, font = 'PB', align = 'center') {
+  g2.font = `${size}px ${font}`; g2.textAlign = align; g2.lineJoin = 'round';
+  g2.lineWidth = size * 0.16; g2.strokeStyle = '#000'; g2.shadowColor = 'rgba(0,0,0,.6)'; g2.shadowBlur = 18;
+  g2.strokeText(s, x, y); g2.shadowBlur = 0; g2.fillStyle = col; g2.fillText(s, x, y);
+}
+function headline(rows, age) {                // inside the safe zone (y 200-1450 on 1080x1920)
+  const k = Math.min(1, age / 0.35), s = 0.6 + 0.4 * ease(k);
+  g2.save(); g2.translate(W / 2, 400); g2.rotate(-0.03); g2.scale(s, s); g2.globalAlpha = Math.min(1, age / 0.12);
+  let y = 0; for (const [str, col, size] of rows) { text(str, 0, y, size || 92, col || '#fff', 'PBI'); y += (size || 92) * 1.05; }
+  g2.restore();
+}
+function captions(t, i) {                     // word by word, three at a time, the spoken word highlighted
+  const L = lines[i]; if (!L || t < L.start || t > L.start + L.dur + 0.2) return;
+  const words = L.text.toUpperCase().split(/\s+/), per = L.dur / words.length, w = Math.min(words.length - 1, Math.floor((t - L.start) / per));
+  const c0 = Math.floor(w / 3) * 3, chunk = words.slice(c0, c0 + 3);
+  g2.font = '70px PB'; const gap = 26, widths = chunk.map((x) => g2.measureText(x).width), total = widths.reduce((a, b) => a + b, 0) + gap * (chunk.length - 1);
+  let x = W / 2 - total / 2;
+  chunk.forEach((wd, j) => { const on = c0 + j === w; text(wd, x + widths[j] / 2, 1290, on ? 76 : 70, on ? (cfg.accent || '#ffd60a') : '#fff'); x += widths[j] + gap; });
+}
+
+window.renderFrame = (t, q = 0.92) => {
+  const i = lineAt(t), L = lines[i], u = Math.max(0, (t - L.start) / Math.max(0.5, L.dur));
+  shot(i, u, t); composer.render();
+  g2.clearRect(0, 0, W, H); g2.drawImage(renderer.domElement, 0, 0);
+  const v = g2.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.75); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.55)');
+  g2.fillStyle = v; g2.fillRect(0, 0, W, H);
+  const rows = (cfg.headlines || {})[L.id]; if (rows) headline(rows, t - L.start);
+  captions(t, i);
+  if (cfg.watermark) { g2.globalAlpha = 0.75; text(cfg.watermark, W / 2, 170, 40, '#fff'); g2.globalAlpha = 1; }
+  if (t > T - 1.6 && cfg.cta) text(cfg.cta, W / 2, 1000, 84, cfg.accent || '#ffd60a', 'PBI');
+  const since = t - (L.start - 0.15); if (since >= 0 && since < 0.1) { g2.fillStyle = `rgba(255,255,255,${0.3 * (1 - since / 0.1)})`; g2.fillRect(0, 0, W, H); }
+  return out.toDataURL('image/jpeg', q);
+};
+window.ready = true;
+</script></body></html>
