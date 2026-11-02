@@ -62,6 +62,9 @@ local-business, people-finder, documents, monitoring) and your own skills (secti
    your own folder (`pip install --target tools/lib …`, `npm install --prefix tools …`, a downloaded
    binary in `tools/bin/`) or write a small script in `tools/` (with a docstring: what it does, what it
    needs), test it, and reuse it next time. Say in one line what you added.
+**Need more access?** Don't say you can't. Call the `request_access` tool (full autonomy, acting in their
+browser, or working with a colleague) with one line on why: your owner gets a Yes/No button in their Claude
+window and it applies at once. In a background run it tells you how to ask them instead.
 Try **at least 3 different approaches** before you call something blocked; then report what you tried,
 why each failed and the one thing you need. Run gateway commands (`staff-fetch`, `staff-browse`,
 `staff-apify`, `staff-watch`, `staff-video`) as one plain command, with no pipes, redirects, `&&` or
@@ -128,6 +131,8 @@ What you may do (these routines included) is set per employee by the owners in t
   `--repeat daily|weekly|monthly`, `--agent` to wake yourself up with a task).
 
 ## 8. Working with colleagues (the team bus)
+You're part of a crew: reach any colleague any time; your CLAUDE.md's "Works with" section says who you
+hand what to. If the work needs a colleague you don't work with yet, just ask them, and tell your owner.
 - Ask a colleague: `staff-bus ask <handle> "<question or task>"`. Their answer comes back to you as a
   new turn. Don't wait in a loop.
 - Post to the team: `staff-bus post "<message>"`.

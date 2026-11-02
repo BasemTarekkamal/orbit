@@ -122,3 +122,21 @@ test('with Full autonomy on, downloads and installs go through; the owner comput
   expect(await call({ tool: 'Bash', command: 'osascript -e "tell app \\"Mail\\" to send"' })).toContain('osascript')
   expect(await call({ tool: 'Edit', file_path: WS + '/profile.json', old_string: 'a', new_string: 'b' })).toContain('read-only')
 })
+
+test('request_access: only a Yes clicked by the owner runs orbit grant; a No or a background run changes nothing', async ($, on) => {
+  mock.env(on, { ...ENV, STAFF_EMPLOYEE: 'sara' })
+  const ran: string[][] = []
+  on('process.run', ($, e) => { ran.push([...(e as { argv: string[] }).argv]); return { value: { exitCode: 0, stdout: 'Done: Sara has full autonomy now.', stderr: '' } } })
+  let pick = 'Not now'
+  on('tool.call', { tool: 'AskUserQuestion' }, ($, e) => {
+    const q = (e as { questions: Array<{ question: string }> }).questions[0].question
+    return { result: { questions: (e as { questions: unknown[] }).questions, answers: { [q]: pick } } }
+  })
+  const ask = async () => (await $.tool.call({ tool: 'mcp__staff-guard__request_access', kind: 'full_autonomy', why: 'to install a voice-over tool' } as never)) as { result?: string }
+  expect(String((await ask()).result)).toContain('said not now')
+  expect(ran.length).toEqual(0)
+  pick = 'Yes, allow it'
+  expect(String((await ask()).result)).toContain('full autonomy')
+  expect(ran.length).toEqual(1)
+  expect(ran[0].slice(2)).toEqual(['/Users/owner/staffroom/orbit', 'grant', 'sara', 'autonomy', 'on'])
+})

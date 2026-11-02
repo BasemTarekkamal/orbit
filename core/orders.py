@@ -11,7 +11,7 @@ import hire
 import team
 
 KINDS = ("message", "hire", "pause", "resume", "retire", "run_job", "set_abilities", "set_field", "set_browser", "set_autonomy",
-         "call_start", "call_stop")
+         "connect", "call_start", "call_stop")
 
 
 class OrderError(ValueError):
@@ -31,6 +31,12 @@ def message(by, eid, text):
     text = str(text or "").strip()[:4000]
     if not text:
         raise OrderError("Write a message first")
+    import grants                                         # an owner's switch typed in the panel: Orbit flips it
+    done = grants.from_text(by, text)
+    if done:
+        team.feed(by, by, eid or "team", text, "panel")
+        team.feed("staff", "Orbit", eid or "team", done, "panel")
+        return done
     act = team.active()
     if eid and eid != "team":
         _emp(eid)
@@ -123,6 +129,10 @@ def execute(by, kind, p):
             summary = "Acts in your browser for %s" % e["name"]
             res = ("On for %s, after your approval" % ", ".join(b["sites"])) if b else "Off"
             team.feed("staff", "Orbit", eid, "%s: %s. %s" % (summary, res, "Open them in Claude again to use it there." if b else ""), "panel")
+        elif kind == "connect":
+            e = _emp(eid, want_active=False)
+            res = hire.connect(eid, str(p.get("other") or ""), str(p.get("note") or ""), by)
+            summary = "Connect %s" % e["name"]
         elif kind == "set_autonomy":
             e = _emp(eid, want_active=False)
             on = hire.set_autonomy(eid, bool(p.get("on")), by)

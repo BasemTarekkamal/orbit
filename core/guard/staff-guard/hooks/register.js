@@ -58,25 +58,47 @@ const BROWSER_TOOL = /^mcp__(claude-in-chrome|Claude_Browser|remote-devices__Cla
 const DESKTOP_TOOL = /^mcp__(computer-use|remote-devices__computer)/i
 const NETWORK_CODE = /urllib|requests\.|http\.client|httpx|aiohttp|socket\.|fetch\(|smtplib|subprocess|os\.system|os\.popen|child_process|playwright|selenium/
 
-let ctx = null
+let base = null
+// What never changes in a session (paths), read once; the owner's switches are read from the team registry on
+// every call, so a switch flipped mid-session (the panel, a chat command, a Yes here) applies at once.
 async function context($) {
-  if (ctx) return ctx
-  const home = (await $.env.get('HOME')) || ''
-  const data = (await $.env.get('STAFFROOM_HOME')) || (home + '/Staff')
-  const kit = (await $.env.get('STAFFROOM_KIT')) || ''
-  const abilities = ((await $.env.get('STAFF_ABILITIES')) || '').split(',')
-  const sites = ((await $.env.get('STAFF_BROWSER_SITES')) || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)
-  ctx = {
-    home,
-    secrets: SECRET_FRAGMENTS.concat([data + '/.secrets']),
-    harness: HARNESS_FRAGMENTS.concat(kit ? [kit + '/'] : [], [data + '/staff.json', data + '/.runtime/'],
-      TEAM_FILES.map((f) => data + '/team/' + f)),
+  if (!base) {
+    const home = (await $.env.get('HOME')) || ''
+    const data = (await $.env.get('STAFFROOM_HOME')) || (home + '/Staff')
+    const kit = (await $.env.get('STAFFROOM_KIT')) || ''
+    base = {
+      home, data, kit,
+      employee: (await $.env.get('STAFF_EMPLOYEE')) || '',
+      envAbilities: ((await $.env.get('STAFF_ABILITIES')) || '').split(','),
+      envSites: ((await $.env.get('STAFF_BROWSER_SITES')) || '').split(','),
+      secrets: SECRET_FRAGMENTS.concat([data + '/.secrets']),
+      harness: HARNESS_FRAGMENTS.concat(kit ? [kit + '/'] : [], [data + '/staff.json', data + '/.runtime/'],
+        TEAM_FILES.map((f) => data + '/team/' + f)),
+    }
+  }
+  let abilities = base.envAbilities
+  let sites = base.envSites
+  let name = base.employee
+  if (base.employee) {
+    try {
+      const reg = JSON.parse(await $.fs.read(base.data + '/staff.json'))
+      const e = (reg.employees || {})[base.employee]
+      if (e) {
+        name = e.name || name
+        if (Array.isArray(e.abilities)) abilities = e.abilities.concat(base.envAbilities.filter((a) => ['memory', 'safety'].includes(a)))
+        sites = (e.browser && e.browser.sites) || []
+      }
+    } catch (err) {
+      // no registry here (a test, or a bare session): the environment the engine set stands
+    }
+  }
+  sites = sites.map((x) => String(x).trim().toLowerCase()).filter(Boolean)
+  return {
+    ...base, name, sites,
     buildTools: abilities.includes('build_tools') || abilities.includes('full_autonomy'),
     autonomy: abilities.includes('full_autonomy'),
     browser: abilities.includes('act_in_browser') && sites.length > 0,
-    sites,
   }
-  return ctx
 }
 
 function norm(s, home) {
@@ -198,9 +220,101 @@ function redactDeep(v) {
   return v
 }
 
+const FILE_TOOLS = ['Read', 'Write', 'Edit', 'NotebookEdit', 'Glob', 'Grep']
+async function realTarget($, e) {
+  const p = String(e.file_path || e.notebook_path || e.path || '')
+  if (!p) return ''
+  try {
+    const st = await $.fs.stat(p, { resolve: true })
+    return st && st.realPath ? st.realPath : ''
+  } catch (err) {
+    try {                                                 // a new file: where its folder really is
+      const dir = p.replace(/\/[^/]*$/, '') || '/'
+      const st = await $.fs.stat(dir, { resolve: true })
+      return st && st.realPath ? st.realPath + p.slice(dir.length) : ''
+    } catch (err2) {
+      return ''
+    }
+  }
+}
+
+// The one way an employee gets more access: it asks, and the owner clicks Yes in this Claude window. The model
+// can only ask; the click is the owner's, and the switch is flipped by `orbit grant` with a key the employee
+// can't read. In a background run nobody can be asked, so it says how the owner can do it.
+const ACCESS_TOOL = 'request_access'
+const YES = 'Yes, allow it'
+const ACCESS_SPEC = {
+  name: ACCESS_TOOL, isDeferred: false,
+  description: 'Ask your owner for more access, with a Yes/No button in their Claude window. Use it instead of saying ' +
+    "you can't: kind full_autonomy (do the whole job without asking, any website, install tools), browser (act in " +
+    'their Chrome on these sites; approval each, batch or none) or connect (work with a colleague). Say why in one line.',
+  inputSchema: { type: 'object', required: ['kind', 'why'], properties: {
+    kind: { type: 'string', enum: ['full_autonomy', 'browser', 'connect'] },
+    why: { type: 'string', description: 'One line: what it lets you finish' },
+    sites: { type: 'array', items: { type: 'string' }, description: 'browser: sites like youtube.com' },
+    approval: { type: 'string', enum: ['each', 'batch', 'none'], description: 'browser: ask each time, once per batch, or not at all' },
+    colleague: { type: 'string', description: 'connect: their handle' },
+    note: { type: 'string', description: 'connect: what you hand each other' } } },
+}
+async function requestAccess($, e) {
+  const c = await context($)
+  const who = c.name || 'This crew member'
+  const why = String(e.why || '').slice(0, 300)
+  let q
+  let args
+  if (e.kind === 'full_autonomy') {
+    q = 'Give ' + who + ' full autonomy? ' + why
+    args = ['autonomy', 'on']
+  } else if (e.kind === 'browser') {
+    const sites = (Array.isArray(e.sites) ? e.sites : []).map((x) => String(x).toLowerCase().trim()).filter(Boolean).slice(0, 10)
+    if (!sites.length) return { result: 'Say which sites (like youtube.com).' }
+    if (sites.some((h) => MONEY_HOSTS.test(h))) return { result: 'Banking and payment sites stay off-limits; ask your owner to do that part.' }
+    const mode = ['each', 'batch', 'none'].includes(e.approval) ? e.approval : 'each'
+    q = 'Let ' + who + ' act in your Chrome on ' + sites.join(', ') + (mode === 'none' ? ' without asking you' : mode === 'batch' ? ' (you approve each batch)' : ' (you approve each one)') + '? ' + why
+    args = ['browser', sites.join(','), mode]
+  } else if (e.kind === 'connect') {
+    const col = String(e.colleague || '').toLowerCase().replace(/[^a-z0-9-]/g, '')
+    if (!col) return { result: 'Say which colleague (their handle).' }
+    q = 'Connect ' + who + ' with ' + col + '? ' + why
+    args = ['connect', col, String(e.note || why).slice(0, 300)]
+  } else {
+    return { result: 'kind must be full_autonomy, browser or connect.' }
+  }
+  let answer
+  try {
+    answer = await $.ui.ask(q, { header: 'Orbit access', options: ['Not now', YES] })
+  } catch (err) {
+    return { result: 'Nobody can be asked here (a background run). Tell your owner in one line what you need and why; ' +
+      'they can say "' + who + ' full autonomy on" in chat, or use your Manage tab in the panel.' }
+  }
+  if (answer !== YES) return { result: 'Your owner said not now. Carry on without it; ask again only with a stronger reason.' }
+  let key = ''
+  try { key = (await $.fs.read(c.data + '/.secrets/grant_key')).trim() } catch (err) { /* made by orbit grant itself */ }
+  try {
+    const r = await $.process.run(['/usr/bin/env', 'python3', c.kit + '/orbit', 'grant', base.employee].concat(args),
+      { env: { ORBIT_GRANT_KEY: key, STAFFROOM_HOME: c.data }, timeoutMs: 180000 })
+    return { result: r.exitCode === 0 ? r.stdout.trim() + ' It applies now.' : "It didn't go through: " + (r.stderr || r.stdout).trim().slice(-300) }
+  } catch (err) {
+    return { result: 'Your owner said yes, but Orbit could not apply it here (' + String(err).slice(0, 120) + '). Ask them to switch it on in your Manage tab.' }
+  }
+}
+
 export function register(on) {
+  on('session.start', async ($, e, next) => {
+    const r = await next(e)
+    try { await $.tool.register(ACCESS_SPEC) } catch (err) { /* a host without plugin tools: the panel switch remains */ }
+    return r
+  })
+
   on('tool.call', async ($, e, next) => {
-    const why = verdict(e, await context($))
+    if (String(e.tool || '').endsWith('__' + ACCESS_TOOL)) return requestAccess($, e)
+    const c = await context($)
+    if (FILE_TOOLS.includes(e.tool)) {
+      const real = await realTarget($, e)
+      const hit = real && touches(real, c.secrets, c.home)
+      if (hit) return { deny: 'staff-guard: it leads to a protected secret (' + hit + '). This is an owner-set lock, not a bug.' }
+    }
+    const why = verdict(e, c)
     if (why) {
       $.ui.log('staff-guard blocked ' + e.tool + ': ' + why)
       return { deny: 'staff-guard: ' + why + '. This is an owner-set lock, not a bug; do not try to work around it. If the task really needs it, ask your owner.' }

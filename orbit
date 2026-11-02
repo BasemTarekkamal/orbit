@@ -591,6 +591,8 @@ def main():
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("setup").add_argument("--no-start", action="store_true", help="don't install or start the service")
     sub.add_parser("demo").add_argument("--stop", action="store_true", help="end the demo")
+    gr = sub.add_parser("grant")                         # called by the guard after an owner's Yes in Claude
+    gr.add_argument("handle"); gr.add_argument("kind", choices=["autonomy", "browser", "connect"]); gr.add_argument("args", nargs="*")
     for c in ("start", "stop", "restart", "status", "panel", "list", "logs", "service-run"):
         sub.add_parser(c)
     d = sub.add_parser("doctor")
@@ -627,6 +629,21 @@ def main():
         return start()
     if args.cmd == "service-run":
         return service_run()
+    if args.cmd == "grant":
+        import grants
+        import hmac
+        if not hmac.compare_digest(os.environ.get("ORBIT_GRANT_KEY", ""), grants.key()):
+            sys.exit("Only your owner can change your access: a Yes in their Claude window, a chat command, or the panel.")
+        owner = next(iter(engine.registry().get("owners", {}).values()), {}).get("name", "Owner")
+        a = args.args
+        kw = {"on": (a[0] if a else "on") == "on"} if args.kind == "autonomy" else \
+             {"sites": [x for x in (a[0] if a else "").split(",") if x], "approval": a[1] if len(a) > 1 else "each"} if args.kind == "browser" else \
+             {"other": a[0] if a else "", "note": " ".join(a[1:])}
+        try:
+            say(grants.apply(args.kind, args.handle, owner + " (Yes in Claude)", **kw))
+        except Exception as e:  # noqa: BLE001
+            sys.exit(str(e))
+        return
     if args.cmd == "stop":
         return stop()
     if args.cmd == "restart":

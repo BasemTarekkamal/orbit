@@ -194,6 +194,16 @@ def checklist(emps, feed):
     ]
 
 
+def update_view():
+    if DEMO:
+        return {}
+    try:
+        import update
+        return update.status()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def interview(step, f):
     """The hiring interview (onboard.py): Claude's follow-up questions, then the card. Canned in the demo."""
     name, role, scope = (str(f.get(k) or "").strip()[:2000] for k in ("name", "role", "scope"))
@@ -350,7 +360,7 @@ def state():
     pending = team.jload(PENDING, {})
     usage = engine.usage()
     me = next(iter(reg.get("owners", {}).values()), {}).get("name", "Owner")
-    return {"team_name": reg.get("team_name", "Orbit"), "me": me, "online": daemon_online(), "now": time.strftime("%Y-%m-%dT%H:%M:%S"), "demo": DEMO, "device": osinfo.DEVICE,
+    return {"team_name": reg.get("team_name", "Orbit"), "me": me, "online": daemon_online(), "now": time.strftime("%Y-%m-%dT%H:%M:%S"), "demo": DEMO, "device": osinfo.DEVICE, "update": update_view(),
             "usage": usage, "owners": [{"id": i, "name": o["name"], "local": bool(o.get("local")),
                                         "addresses": [channels.label(i)] + [channels.label(a) for a in o.get("addresses", [])]}
                                        for i, o in reg.get("owners", {}).items()],
@@ -718,6 +728,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "message": welcome(f, me)})
             if path in ("/api/onboard/questions", "/api/onboard/card"):
                 return self._json(200, interview(path.rsplit("/", 1)[1], f))
+            if path == "/api/update":
+                import update
+                if f.get("action") == "dismiss":
+                    update.dismiss()
+                    return self._json(200, {"ok": True})
+                if f.get("action") == "check":
+                    update.check(force=True)
+                    return self._json(200, {"ok": True, **update.status()})
+                try:
+                    return self._json(200, {"ok": True, "message": update.apply()})
+                except RuntimeError as e:
+                    raise orders.OrderError(str(e))
             if path == "/api/claude_session":
                 return self._json(200, claude_session(str(f.get("employee") or "")))
             if path == "/api/connect":

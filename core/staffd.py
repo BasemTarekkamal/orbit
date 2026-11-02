@@ -166,6 +166,14 @@ def handle(msg):
     if low in ("/team", "/start", "/help", "help", "team"):
         send(chat, help_text(mod))
         return
+    try:                                                  # an owner's switch ("Suoo full autonomy on"): Orbit flips it
+        import grants
+        done = grants.from_text(who, text)
+    except Exception as e:  # noqa: BLE001
+        done = "Couldn't change that: %s" % e
+    if done:
+        send(chat, done)
+        return
     m = re.fullmatch(r"/?talk\s+@?([a-z0-9-]+)", low)
     if m and m.group(1) in team.active():
         st[sticky_key] = m.group(1)
@@ -444,6 +452,16 @@ def supervise():
         log("listening on %s" % n)
 
 
+def tick_update():
+    """Once a day: is there a newer Orbit release? The panel shows it; nothing updates without the owner."""
+    import update
+    update.check()
+    s = update.status()
+    if s["newer"] and update.announce_once(s["latest"]):
+        team.feed("staff", "Orbit", "team", "Orbit %s is available (you have %s). See what's new and update from Mission "
+                  "Control when you're ready; nothing changes until you do." % (s["latest"], s["current"]), "panel")
+
+
 def main():
     os.makedirs(team.TEAM, exist_ok=True)
     log("staffd up (pid %d)" % os.getpid())
@@ -462,7 +480,7 @@ def main():
         with open(os.path.join(team.TEAM, "staffd_alive"), "w") as fh:
             fh.write(str(int(time.time())))
         for name, fn, every in (("jobs", tick_jobs, 60), ("reminders", tick_reminders, 60), ("bus", tick_bus, 10),
-                                ("skills", tick_skills, 30)):
+                                ("skills", tick_skills, 30), ("update", tick_update, 3600)):
             if time.time() - last.get(name, 0) >= every:
                 last[name] = time.time()
                 try:

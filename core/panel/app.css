@@ -667,3 +667,7 @@ details.adv > summary:hover { color: var(--ink); }
 .grant .row-form .input { flex: 1; }
 .grant .seg { margin-top: 10px; }
 .mt { margin-top: 10px; }
+
+.update { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; padding: 14px 16px; margin-bottom: 18px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--accent-soft); }
+.update .actions { display: flex; gap: 8px; align-items: center; }
+.update-notes { margin-top: 6px; max-width: 70ch; color: var(--ink-2); }

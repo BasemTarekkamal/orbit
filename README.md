@@ -189,8 +189,13 @@ An autonomous agent that reads the open web needs locks, not promises. Every run
 - **Your switches, not rules you can't change:** each crew member's Manage tab has **Full autonomy**
   (does the whole job without asking: any website, installs its own tools, studies videos, finishes the
   work; the sandbox keeps it in its own folder) and **Acts in your browser** (posts and uploads in your
-  own Chrome on the sites you pick: ask each time, once per batch, or don't ask). Nobody can flip a
-  switch from a chat, and a web page can't either. Money and passwords stay off-limits.
+  own Chrome on the sites you pick: ask each time, once per batch, or don't ask). Flip them in the panel,
+  by typing in chat ("Suoo full autonomy on", "Suoo can post on YouTube without asking", "connect Suoo
+  with Nora"), or with one click: when a crew member needs more access in a Claude session, a Yes/No
+  button appears there. Orbit flips the switch, never the crew member itself, so a web page can't talk
+  them into more. Money and passwords stay off-limits.
+- **Updates you choose:** when a new release is out, Mission Control shows what's new with Update and
+  Later. Only official releases, only for an unmodified copy of the official repository; never automatic.
 - **Owners only:** only people you approve can direct the team. Strangers who message the bot are
   ignored and listed in the panel for you to approve or ignore.
 

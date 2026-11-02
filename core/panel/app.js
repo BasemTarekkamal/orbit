@@ -475,6 +475,9 @@ function cardHtml(sel, ob, name, from) {
         <p class="meta">Pick the sites where ${esc(name || 'they')} may post, upload or fill in forms for you, in your own Chrome where you're signed in. They show you each one first and do it after you approve. Never sign-ins, passwords or money.</p>
         ${sitePicker('ob', ed.browser || [])}
         <div class="seg" role="group" aria-label="Approval"><button type="button" class="${(ed.approval || 'each') === 'each' ? 'on' : ''}" data-act="ob-approval" data-v="each">Ask me for each one</button><button type="button" class="${ed.approval === 'batch' ? 'on' : ''}" data-act="ob-approval" data-v="batch">Once per batch</button><button type="button" class="${ed.approval === 'none' ? 'on' : ''}" data-act="ob-approval" data-v="none">Don't ask me</button></div></section>
+      ${S.data.employees.length ? `<section class="wide"><h3>${icon('users')} Works with</h3>
+        <div class="chips">${S.data.employees.map((x) => `<button type="button" class="chip ${(ed.with || []).includes(x.id) ? 'on' : ''}" data-act="ob-with" data-id="${x.id}" aria-pressed="${(ed.with || []).includes(x.id)}">${esc(x.name)} <span class="faint">${esc(x.role)}</span></button>`).join('')}</div>
+        <p class="meta">Everyone on the crew can always ask anyone. These become part of the job: who hands what to whom.</p></section>` : ''}
       <section class="wide grant"><h3>${icon('claude')} How independent?</h3>
         <div class="seg budget" role="group" aria-label="Independence"><button type="button" class="${ed.autonomy ? '' : 'on'}" data-act="ob-autonomy" data-v=""><b>Checks in with me</b><span>Asks before anything new or public</span></button><button type="button" class="${ed.autonomy ? 'on' : ''}" data-act="ob-autonomy" data-v="1"><b>Full autonomy</b><span>Does the whole job, finds its own tools; the sandbox keeps it in its folder</span></button></div></section>
       <section><h3>Tools</h3>${access}</section>
@@ -633,7 +636,12 @@ PAGES.today = () => {
     ${['five_hour', 'seven_day'].filter((k) => k in u).map((k) => `<div class="row2"><span>${k === 'five_hour' ? '5-hour limit' : 'Weekly limit'}</span><b class="num">${Math.round(u[k])}% used</b></div>`).join('')}
     <p class="meta">Your crew runs on your Claude plan: nothing extra is billed. The limits are your plan's (shared with your own Claude use); each crew member also has a weekly budget.</p></div>`;
   const calls = Object.keys(d.calls || {}).map((id) => callCard(id, true)).join('');
-  return `${demo}<header class="greet"><h1>${greet}, ${esc(d.me)}.</h1><p class="sub">${sub}</p></header>${setup}
+  const up = d.update || {};
+  const upd = up.newer && !up.dismissed ? `<section class="update"><div><b>Orbit ${esc(up.latest)} is available</b> <span class="meta">you have ${esc(up.current)}</span>
+    ${up.notes ? `<div class="md small update-notes">${md(up.notes.split('\n').slice(0, 12).join('\n'))}</div>` : ''}
+    ${up.can_update ? '' : `<p class="meta">${esc(up.why_not)}</p>`}</div>
+    <div class="actions">${up.can_update ? `<button class="btn btn-primary btn-sm" data-act="update-now">Update now</button>` : ''}<button class="btn btn-ghost btn-sm" data-act="update-later">Later</button>${up.url ? `<a class="link small" href="${esc(up.url)}" target="_blank" rel="noopener">Release notes</a>` : ''}</div></section>` : '';
+  return `${demo}${upd}<header class="greet"><h1>${greet}, ${esc(d.me)}.</h1><p class="sub">${sub}</p></header>${setup}
     <div class="cols"><div>${calls ? `<section>${calls}</section>` : ''}${nowSec}
       <section><div class="sec-head"><h2>Needs you</h2>${d.needs.length ? `<span class="meta">${d.needs.length}</span>` : ''}</div>${needs}</section>
       <section><div class="sec-head"><h2>Today</h2><span class="meta">the team room</span></div>${timeline}</section>
@@ -1074,6 +1082,12 @@ document.addEventListener('click', async (ev) => {
   else if (act === 'ob-routine' && S.ob) { S.ob.edit.routines[b.dataset.k] = !S.ob.edit.routines[b.dataset.k]; keepCard(); render(true); }
   else if (act === 'ob-budget' && S.ob) { S.ob.edit.budget = b.dataset.k; keepCard(); render(true); }
   else if (act === 'open-claude') { openClaude(b.dataset.emp, b); }
+  else if (act === 'update-later') { await api('/api/update', { action: 'dismiss' }); S.data = await api('/api/state'); render(true); }
+  else if (act === 'update-now') {
+    b.disabled = true; b.textContent = 'Updating…';
+    try { const r = await api('/api/update', {}); toast(r.message); setTimeout(() => location.reload(), 9000); }
+    catch (e) { toast(e.message, 'err'); b.disabled = false; b.textContent = 'Update now'; }
+  }
   else if ((act === 'br-site' || act === 'ob-site') && b.dataset.d) {
     const st = act === 'br-site' ? S.browserEdit : S.ob.edit; const set = new Set(act === 'br-site' ? st.sites : st.browser);
     set.has(b.dataset.d) ? set.delete(b.dataset.d) : set.add(b.dataset.d);
@@ -1088,6 +1102,7 @@ document.addEventListener('click', async (ev) => {
     render(true);
   }
   else if (act === 'br-approval') { S.browserEdit.approval = b.dataset.v; render(true); }
+  else if (act === 'ob-with') { keepCard(); const w = new Set(S.ob.edit.with || []); w.has(b.dataset.id) ? w.delete(b.dataset.id) : w.add(b.dataset.id); S.ob.edit.with = [...w]; render(true); }
   else if (act === 'ob-autonomy') { keepCard(); S.ob.edit.autonomy = !!b.dataset.v; render(true); }
   else if (act === 'ob-approval') { keepCard(); S.ob.edit.approval = b.dataset.v; render(true); }
   else if (act === 'br-save') {
@@ -1228,6 +1243,7 @@ document.addEventListener('submit', async (ev) => {
       const id = (r.message.match(/\/([a-z0-9-]+)$/) || [])[1];
       if (id && (ed.browser || []).length) await api('/api/order', { kind: 'set_browser', employee_id: id, sites: ed.browser, approval: ed.approval || 'each' });
       if (id && ed.autonomy) await api('/api/order', { kind: 'set_autonomy', employee_id: id, on: true });
+      for (const other of (id ? ed.with || [] : [])) await api('/api/order', { kind: 'connect', employee_id: id, other });
       delete S.vals.hire; S.job = null; S.ob = null;
       S.data = await api('/api/state');
       S.launched = id || null;

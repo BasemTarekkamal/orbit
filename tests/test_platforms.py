@@ -475,3 +475,63 @@ class FullAutonomy(unittest.TestCase):
             md = fh.read()
         self.assertIn("Don't ask me", md)
         self.assertNotIn("wait for their", md)
+
+
+class Switches(unittest.TestCase):
+    """The owner's switches from chat, from a Yes in Claude (orbit grant), and crew connections."""
+
+    def setUp(self):
+        import hire
+        self.hire = hire
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"111": {"name": "Alex"}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7397}})
+        hire.hire("Suoo", "Content creator", "Videos", supervisor="Alex", picked=["web"])
+        hire.hire("Nora", "Bookkeeper", "Books", supervisor="Alex", picked=["documents"])
+
+    def ab(self, eid):
+        import abilities
+        return abilities.effective(eid)
+
+    def test_chat_commands(self):
+        import grants
+        self.assertIn("full autonomy", grants.from_text("Alex", "Suoo full autonomy on"))
+        self.assertIn("full_autonomy", self.ab("suoo"))
+        self.assertIn("off", grants.from_text("Alex", "turn off full autonomy for suoo"))
+        self.assertNotIn("full_autonomy", self.ab("suoo"))
+        self.assertIn("without asking", grants.from_text("Alex", "Suoo can post on YouTube and TikTok without asking"))
+        b = engine.registry()["employees"]["suoo"]["browser"]
+        self.assertEqual((b["sites"], b["approval"]), (["youtube.com", "tiktok.com"], "none"))
+        self.assertIn("no longer", grants.from_text("Alex", "suoo stop posting"))
+        self.assertIn("work together", grants.from_text("Alex", "connect Suoo with Nora: send Nora every sponsor deal"))
+        with open(os.path.join(TMP, "employees", "nora", "CLAUDE.md"), encoding="utf-8") as fh:
+            self.assertIn("staff-bus ask suoo", fh.read())
+        for ordinary in ("what's the autonomy of a drone?", "post the video on youtube tomorrow", "Suoo, how are you?"):
+            self.assertIsNone(grants.from_text("Alex", ordinary), ordinary)
+
+    def test_orbit_grant_needs_the_key(self):
+        import grants
+        kit = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "orbit")
+        env = dict(os.environ, STAFFROOM_HOME=TMP)
+        r = subprocess.run([sys.executable, kit, "grant", "suoo", "autonomy", "on"], env=env, capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)                            # an employee running it gets nothing
+        self.assertNotIn("full_autonomy", self.ab("suoo"))
+        env["ORBIT_GRANT_KEY"] = grants.key()
+        r = subprocess.run([sys.executable, kit, "grant", "suoo", "autonomy", "on"], env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("full_autonomy", self.ab("suoo"))
+
+
+class Updates(unittest.TestCase):
+    def test_newer_release_is_offered_never_applied_on_its_own(self):
+        import update
+        update._save({"latest": "99.0.0", "notes": "- New things", "checked": time.time()})
+        s = update.status()
+        self.assertTrue(s["newer"])
+        self.assertEqual(s["current"], update.current())
+        update.dismiss()
+        self.assertTrue(update.status()["dismissed"])
+        self.assertTrue(update.announce_once("99.0.0"))
+        self.assertFalse(update.announce_once("99.0.0"))
+        update._save({"latest": "0.0.1", "checked": time.time()})
+        self.assertFalse(update.status()["newer"])

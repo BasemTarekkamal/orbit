@@ -502,6 +502,8 @@ def claude_session(emp_id: str) -> dict:
                 raise RuntimeError("couldn't add the guard to %s's folder: %s" % (emp["name"], (r.stderr or r.stdout).strip()[-200:]))
         with open(stamp, "w") as fh:
             fh.write(version)
+    import grants                                          # the key the guard needs to apply an owner's Yes
+    grants.key()
     import urllib.parse
     hello = SESSION_HELLO % emp["name"]
     link = "claude://code/new?" + urllib.parse.urlencode({"folder": ws, "q": hello}, quote_via=urllib.parse.quote)
