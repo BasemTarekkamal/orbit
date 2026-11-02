@@ -3,7 +3,7 @@
 
     import rolebook
     rolebook.all_roles()                     # what the hiring page shows; your own first
-    rolebook.save_role("suoo", "Channel manager", by="Basem")   # a trained crew member → a role, with its skills
+    rolebook.save_role("sara", "Channel manager", by="Alex")   # a trained crew member → a role, with its skills
     rolebook.apply_template("zain", "channel-manager")          # a new hire starts with that role's skills and rules
     rolebook.export_role("channel-manager", "/path/out")        # a folder anyone can import or contribute
     rolebook.import_role("/path/in")
