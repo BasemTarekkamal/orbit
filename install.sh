@@ -42,6 +42,12 @@ fi
 
 echo "1/4  Python packages for the page reader, the browser, documents and chat (your user only)…"
 PKGS="requests beautifulsoup4 playwright pypdf websocket-client"
+# Videos the crew studies (staff-video): yt-dlp, kept current (sites change weekly)
+if [ -n "$MAC" ]; then
+  command -v brew >/dev/null 2>&1 && { brew list yt-dlp >/dev/null 2>&1 || brew install yt-dlp >/dev/null 2>&1 || true; }
+else
+  PKGS="$PKGS yt-dlp"
+fi
 # Linux desktops hear calls through these (on Windows, Python for Windows does: see orbit doctor)
 [ -z "$MAC" ] && ! grep -qi microsoft /proc/version 2>/dev/null && PKGS="$PKGS soundcard numpy"
 # Newer Linux marks its Python "externally managed": --user packages are fine, pip just needs telling

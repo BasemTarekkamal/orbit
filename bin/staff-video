@@ -1,0 +1,13 @@
+#!/bin/sh
+# staff-video: study a public video (details, transcript, key frames).
+# Staffroom toolbelt shim: runs core/tools/video.py with this Mac's python3. See docs/toolbelt.md.
+self=$0
+while [ -h "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+kit=$(cd "$(dirname "$self")/.." && pwd -P)
+exec /usr/bin/env python3 "$kit/core/tools/video.py" "$@"

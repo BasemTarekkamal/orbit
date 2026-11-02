@@ -34,11 +34,14 @@ const HARNESS_FRAGMENTS = ['profile.json', '.claude/settings', 'library/launchag
 const TEAM_FILES = ['feed.jsonl', 'orders.jsonl', 'staffd_state.json', 'pending_owners.json', 'offsets.json',
   'directory.md', 'about.md', 'chatlog.jsonl', 'staffd.log', 'staffd_alive']
 
+// With Full autonomy (the owner's switch) the ones marked `job` are allowed: they're how work gets done, and the
+// sandbox still keeps the employee in its folder. The rest protect the owner's computer and identity.
 const BLOCKED_COMMANDS = [
-  [/\b(curl|wget|nc|ncat|netcat|telnet|ssh|scp|sftp|ftp|rsync|mail|sendmail|mutt|osascript)\b/i, 'network or messaging command'],
+  [/\b(curl|wget|nc|ncat|netcat|telnet|ssh|scp|sftp|ftp|rsync|mail|sendmail|mutt)\b/i, 'network or messaging command', 'job'],
+  [/\bosascript\b/i, 'controlling other apps (osascript)'],
   [/api\.telegram\.org|slack\.com\/api|discord(app)?\.com\/api|gateway\.discord\.gg/i, 'raw Telegram/Slack/Discord API (only the harness may message the owners)'],
-  [/\bgit\s+(push|remote)\b/i, 'git push/remote'],
-  [/(^|[\s;&|(`$])gh(\s|$)|api\.github\.com/i, 'GitHub CLI/API'],
+  [/\bgit\s+(push|remote)\b/i, 'git push/remote', 'job'],
+  [/(^|[\s;&|(`$])gh(\s|$)|api\.github\.com/i, 'GitHub CLI/API', 'job'],
   [/(^|[\s;&|(`$\/])claude(-code)?(\s|$)|@anthropic-ai\/claude-code/i, 'nested claude run or plugin install'],
   [/\bchflags\b|\bxattr\b/i, 'changing file protection flags'],
   [/\blaunchctl\b|\bcrontab\b|\bsystemctl\b|\bschtasks(\.exe)?\b/i, 'changing scheduled jobs'],
@@ -68,7 +71,8 @@ async function context($) {
     secrets: SECRET_FRAGMENTS.concat([data + '/.secrets']),
     harness: HARNESS_FRAGMENTS.concat(kit ? [kit + '/'] : [], [data + '/staff.json', data + '/.runtime/'],
       TEAM_FILES.map((f) => data + '/team/' + f)),
-    buildTools: abilities.includes('build_tools'),
+    buildTools: abilities.includes('build_tools') || abilities.includes('full_autonomy'),
+    autonomy: abilities.includes('full_autonomy'),
     browser: abilities.includes('act_in_browser') && sites.length > 0,
     sites,
   }
@@ -125,7 +129,7 @@ export function verdict(e, c) {
     }
   }
   if (tool === 'Bash') {
-    for (const [re, why] of BLOCKED_COMMANDS) if (re.test(text)) return why + ' is blocked'
+    for (const [re, why, job] of BLOCKED_COMMANDS) if (re.test(text) && !(job && c.autonomy)) return why + ' is blocked'
     const harness = touches(text, c.harness, c.home)
     // Error-output plumbing (2>&1, 2>/dev/null) writes nothing anywhere; reading the kit with it is fine.
     const writes = text.replace(/\d*>&\d|&?\d*>\s*\/dev\/null/g, '')
@@ -137,7 +141,7 @@ export function verdict(e, c) {
     if (harness) return 'the harness file ' + harness + ' is read-only'
     // A script written now could do later what Bash may not. Notes and data are prose, not code.
     if (!/\.(md|txt|csv|json|jsonl|tsv)$/i.test(target)) {
-      for (const [re, why] of BLOCKED_COMMANDS) if (re.test(text)) return 'the file would contain a blocked capability: ' + why
+      for (const [re, why, job] of BLOCKED_COMMANDS) if (re.test(text) && !(job && c.autonomy)) return 'the file would contain a blocked capability: ' + why
       if (!c.buildTools && NETWORK_CODE.test(text))
         return 'new code that opens network connections or runs programs needs the "Builds its own tools" ability'
     }

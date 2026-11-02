@@ -431,3 +431,47 @@ class BrowserGrant(unittest.TestCase):
     def test_money_sites_cannot_be_granted(self):
         with self.assertRaises(self.hire.HireError):
             self.hire.set_browser(self.eid, ["paypal.com"], "each", "Alex")
+
+
+class FullAutonomy(unittest.TestCase):
+    """The owner's switch: no permission stops and an open network for the run; the sandbox stays."""
+
+    def setUp(self):
+        import hire
+        self.hire = hire
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"111": {"name": "Alex"}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7397}})
+        self.eid = hire.hire("Suoo", "Content creator", "Videos", supervisor="Alex", picked=["web", "full_autonomy"])
+
+    def run_settings(self):
+        emp = engine.employee(self.eid)
+        cmd = engine.command(emp, "sonnet")
+        return cmd, json.loads(cmd[cmd.index("--settings") + 1])
+
+    def test_off_by_default_and_never_by_ticks(self):
+        cmd, st = self.run_settings()
+        self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "dontAsk")
+        self.assertTrue(st["sandbox"]["network"]["strictAllowlist"])
+
+    def test_on_then_off(self):
+        self.hire.set_autonomy(self.eid, True, "Alex")
+        cmd, st = self.run_settings()
+        self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "bypassPermissions")
+        self.assertFalse(st["sandbox"]["network"]["strictAllowlist"])
+        self.assertTrue(st["sandbox"]["enabled"])                       # the boundary stays
+        self.assertIn(engine.SECRETS, st["sandbox"]["filesystem"]["denyRead"])
+        with open(os.path.join(TMP, "employees", self.eid, "CLAUDE.md"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read().count("Granted by your owner: full autonomy"), 1)
+        self.hire.set_autonomy(self.eid, False, "Alex")
+        cmd, st = self.run_settings()
+        self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "dontAsk")
+        with open(os.path.join(TMP, "employees", self.eid, "CLAUDE.md"), encoding="utf-8") as fh:
+            self.assertNotIn("full autonomy", fh.read())
+
+    def test_dont_ask_browser_grant(self):
+        self.hire.set_browser(self.eid, ["youtube.com"], "none", "Alex")
+        with open(os.path.join(TMP, "employees", self.eid, "CLAUDE.md"), encoding="utf-8") as fh:
+            md = fh.read()
+        self.assertIn("Don't ask me", md)
+        self.assertNotIn("wait for their", md)

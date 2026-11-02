@@ -10,8 +10,8 @@ import engine
 import hire
 import team
 
-KINDS = ("message", "hire", "pause", "resume", "retire", "run_job", "set_abilities", "set_field", "set_browser", "call_start",
-         "call_stop")
+KINDS = ("message", "hire", "pause", "resume", "retire", "run_job", "set_abilities", "set_field", "set_browser", "set_autonomy",
+         "call_start", "call_stop")
 
 
 class OrderError(ValueError):
@@ -123,6 +123,14 @@ def execute(by, kind, p):
             summary = "Acts in your browser for %s" % e["name"]
             res = ("On for %s, after your approval" % ", ".join(b["sites"])) if b else "Off"
             team.feed("staff", "Orbit", eid, "%s: %s. %s" % (summary, res, "Open them in Claude again to use it there." if b else ""), "panel")
+        elif kind == "set_autonomy":
+            e = _emp(eid, want_active=False)
+            on = hire.set_autonomy(eid, bool(p.get("on")), by)
+            try:
+                engine.claude_session(eid)
+            except Exception as ex:  # noqa: BLE001
+                team.log("claude_session after set_autonomy: %r" % ex)
+            summary, res = "Full autonomy for %s" % e["name"], "On" if on else "Off"
         else:  # set_field
             e = _emp(eid, want_active=False)
             field, value = p.get("field"), str(p.get("value") or "").strip()
