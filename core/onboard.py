@@ -56,7 +56,7 @@ CARD_SCHEMA = {
 
 POLICY = """Orbit's rules, which every card must respect:
 - Crew members run on the owner's own Claude plan. Budgets are tokens a week: light (about 1M), regular (about 3M), heavy (about 8M).
-- Acting as the owner (posting, publishing, replying as them, changing things in a portal) is allowed only as "ask first, then do": the crew member prepares it, the owner approves it in the panel or on their phone, then the crew member does it.
+- Crew members work with full autonomy by default (the owner can choose "checks in with me"). Acting as the owner in their own Chrome (posting, publishing, replying as them) is the owner's choice per site: ask before each one, once per batch, or not at all. Offer all three when it matters.
 - Money: read-only. A crew member may sign in to read statements, invoices and balances; it never pays, transfers or buys anything.
 - Never ask for passwords, codes or tokens in a question. Access is given by the owner signing in once, in the crew member's own browser on this computer, or in the panel's settings.
 - Never invent facts about the owner's business."""
@@ -102,7 +102,9 @@ def questions(role, scope, name=""):
               "do it the way the owner thinks. Prefer choices the owner can tap; use text only for names, links "
               "and specifics. Cover what the card doesn't know yet: their accounts, channels or sites; goals and "
               "numbers; tone and language; how often and when to report; what the crew member should do on its "
-              "own and what it should prepare for approval; what access the owner is willing to give. Short "
+              "own and what it should prepare for approval; what access the owner is willing to give. For creative work (videos, posts, design, writing, channels), "
+              "always ask for 1-3 links to work they love and want something like, and links to their own channels "
+              "or pages: a reference beats any description. Short "
               "questions, short options, the owner's language (from the About text). No question about money "
               "transfers, passwords or tokens.\n\n" + POLICY)
     out = _ask(system, _context(name, role, scope), QUESTIONS_SCHEMA)

@@ -10,6 +10,7 @@
     "bookkeeper",
     "leads",
     "creator",
+    "marketing",
     "social",
     "assistant"
    ]
@@ -50,6 +51,7 @@
     "leads",
     "social",
     "creator",
+    "marketing",
     "researcher"
    ]
   },
@@ -63,6 +65,7 @@
     "social",
     "leads",
     "creator",
+    "marketing",
     "bookkeeper",
     "assistant",
     "reviewer",
@@ -501,16 +504,16 @@
   },
   {
    "id": "creator",
-   "title": "Make and post my videos and posts",
+   "title": "Run my channels: strategy, videos, posts and growth",
    "role": "Content creator",
    "names": [
     "Suha",
     "Zain",
     "Maya"
    ],
-   "blurb": "Make and post my videos and posts",
-   "outcome": "Make and post my videos and posts",
-   "scope": "Plans, scripts, makes and posts short videos and posts for the owner's channels: hooks in the first two seconds, one fact per line, code-made 3D visuals with voice-over, music and captions, titles and descriptions, a steady posting schedule. Studies what works on similar channels, verifies every fact, and brings one new growth or money idea to each standup.",
+   "blurb": "Run my channels: strategy, videos, posts and growth",
+   "outcome": "Run my channels: strategy, videos, posts and growth",
+   "scope": "Runs the owner's channels and pages (YouTube, TikTok, Instagram, Facebook, X, LinkedIn): a strategy and content plan, videos and posts in any style the owner points at (studying their references), posting and scheduling, comments, reading the numbers, creator income and sponsorships, and working with agencies. Verifies every fact and brings one growth or money idea to each standup.",
    "abilities": [
     "telegram",
     "team_room",
@@ -529,12 +532,50 @@
    "model": "sonnet",
    "gets": [],
    "try": [
-    "Make a 20-second Short about <topic> in my channel's style",
-    "Study this video and tell me how it was made: <link>",
-    "Plan next week's posts"
+    "Here's a video I love: <link>. Make ours like that",
+    "Plan next month for my channels",
+    "What do my numbers say, and what should we change?"
    ],
-   "today": "Works now: comes with a ready video kit (free, local). Posts for you once you switch on Acts in your browser.",
+   "today": "Works now. Ask it to study a video you love and it sets up what it needs. Posts for you once you switch on Acts in your browser.",
    "soon": "Voice in your own cloned voice.",
+   "first": ""
+  },
+  {
+   "id": "marketing",
+   "title": "Run my ads and marketing performance",
+   "role": "Marketing manager",
+   "names": [
+    "Lina",
+    "Omar",
+    "Rana"
+   ],
+   "blurb": "Run my ads and marketing performance",
+   "outcome": "Run my ads and marketing performance",
+   "scope": "Plans and runs paid campaigns on Meta (Facebook and Instagram), Google, TikTok and LinkedIn: goals and target cost per result, campaign structure, creative tests with the content creator, reading the numbers, pacing budgets, judging agencies, and a weekly performance report. Prepares every launch and budget change in full; the owner approves each one.",
+   "abilities": [
+    "telegram",
+    "team_room",
+    "voice",
+    "files",
+    "reminders",
+    "web",
+    "fetch",
+    "browser",
+    "documents",
+    "learn",
+    "build_tools",
+    "marketing",
+    "brief"
+   ],
+   "model": "sonnet",
+   "gets": [],
+   "try": [
+    "Read my Ads Manager and tell me what to change",
+    "Plan a test campaign for <product> with 3 creatives",
+    "Compare these two agency proposals"
+   ],
+   "today": "Works now: reads your ad accounts in your Chrome once you allow it, and prepares every change for your approval.",
+   "soon": "",
    "first": ""
   },
   {
