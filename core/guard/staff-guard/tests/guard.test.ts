@@ -108,3 +108,17 @@ test('with "Acts in your browser" on, an employee uses your Chrome only on the s
   expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'https://www.paypal.com/myaccount', tabId: 1 })).toContain('banking')
   expect(await call({ tool: 'mcp__computer-use__screenshot' })).toContain('whole computer')
 })
+
+test('with Full autonomy on, downloads and installs go through; the owner computer and money stay protected', async ($, on) => {
+  mock.env(on, { ...ENV, STAFF_ABILITIES: ENV.STAFF_ABILITIES + ',full_autonomy' })
+  on('tool.call', () => ({ result: 'ok' }))
+  const call = async (e: Record<string, unknown>) => ((await $.tool.call(e as never)) as { deny?: string }).deny ?? 'allowed'
+  expect(await call({ tool: 'Bash', command: 'curl -L -o tools/bin/piper.tar.gz https://github.com/rhasspy/piper/releases/download/v1/piper.tar.gz' })).toEqual('allowed')
+  expect(await call({ tool: 'Bash', command: 'pip install --target tools/lib edge-tts' })).toEqual('allowed')
+  expect(await call({ tool: 'Write', file_path: WS + '/tools/tts.py', content: 'import requests\nrequests.get("https://x")' })).toEqual('allowed')
+  expect(await call({ tool: 'Bash', command: 'cat ~/Staff/.secrets/telegram_bot_token' })).toContain('secret')
+  expect(await call({ tool: 'Bash', command: 'curl https://www.paypal.com/myaccount' })).toContain('banking')
+  expect(await call({ tool: 'Bash', command: 'sudo rm -rf /' })).toContain('sudo')
+  expect(await call({ tool: 'Bash', command: 'osascript -e "tell app \\"Mail\\" to send"' })).toContain('osascript')
+  expect(await call({ tool: 'Edit', file_path: WS + '/profile.json', old_string: 'a', new_string: 'b' })).toContain('read-only')
+})

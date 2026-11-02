@@ -213,7 +213,14 @@ def clean_env(emp: dict) -> dict:
     return env
 
 
+def autonomous(emp: dict) -> bool:
+    import abilities
+    return "full_autonomy" in abilities.effective(emp["id"])
+
+
 def settings_json(emp: dict, unsandboxed: list) -> str:
+    """The run's sandbox: its folder, no secrets, no colleagues. Network: the approved sites only, or (Full
+    autonomy) any site, with the filesystem limits unchanged."""
     others = [p for p in glob.glob(os.path.join(HOME, "employees", "*"))
               if os.path.realpath(p) != os.path.realpath(emp["workspace"])]
     domains = BASE_DOMAINS + registry().get("network_domains", []) + emp.get("network_domains", [])
@@ -221,7 +228,7 @@ def settings_json(emp: dict, unsandboxed: list) -> str:
         "enabledPlugins": {},
         "sandbox": {
             "enabled": True, "allowUnsandboxedCommands": False, "failIfUnavailable": True,
-            "network": {"allowedDomains": sorted(set(domains)), "strictAllowlist": True},
+            "network": {"allowedDomains": sorted(set(domains)), "strictAllowlist": not autonomous(emp)},
             "filesystem": {"denyRead": SECRET_PATHS + others,
                            "allowWrite": [os.path.join(HOME, "team")]},   # the team bus
             "excludedCommands": ["%s *" % c for c in unsandboxed],
@@ -262,7 +269,7 @@ def command(emp: dict, model: str) -> list:
     gateways = abilities.commands(emp["id"])
     bundle = skills_plugin(emp, abilities.skills(emp["id"]))
     cmd = [resolve_claude(), "-p", "--model", model, "--effort", emp.get("effort", "medium"),
-           "--permission-mode", "dontAsk", "--output-format", "stream-json", "--verbose",
+           "--permission-mode", "bypassPermissions" if autonomous(emp) else "dontAsk", "--output-format", "stream-json", "--verbose",
            "--setting-sources", "project", "--strict-mcp-config",
            "--settings", settings_json(emp, gateways), "--plugin-dir", GUARD, "--plugin-dir", bundle,
            "--append-system-prompt", "Paths: your team folder (~/Staff in the handbook) is %s; the kit (the handbook, "
@@ -459,10 +466,13 @@ def claude_session(emp_id: str) -> dict:
             local = json.load(fh)
     except (OSError, ValueError):
         local = {}
+    perms = {"allow": [t for t in BASE_ALLOWED if t not in block] + allow + emp.get("extra_tools", []), "deny": deny}
+    if autonomous(emp):                                    # the owner's choice: no stops; the sandbox is the boundary
+        perms["defaultMode"] = "bypassPermissions"
+        perms["allow"] += [t for t in ("WebSearch", "WebFetch", "Task", "NotebookEdit") if t not in perms["allow"]]
     local.update({
         "sandbox": sandbox,
-        "permissions": {"allow": [t for t in BASE_ALLOWED if t not in block] + allow + emp.get("extra_tools", []),
-                        "deny": deny},
+        "permissions": perms,
         "env": {k: env[k] for k in ("STAFF_EMPLOYEE", "STAFF_WORKSPACE", "STAFFROOM_HOME", "STAFFROOM_KIT",
                                      "STAFF_ABILITIES", "STAFF_BROWSER_SITES", "PATH")},
     })

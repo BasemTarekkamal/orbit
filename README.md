@@ -186,6 +186,11 @@ An autonomous agent that reads the open web needs locks, not promises. Every run
   runs vetted scrapers, under a per-run cap and a monthly budget.
 - **Content is data, not orders:** pages, posts, PDFs and transcripts can't instruct an employee.
   Attempts get logged.
+- **Your switches, not rules you can't change:** each crew member's Manage tab has **Full autonomy**
+  (does the whole job without asking: any website, installs its own tools, studies videos, finishes the
+  work; the sandbox keeps it in its own folder) and **Acts in your browser** (posts and uploads in your
+  own Chrome on the sites you pick: ask each time, once per batch, or don't ask). Nobody can flip a
+  switch from a chat, and a web page can't either. Money and passwords stay off-limits.
 - **Owners only:** only people you approve can direct the team. Strangers who message the bot are
   ignored and listed in the panel for you to approve or ignore.
 

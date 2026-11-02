@@ -87,7 +87,10 @@
         "people-finder"
       ],
       "description": "Searches and reads the web, with the research playbook: free first, every claim sourced.",
-      "can": "Search and read the web, with sources"
+      "can": "Search and read the web, with sources",
+      "commands": [
+        "staff-video"
+      ]
     },
     {
       "id": "fetch",
@@ -159,6 +162,14 @@
       ],
       "description": "Reads PDFs, scanned documents and images (OCR on this Mac), in any language.",
       "can": "Read scans and photos of documents (OCR)"
+    },
+    {
+      "id": "full_autonomy",
+      "name": "Full autonomy",
+      "group": "Acting for you",
+      "consent": true,
+      "description": "Does the whole job without asking: reaches any website, downloads and installs the tools it needs into its own folder, studies videos, and (with \"Acts in your browser\" set to Don't ask me) posts for you. The sandbox keeps it in its own folder and away from your secrets and the rest of the crew. It never touches money or types passwords.",
+      "can": "Do the whole job on its own, finding and installing whatever tools it needs"
     },
     {
       "id": "act_in_browser",

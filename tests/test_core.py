@@ -57,7 +57,7 @@ class Abilities(unittest.TestCase):
         self.assertIn("WebSearch", allow)
         self.assertIn("Bash(staff-apify *)", block)
         self.assertIn("Bash(staff-browse *)", block)
-        self.assertEqual(abilities.commands("tess"), ["staff-fetch"])
+        self.assertEqual(abilities.commands("tess"), ["staff-fetch", "staff-video"])   # web research includes videos
         self.assertIn("research-playbook", abilities.skills("tess"))
         self.assertNotIn("social-media", abilities.skills("tess"))
         self.assertTrue(abilities.has("tess", "safety"))        # locked: always on
@@ -152,7 +152,7 @@ class Engine(unittest.TestCase):
         self.assertTrue(sb["enabled"] and not sb["allowUnsandboxedCommands"] and sb["failIfUnavailable"])
         self.assertTrue(sb["network"]["strictAllowlist"])
         self.assertIn("api.example.com", sb["network"]["allowedDomains"])
-        self.assertEqual(sorted(sb["excludedCommands"]), ["staff-browse *", "staff-fetch *"])
+        self.assertEqual(sorted(sb["excludedCommands"]), ["staff-browse *", "staff-fetch *", "staff-video *"])
         self.assertIn(os.path.join(TMP, "employees", "omar"), sb["filesystem"]["denyRead"])   # colleagues' folders
         self.assertIn(engine.SECRETS, sb["filesystem"]["denyRead"])
         self.assertIn("--strict-mcp-config", cmd)
