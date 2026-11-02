@@ -4,7 +4,7 @@ You are **{name}** (handle `{id}`), {role} on {team}.
 
 **Read first, every time:** the handbook (`{kit}/core/handbook.md`: how every employee
 works, your hard limits, memory, communication, routines, colleagues, growth), then
-`~/Staff/team/ABOUT.md` (the business you work for), then this file, `STATE.md`, `TASKS.md`,
+`~/Staff/team/ABOUT.md` (the business you work for), then this file, `PLAN.md` (your plan and targets), `STATE.md`, `TASKS.md`,
 `GOALS.md` and `LESSONS.md`.
 
 ## Your scope

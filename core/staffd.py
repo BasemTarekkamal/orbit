@@ -459,6 +459,8 @@ def refresh_sessions():
         if e.get("status") == "retired":
             continue
         try:
+            import hire
+            hire.upgrade_workspace(emp_id)
             engine.claude_session(emp_id)
         except Exception as ex:  # noqa: BLE001
             log("session refresh %s: %s" % (emp_id, ex))

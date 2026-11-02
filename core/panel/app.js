@@ -8,7 +8,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const main = $('#main');
 const side = $('#side');
-const JOB_LABELS = { brief: 'Morning brief', standup: 'Standup', eod: 'End of day', scout: 'Self-improvement', evals: 'Weekly self-test' };
+const JOB_LABELS = { brief: 'Morning brief', standup: 'Standup', initiative: 'Initiative', eod: 'End of day', scout: 'Self-improvement', evals: 'Weekly self-test' };
 const RUN_LABELS = { ...JOB_LABELS, chat: 'Chat', first_day: 'First day', minutes: 'Meeting minutes', followup: 'Follow-up', bus: 'A colleague’s question' };
 const MODELS = ['opus', 'sonnet', 'haiku'];
 const NOTES = [['STATE.md', 'State'], ['TASKS.md', 'Tasks'], ['GOALS.md', 'Goals'], ['LESSONS.md', 'Lessons'], ['CLAUDE.md', 'Instructions']];
@@ -457,7 +457,7 @@ function cardHtml(sel, ob, name, from) {
   const c = ob.card, ed = ob.edit;
   const on = new Set(ed.access);
   const access = `<div class="chips">${ACCESS.filter(([k]) => k !== 'brief').map(([k, l]) => `<button type="button" class="chip ${on.has(k) ? 'on' : ''}" data-act="ob-access" data-k="${k}" aria-pressed="${on.has(k)}">${esc(l)}</button>`).join('')}</div>`;
-  const routines = [['brief', 'Morning brief'], ['standup', 'Standup'], ['eod', 'End of day']].map(([k, l]) =>
+  const routines = [['brief', 'Morning brief'], ['standup', 'Standup'], ['initiative', 'Initiative'], ['eod', 'End of day']].map(([k, l]) =>
     `<button type="button" class="chip ${ed.routines[k] ? 'on' : ''}" data-act="ob-routine" data-k="${k}" aria-pressed="${!!ed.routines[k]}">${l}</button>`).join('');
   const asks = (c.access || []).map((a) => { const [ic, label, how] = ACCESS_KIND[a.kind] || ACCESS_KIND.other;
     return `<li>${icon(ic)}<div><b>${esc(a.what)}</b>${a.site ? ` <span class="meta">${esc(a.site)}</span>` : ''}<div class="meta">${esc(label)}${how ? ' · ' + esc(how) : ''}. ${esc(a.why || '')}</div></div></li>`; }).join('');
