@@ -27,12 +27,13 @@ FEED = os.path.join(TEAM, "feed.jsonl")          # the team room, as the control
 ORDERS = os.path.join(TEAM, "orders.jsonl")      # what owners asked for in the panel, and what happened
 CHATLOG = os.path.join(TEAM, "chatlog.jsonl")
 DAYS = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
-JOBS = {"brief": "Morning brief", "standup": "Standup", "eod": "End of day", "scout": "Self-improvement",
-        "evals": "Weekly self-test"}
+JOBS = {"brief": "Morning brief", "standup": "Standup", "initiative": "Initiative", "eod": "End of day",
+        "scout": "Self-improvement", "evals": "Weekly self-test"}
 LABELS = {**JOBS, "first_day": "First day", "minutes": "Meeting minutes", "followup": "a follow-up", "learn": "your know-how",
           "bus": "a colleague's question"}
 PAIRING = os.path.join(TEAM, "pairing.json")     # the one-time code that links an owner's phone to the team
 DEFAULT_JOBS = {"brief": {"at": "08:30", "days": "work"}, "standup": {"at": "09:00", "days": "work"},
+                "initiative": {"at": "13:00", "days": "work"},
                 "eod": {"at": "17:00", "days": "work"}, "scout": {"at": "19:00", "days": "daily"},
                 "evals": {"at": "10:00", "days": "Fri"}}
 LOCKS = {}                 # one run at a time per employee
@@ -312,10 +313,14 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
 
 
 def to_room(emp_id, name, to, channel):
-    """on_done callback: post an employee's reply in the team room (skips SILENT), with how it was made."""
+    """on_done callback: post an employee's reply in the team room (skips SILENT), with how it was made. A
+    routine's message also pops up on the owner's computer when they have no phone channel to get it on."""
     def post(out):
         if out and not out.strip().upper().startswith("SILENT"):
             feed(emp_id, name, to, out, channel, receipt=LAST.get(emp_id))
+            if channel == "job" and not any(owner_address(k) for k in engine.registry().get("owners", {})):
+                import osinfo
+                osinfo.notify("%s · Orbit" % name, out)
     return post
 
 

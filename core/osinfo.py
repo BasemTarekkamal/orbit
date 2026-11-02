@@ -76,6 +76,24 @@ def open_url(url: str) -> bool:
     return False
 
 
+def notify(title: str, text: str) -> bool:
+    """A desktop notification on the owner's computer (when no phone channel is connected, so a crew member's
+    routine message isn't missed). Best effort; False when this computer has no way to show one."""
+    title, text = (title or "Orbit")[:60], " ".join((text or "").split())[:220]
+    try:
+        if KIND == "mac":
+            q = lambda s: '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+            subprocess.run(["osascript", "-e", "display notification %s with title %s sound name \"Glass\"" % (q(text), q(title))],
+                           capture_output=True, timeout=10)
+            return True
+        if KIND == "linux" and which("notify-send"):
+            subprocess.run([which("notify-send"), title, text], capture_output=True, timeout=10)
+            return True
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return False
+
+
 # ------------------------------------------------------------------ Windows, from inside WSL
 def distro() -> str:
     return os.environ.get("WSL_DISTRO_NAME", "")

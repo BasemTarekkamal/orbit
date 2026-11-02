@@ -20,4 +20,6 @@ Reply in this shape, under 170 words, in the language ABOUT.md is written in:
 - "What I need from you:" the one or two things that would let you do the job fully: access from your card
   (for example "sign in to YouTube Studio once in my browser"), files, or a fact. Not a list of limits.
   If you'll post or act in a portal for them, say once: you prepare it and do it after they approve.
+- "Next:" one line on what you'll bring them tomorrow: your plan with numbers (the goal, the cadence, the
+  first milestones) for them to approve. Add it to TASKS.md for tomorrow.
 - "Try next:" then exactly three short things they could ask you, each on its own line starting with "→ ".

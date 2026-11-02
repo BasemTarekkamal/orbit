@@ -626,3 +626,46 @@ class ConnectorsAndRoles(unittest.TestCase):
             self.assertIn("Shorts are about 20 seconds.", fh.read())
         out = rolebook.export_role("channel-manager", tempfile.mkdtemp(dir=TMP))
         self.assertTrue(os.path.exists(os.path.join(out, "role.json")))
+
+
+class Proactive(unittest.TestCase):
+    """Every crew member works like an ambitious employee: a plan, a standup, an initiative, and they're heard."""
+
+    def setUp(self):
+        import hire
+        self.hire = hire
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"local-alex": {"name": "Alex", "local": True}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7397}})
+
+    def test_new_hires_have_a_plan_and_the_routines(self):
+        import abilities
+        eid = self.hire.hire("Suoo", "Content creator", "Videos", supervisor="Alex")
+        self.assertTrue(os.path.exists(os.path.join(TMP, "employees", eid, "PLAN.md")))
+        self.assertTrue({"standup", "initiative"} <= abilities.effective(eid))
+        self.assertIn("initiative", abilities.jobs(eid))
+
+    def test_existing_crew_is_upgraded_once(self):
+        import abilities
+        eid = self.hire.hire("Old", "Researcher", "Research", supervisor="Alex", picked=["web", "brief"])
+        os.remove(os.path.join(TMP, "employees", eid, "PLAN.md"))
+        self.hire.upgrade_workspace(eid)
+        self.assertTrue(os.path.exists(os.path.join(TMP, "employees", eid, "PLAN.md")))
+        self.assertTrue({"standup", "initiative"} <= abilities.effective(eid))
+        self.hire.set_abilities(eid, ["web", "brief"])          # the owner turns them off: an upgrade doesn't undo it
+        self.hire.upgrade_workspace(eid)
+        self.assertNotIn("initiative", abilities.effective(eid))
+
+    def test_a_routine_pops_up_when_there_is_no_phone_channel(self):
+        import osinfo
+        import team
+        shown = []
+        real = osinfo.notify
+        osinfo.notify = lambda title, text: shown.append((title, text)) or True
+        try:
+            team.to_room("suoo", "Suoo", "Alex", "job")("Plan for approval: 2 Shorts a day.")
+            team.to_room("suoo", "Suoo", "Alex", "panel")("A chat reply.")
+            team.to_room("suoo", "Suoo", "Alex", "job")("SILENT")
+        finally:
+            osinfo.notify = real
+        self.assertEqual(shown, [("Suoo · Orbit", "Plan for approval: 2 Shorts a day.")])

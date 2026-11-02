@@ -267,6 +267,43 @@ def connect(a: str, b: str, note: str = "", by: str = "owner") -> str:
         emps[a]["name"], emps[b]["name"], (" (" + note + ")") if note else "")
 
 
+OLD_GOALS = "_Agreed with {supervisor}. Until then: do the scope well, stay quiet unless it matters, never surprise your owners._"
+
+
+def upgrade_workspace(emp_id: str) -> None:
+    """Brings an existing crew member up to the kit's current way of working (run by staffd on start): a
+    PLAN.md if missing, the proactive GOALS placeholder, and once, the standup and initiative routines on."""
+    reg = engine.registry()
+    e = reg.get("employees", {}).get(emp_id)
+    if not e or e.get("status") == "retired":
+        return
+    ws = engine.employee(emp_id)["workspace"]
+    fill = {"{name}": e["name"], "{role}": e["role"], "{supervisor}": e.get("supervisor", "")}
+    plan = os.path.join(ws, "PLAN.md")
+    if not os.path.exists(plan):
+        with open(os.path.join(TEMPLATES, "PLAN.md"), encoding="utf-8") as fh:
+            text = fh.read()
+        for k, v in fill.items():
+            text = text.replace(k, v)
+        _write_new(plan, text)
+    goals = os.path.join(ws, "GOALS.md")
+    try:
+        with open(goals, encoding="utf-8") as fh:
+            g = fh.read()
+        old = OLD_GOALS.replace("{supervisor}", e.get("supervisor", ""))
+        if old in g:
+            with open(goals, "w", encoding="utf-8") as fh:
+                fh.write(g.replace(old, "_Agreed with %s. Until then: propose your plan (PLAN.md) in your first days, "
+                                        "with numbers, and get a yes._" % e.get("supervisor", "")))
+    except OSError:
+        pass
+    if not e.get("proactive_v1"):
+        e["proactive_v1"] = True
+        if "abilities" in e:
+            e["abilities"] = sorted(set(e["abilities"]) | {"standup", "initiative"})
+        engine.save_registry(reg, "proactive routines on for %s" % emp_id)
+
+
 def set_status(emp_id: str, status: str) -> None:
     if status not in STATUS:
         raise HireError("Unknown status %r" % status)

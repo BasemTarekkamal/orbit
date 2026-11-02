@@ -21,7 +21,7 @@ import engine
 
 ACCESS_KINDS = ["sign_in", "post_with_approval", "finance_read_only", "files", "chat_channel", "other"]
 BUDGETS = {"light": 1_000_000, "regular": 3_000_000, "heavy": 8_000_000}     # tokens a week
-ROUTINES = ["brief", "standup", "eod"]
+ROUTINES = ["brief", "standup", "initiative", "eod"]
 
 QUESTIONS_SCHEMA = {
     "type": "object", "required": ["intro", "questions"],
@@ -124,7 +124,7 @@ def compose(role, scope, name, answers):
     system = ("You are Orbit's hiring interviewer. From the owner's answers, write the new crew member's card: "
               "their job title, the scope in 2 to 4 sentences in the owner's words and language, concrete "
               "responsibilities, the first real task they can do today with free web tools, a short plan for their "
-              "first days, which routines to switch on (brief = a morning brief, standup, eod = an end-of-day "
+              "first days, which routines to switch on (brief = a morning brief, standup = the daily plan and numbers, initiative = the midday thing nobody asked for, eod = an end-of-day "
               "note), which abilities to tick (ids from the list only), the access to ask the owner for (only "
               "what this job needs; for posting use post_with_approval, for bank or payment portals "
               "finance_read_only, for accounts to read use sign_in), a weekly token budget and a model (haiku for "

@@ -240,8 +240,18 @@
       "name": "Standup",
       "group": "Routines",
       "job": "standup",
-      "description": "Workdays at 09:00: its plan for today and one blocking question.",
-      "can": "Send a daily plan"
+      "description": "Every workday: where things stand against the plan (the numbers), today's work, what it needs from you, one idea. Proposes the plan first if none is agreed.",
+      "can": "Send a daily plan",
+      "default": true
+    },
+    {
+      "id": "initiative",
+      "name": "Initiative",
+      "group": "Routines",
+      "default": true,
+      "job": "initiative",
+      "description": "Every workday at midday: does the most valuable thing nobody asked for (research, next week's work, a better tool, a new idea) and tells you what it did and proposes next.",
+      "can": "Find and do the next most valuable thing without being asked"
     },
     {
       "id": "eod",
