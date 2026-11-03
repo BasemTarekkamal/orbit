@@ -839,6 +839,20 @@ Torque Lab earns money. In 90 days (by 2027-01-31):
         finally:
             staffd.run_async, engine.online = real_run, real_online
 
+    def test_a_routine_that_works_is_posted(self):
+        import threading
+        import team
+        eid = self.hire.hire("Maya", "Content creator", "Videos", supervisor="Alex")
+        real = engine.run
+        done, posted = threading.Event(), []
+        try:
+            engine.run = lambda *a, **k: {"ok": True, "text": "This week: 1.4K median views.", "error": "", "steps": []}
+            team.run_async(eid, "p", "review", None, [], on_done=lambda out: posted.append(out) or done.set())
+            self.assertTrue(done.wait(10))
+            self.assertEqual(posted, ["This week: 1.4K median views."])
+        finally:
+            engine.run = real
+
     def test_a_failed_routine_never_says_please_resend(self):
         import threading
         import team
