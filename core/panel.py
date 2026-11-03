@@ -43,7 +43,7 @@ STATIC = os.path.join(CORE, "panel")
 ROLES_F = os.path.join(CORE, "roles.json")
 ABOUT = os.path.join(team.TEAM, "ABOUT.md")
 PENDING = os.path.join(team.TEAM, "pending_owners.json")
-MEMORY_FILES = ("STATE.md", "TASKS.md", "GOALS.md", "LESSONS.md", "CLAUDE.md")
+MEMORY_FILES = ("PLAN.md", "STATE.md", "TASKS.md", "GOALS.md", "LESSONS.md", "EXPERIENCE.md", "CLAUDE.md")
 WORK_DIRS = ("research", "notes", "tools", "growth", "evals")
 TEXT_EXT = (".md", ".txt", ".json", ".jsonl", ".csv", ".tsv", ".py", ".sh", ".js", ".html", ".yaml", ".yml", ".log")
 MAX_FILE = 400_000
@@ -109,6 +109,8 @@ def members():
         s = engine.stats(emp)
         paused = m.get("status") == "paused"
         nj, nw = team.next_job(k) if not paused else (None, None)
+        import plan
+        import rolebook
         out.append({"id": k, "name": m["name"], "role": m["role"], "scope": m.get("scope", ""), "supervisor": m.get("supervisor", ""),
                     "status": "paused" if paused else "active", "doing": team.DOING.get(k), "hired": m.get("hired"),
                     "last_run": s["last_run"], "next_job": nj, "next_job_at": nw.strftime("%Y-%m-%dT%H:%M:%S") if nw else None,
@@ -117,7 +119,8 @@ def members():
                     "tokens_today": s["tokens_today"], "tokens_7d": s["tokens_7d"], "weekly_tokens": int(m.get("weekly_tokens") or 0),
                     "runs_7d": s["runs_7d"], "failures_7d": s["failures_7d"], "card": m.get("card") or {}, "browser": m.get("browser") or {},
                     "abilities": sorted(abilities.effective(k)), "abilities_on": len(abilities.effective(k)), "abilities_total": total,
-                    "model": m.get("model") or emp.get("model", "sonnet"), "effort": m.get("effort") or emp.get("effort", "medium")})
+                    "model": m.get("model") or emp.get("model", "sonnet"), "effort": m.get("effort") or emp.get("effort", "medium"),
+                    "plan": plan.summary(k), "learned": rolebook.stats(k), "shared_as": m.get("shared_as") or ""})
     return out
 
 
@@ -161,6 +164,9 @@ def needs_you(emps, ords, pending, usage):
         if e["failures_today"]:
             out.append({"kind": "failed", "title": "%s: %d run%s failed today" % (e["name"], e["failures_today"], "" if e["failures_today"] == 1 else "s"),
                         "detail": "See Work → Activity for the reason.", "href": "/e/%s/work?v=activity" % e["id"], "emp": e["id"]})
+        if (e.get("plan") or {}).get("status") == "proposed":
+            out.append({"kind": "plan", "title": "%s's plan is waiting for your OK" % e["name"],
+                        "detail": (e["plan"].get("goal") or "")[:160], "href": "/e/%s/plan" % e["id"], "emp": e["id"]})
         for line in waiting_lines(e["id"]):
             out.append({"kind": "waiting", "title": line, "detail": "%s is waiting on you" % e["name"], "href": "/e/%s/knowledge?f=note:TASKS.md" % e["id"], "emp": e["id"]})
         ws = engine.employee(e["id"])["workspace"]
@@ -360,7 +366,8 @@ def state():
     pending = team.jload(PENDING, {})
     usage = engine.usage()
     me = next(iter(reg.get("owners", {}).values()), {}).get("name", "Owner")
-    return {"team_name": reg.get("team_name", "Orbit"), "me": me, "online": daemon_online(), "now": time.strftime("%Y-%m-%dT%H:%M:%S"), "demo": DEMO, "device": osinfo.DEVICE, "update": update_view(),
+    return {"team_name": reg.get("team_name", "Orbit"), "me": me, "online": daemon_online(),
+            "workdays": reg.get("workdays", ["Mon", "Tue", "Wed", "Thu", "Fri"]), "now": time.strftime("%Y-%m-%dT%H:%M:%S"), "demo": DEMO, "device": osinfo.DEVICE, "update": update_view(),
             "usage": usage, "owners": [{"id": i, "name": o["name"], "local": bool(o.get("local")),
                                         "addresses": [channels.label(i)] + [channels.label(a) for a in o.get("addresses", [])]}
                                        for i, o in reg.get("owners", {}).items()],
@@ -696,6 +703,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, d) if d else self._json(404, {"error": "No such employee"})
         if path == "/api/file":
             return self._json(200, read_file(q.get("emp", [""])[0], q.get("path", [""])[0]))
+        m = re.fullmatch(r"/api/role/([a-z0-9-]+)\.orbit-role\.zip", path)
+        if m:                                             # a saved role as one file, to send to anyone
+            import rolebook
+            try:
+                with open(rolebook.package(m.group(1)), "rb") as fh:
+                    data = fh.read()
+            except rolebook.RoleError as ex:
+                return self._json(404, {"error": str(ex)})
+            return self._send(200, data, "application/zip", {"Content-Disposition": 'attachment; filename="%s.orbit-role.zip"' % m.group(1)})
         if path == "/api/skill":
             emp = q.get("emp", [""])[0]
             if emp not in engine.registry().get("employees", {}):
@@ -713,7 +729,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, "Forbidden", "text/plain")
         if (self.headers.get("Origin") or "") not in self._origin():
             return self._send(403, "Forbidden", "text/plain")
-        n = min(int(self.headers.get("Content-Length") or 0), 500_000)
+        path0 = urllib.parse.urlparse(self.path).path
+        n = min(int(self.headers.get("Content-Length") or 0), 7_000_000 if path0 == "/api/order" else 500_000)
         try:
             f = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
             if not isinstance(f, dict):
@@ -748,6 +765,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, {"ok": True, "message": update.apply()})
                 except RuntimeError as e:
                     raise orders.OrderError(str(e))
+            if path == "/api/share/prepare":            # a shareable draft of what a crew member knows (1–2 min)
+                import rolebook
+                emp = str(f.get("employee") or "")
+                if emp not in engine.registry().get("employees", {}):
+                    return self._json(404, {"error": "No such employee"})
+                try:
+                    return self._json(200, {"ok": True, **rolebook.distill(emp)})
+                except (rolebook.RoleError, RuntimeError, subprocess.TimeoutExpired) as ex:
+                    raise orders.OrderError(str(ex) or "Claude didn't answer; try again")
             if path == "/api/claude_session":
                 return self._json(200, claude_session(str(f.get("employee") or "")))
             if path == "/api/connect":

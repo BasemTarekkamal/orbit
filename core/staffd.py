@@ -320,7 +320,12 @@ def minutes(emp_id, info, who, title):
 
 # ------------------------------------------------------------------ routines, reminders, bus, skills
 def tick_jobs():
+    """Starts each routine when it's due. Offline (the Mac just woke up, the Wi-Fi dropped)? It stays due and
+    starts when the internet is back; one that fails for that reason runs again 10 minutes later. Only after
+    its 4-hour window passes is it skipped for the day, with one line saying why."""
     now = dt.datetime.now()
+    hm, today = now.strftime("%H:%M"), now.strftime("%F")
+    net = None
     for k, e in team.active().items():
         emp = engine.employee(k)
         st_f = os.path.join(emp["workspace"], "state", "schedule.json")
@@ -329,16 +334,35 @@ def tick_jobs():
             spec = team.job_spec(emp, job)
             if not spec or not team.due_today(spec.get("days", "daily"), now.weekday()):
                 continue
-            if now.strftime("%H:%M") < spec["at"] or st.get(job) == now.strftime("%F"):
+            if hm < spec["at"] or st.get(job) == today or st.get("wait:" + job, "") > now.strftime("%F %H:%M"):
                 continue
             late = (dt.datetime.strptime(spec["at"], "%H:%M") + dt.timedelta(hours=4)).strftime("%H:%M")
-            st[job] = now.strftime("%F")
+            if hm > late:
+                st[job] = today                           # missed its window (Mac asleep or offline all along)
+                if st.pop("wait:" + job, None):
+                    team.feed(k, emp["name"], emp.get("supervisor", "team"), "I couldn't run my %s today: this computer "
+                              "was offline from %s to %s. I'll catch up at my next routine." % (team.JOBS.get(job, job).lower(),
+                                                                                              spec["at"], late), "job")
+                jsave(st_f, st)
+                continue
+            if net is None:
+                net = engine.online()
+            if not net:
+                st["wait:" + job] = now.strftime("%F %H:%M")  # due, waiting for the internet: tried again next minute
+                jsave(st_f, st)
+                continue
+            st[job] = today
+            st.pop("wait:" + job, None)
             jsave(st_f, st)
-            if now.strftime("%H:%M") > late:
-                continue                                  # missed its window (Mac was asleep): skip, don't spam
             log("job %s/%s" % (k, job))
+
+            def retry(st_f=st_f, job=job):
+                s2 = jload(st_f, {})
+                s2.pop(job, None)
+                s2["wait:" + job] = (dt.datetime.now() + dt.timedelta(minutes=10)).strftime("%F %H:%M")
+                jsave(st_f, s2)
             run_async(k, team.job_prompt(k, emp, job), job, None, to_people(emp, spec.get("to", "supervisor")),
-                      on_done=team.to_room(k, emp["name"], emp.get("supervisor", ""), "job"))
+                      on_done=team.to_room(k, emp["name"], emp.get("supervisor", ""), "job"), retry=retry)
 
 
 def tick_reminders():
@@ -476,6 +500,19 @@ def tick_update():
                   "Control when you're ready; nothing changes until you do." % (s["latest"], s["current"]), "panel")
 
 
+def tick_share():
+    """Once per crew member, after a week of real learning: the owner who trained them is offered to share it."""
+    import rolebook
+    for k, st in rolebook.share_nudge():
+        e = engine.registry()["employees"][k]
+        text = ("%s has learned a lot in %d days: %d lessons and %d skill%s of their own. Anyone hiring a %s could start "
+                "with all of it, credited to you. Share %s's know-how? Nothing private leaves, and you read every word "
+                "first: %s's Manage tab → Share." % (e["name"], st["days"], st["lessons"], st["skills"],
+                                                     "" if st["skills"] == 1 else "s", e["role"], e["name"], e["name"]))
+        team.feed("staff", "Orbit", e.get("supervisor") or "team", text, "panel")
+        osinfo.notify("Orbit", "Share what %s learned?" % e["name"])
+
+
 def main():
     os.makedirs(team.TEAM, exist_ok=True)
     log("staffd up (pid %d)" % os.getpid())
@@ -495,7 +532,7 @@ def main():
         with open(os.path.join(team.TEAM, "staffd_alive"), "w") as fh:
             fh.write(str(int(time.time())))
         for name, fn, every in (("jobs", tick_jobs, 60), ("reminders", tick_reminders, 60), ("bus", tick_bus, 10),
-                                ("skills", tick_skills, 30), ("update", tick_update, 3600)):
+                                ("skills", tick_skills, 30), ("update", tick_update, 3600), ("share", tick_share, 3600)):
             if time.time() - last.get(name, 0) >= every:
                 last[name] = time.time()
                 try:

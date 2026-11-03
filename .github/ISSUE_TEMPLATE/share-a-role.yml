@@ -1,0 +1,28 @@
+name: Share a role
+description: Offer a crew member you trained in Orbit to everyone (its job, rules, skills and experience)
+title: "Share a role: "
+labels: ["role"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Drag your `.orbit-role.zip` file (from the crew member's Manage tab → Share) into the box below.
+        Reviewers check that nothing private is in it, add it to `core/roles.d/`, and it reaches every Orbit
+        with the next update, credited to you.
+  - type: input
+    id: role
+    attributes:
+      label: Role id
+    validations:
+      required: true
+  - type: input
+    id: trained_by
+    attributes:
+      label: Trained by (the name to credit)
+  - type: textarea
+    id: file
+    attributes:
+      label: The role file
+      description: Drop the .orbit-role.zip here.
+    validations:
+      required: true

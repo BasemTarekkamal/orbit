@@ -8,10 +8,10 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const main = $('#main');
 const side = $('#side');
-const JOB_LABELS = { brief: 'Morning brief', standup: 'Standup', initiative: 'Initiative', eod: 'End of day', scout: 'Self-improvement', evals: 'Weekly self-test' };
+const JOB_LABELS = { brief: 'Morning brief', standup: 'Standup', initiative: 'Initiative', eod: 'End of day', review: 'Weekly review', scout: 'Self-improvement', evals: 'Weekly self-test' };
 const RUN_LABELS = { ...JOB_LABELS, chat: 'Chat', first_day: 'First day', minutes: 'Meeting minutes', followup: 'Follow-up', bus: 'A colleague’s question' };
 const MODELS = ['opus', 'sonnet', 'haiku'];
-const NOTES = [['STATE.md', 'State'], ['TASKS.md', 'Tasks'], ['GOALS.md', 'Goals'], ['LESSONS.md', 'Lessons'], ['CLAUDE.md', 'Instructions']];
+const NOTES = [['STATE.md', 'State'], ['TASKS.md', 'Tasks'], ['GOALS.md', 'Goals'], ['LESSONS.md', 'Lessons'], ['EXPERIENCE.md', 'Experience'], ['CLAUDE.md', 'Instructions']];
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const CH = { telegram: 'Telegram', slack: 'Slack', discord: 'Discord' };
 const CANT = ['Spend money or buy anything', 'Post, email or message anyone but you', 'Log in to accounts', 'See your passwords or private folders'];
@@ -96,6 +96,9 @@ const I = {
   key: svg('<circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M16 7l2 2M14 9l2 2"/>'),
   eye: svg('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>'),
   chat: svg('<path d="M4 5h16v11H9l-5 4z"/>'),
+  target: svg('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8"/>'),
+  share: svg('<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="m8.2 10.8 7.6-3.6M8.2 13.2l7.6 3.6"/>'),
+  download: svg('<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>'),
   claude: svg('<path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/>', 2),
 };
 const icon = (n) => I[n] || '';
@@ -178,8 +181,8 @@ function route() {
   const m = p.match(/^\/e\/([a-z0-9-]+)(?:\/([a-z]+))?$/);
   if (m) {
     const alias = { memory: 'knowledge', skills: 'knowledge', activity: 'work', abilities: 'manage' };   // older links
-    const tab = alias[m[2]] || m[2] || 'work';
-    if (!['chat', 'knowledge', 'work', 'manage'].includes(tab)) return { page: 'missing' };
+    const tab = alias[m[2]] || m[2] || 'plan';
+    if (!['plan', 'chat', 'knowledge', 'work', 'manage'].includes(tab)) return { page: 'missing' };
     let f = q.get('f') || '';
     if (m[2] === 'memory' && f && !f.includes(':')) f = 'note:' + f;
     return { page: 'employee', id: m[1], tab, f, v: m[2] === 'activity' ? 'activity' : q.get('v') || '' };
@@ -398,7 +401,7 @@ function jobPicker(from) {
     return `<div class="jobs sits">${sits.map((x) => `<button type="button" class="job" data-act="situation" data-id="${x.id}"><b>${esc(x.title)}</b><span>${esc(x.blurb)}</span></button>`).join('')}</div>`;
   }
   const order = sit.jobs.map((id) => roles.find((r) => r.id === id)).filter(Boolean);
-  const cards = order.map((x) => `<button type="button" class="job ${S.job === x.id ? 'on' : ''}" data-act="job" data-role="${x.id}" aria-pressed="${S.job === x.id}"><b>${esc(x.title)}</b><span>${esc(x.role || 'Your own job')}${x.source ? ` · <em>${x.source === 'yours' ? 'your role' : 'community'}</em>` : ''}</span></button>`).join('');
+  const cards = order.map((x) => `<button type="button" class="job ${S.job === x.id ? 'on' : ''}" data-act="job" data-role="${x.id}" aria-pressed="${S.job === x.id}"><b>${esc(x.title)}</b><span>${esc(x.role || 'Your own job')}${x.source ? ` · <em>${x.source === 'yours' ? 'your role' : 'community'}</em>` : ''}${x.trained_by ? ` · trained by ${esc(x.trained_by)}` : ''}</span></button>`).join('');
   const back = `<p class="meta sit-line">${esc(sit.title)} · <a class="link" href="#" data-act="situation" data-id="">change</a>${sit.id === 'other' ? '' : ` · <a class="link" href="#" data-act="situation" data-id="other">all jobs</a>`}</p>`;
   const sel = roles.find((x) => x.id === S.job);
   if (!sel) return back + `<div class="jobs">${cards}</div>`;
@@ -417,6 +420,15 @@ function fmtTok(n) { n = Number(n) || 0; return n >= 1e6 ? (n / 1e6).toFixed(1).
 function thinking(title, lines) {
   return `<div class="w-card think" role="status" aria-live="polite"><div class="orbit-spin" aria-hidden="true"><i></i><i></i><i></i></div>
     <div><b>${esc(title)}</b><ul class="think-lines">${lines.map((l, i) => `<li>${esc(l)}</li>`).join('')}</ul></div></div>`;
+}
+// A shared or saved role shows everything it brings before you hire from it: who trained it, its rules, skills, experience.
+function bringsHtml(sel) {
+  if (!sel.source || !(sel.rules || sel.experience || (sel.skills_in || []).length)) return '';
+  const st = sel.stats || {};
+  return `<details class="brings"><summary>${sel.trained_by ? `Trained by <b>${esc(sel.trained_by)}</b>` : 'What this role brings'}${st.days ? ` · ${plural(st.days, 'day')} on the job, ${plural(st.lessons || 0, 'lesson')}, ${plural(st.skills || 0, 'skill')}` : ''} · see everything it brings</summary>
+    ${sel.experience ? `<h4>Experience</h4><div class="md small">${md(sel.experience)}</div>` : ''}
+    ${sel.rules ? `<h4>Rules</h4><div class="md small">${md(sel.rules)}</div>` : ''}
+    ${(sel.skills_in || []).length ? `<h4>Skills</h4><p class="small">${sel.skills_in.map(esc).join(', ')}</p>` : ''}</details>`;
 }
 function interviewHtml(sel, from) {
   const ob = S.ob && S.ob.job === sel.id ? S.ob : (S.ob = { job: sel.id, stage: 'basics' });
@@ -442,7 +454,7 @@ function interviewHtml(sel, from) {
   }
   if (ob.stage === 'card' && ob.card) return cardHtml(sel, ob, name, from);
   // basics
-  const status = sel.today ? `<p class="small status-line">${esc(sel.today)}</p>` : '';
+  const status = (sel.today ? `<p class="small status-line">${esc(sel.today)}</p>` : '') + bringsHtml(sel);
   return `<form class="w-card hire-bar" data-form="basics" data-from="${from}">
       <div class="form-row"><div class="field"><label for="h-name">Their name</label><input id="h-name" class="input lg" name="name" required maxlength="60" value="${esc(name)}" placeholder="Sara">
         ${sel.names.length ? `<div class="chips">${sel.names.map((n) => `<button type="button" class="chip ${name === n ? 'on' : ''}" data-act="name" data-name="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}</div>
@@ -621,7 +633,13 @@ PAGES.today = () => {
     const L = d.live[e.id];
     return `<a class="row" href="/e/${e.id}">${avatar(e.id, e.name)}<div><div class="title">${esc(e.name)} <span class="meta">${esc(L.doing || '')}</span></div><div class="now-step"><i class="dot working"></i>${esc(lastStep(e.id))}</div></div><span class="meta num" data-since="${esc(L.started)}"></span></a>`;
   }).join('')}</div></section>` : '';
-  const kinds = { owner: 'user', failed: 'alert', paused: 'pause', waiting: 'clock', reminder: 'bell', usage: 'gauge' };
+  const kinds = { owner: 'user', failed: 'alert', paused: 'pause', waiting: 'clock', reminder: 'bell', usage: 'gauge', plan: 'target' };
+  const plans = emps.length ? `<section><div class="sec-head"><h2>Plans</h2><span class="meta">what each one is working toward</span></div><div class="list plans">${emps.map((e) => {
+    const p = e.plan || {}, st = p.status || 'none';
+    const badge = st === 'agreed' ? '<span class="badge accent">agreed</span>' : st === 'proposed' ? '<span class="badge warn">needs your OK</span>' : '<span class="badge">no plan yet</span>';
+    return `<a class="row plan-row" href="/e/${e.id}/plan">${avatar(e.id, e.name)}<div><div class="title">${esc(e.name)} ${badge}</div>
+      <div class="meta">${st === 'none' ? 'Proposes one at the next standup' : esc(p.goal || '')}</div>${p.next ? `<div class="meta">Next: ${esc(p.next.what)} · by ${esc(p.next.by)}</div>` : ''}</div>${icon('chev').replace('<svg', '<svg class="chev"')}</a>`;
+  }).join('')}</div></section>` : '';
   const needs = d.needs.length ? `<div class="list needs">${d.needs.map((n) => `
     <a class="row ${n.kind}" href="${esc(n.href)}"><span class="k">${icon(kinds[n.kind] || 'alert')}</span><div><div class="title">${esc(n.title)}</div><div class="meta">${esc(n.detail)}</div></div>${icon('chev').replace('<svg', '<svg class="chev"')}</a>`).join('')}</div>`
     : `<p class="quiet">Nothing needs you right now.</p>`;
@@ -646,6 +664,7 @@ PAGES.today = () => {
   return `${demo}${upd}<header class="greet"><h1>${greet}, ${esc(d.me)}.</h1><p class="sub">${sub}</p></header>${setup}
     <div class="cols"><div>${calls ? `<section>${calls}</section>` : ''}${nowSec}
       <section><div class="sec-head"><h2>Needs you</h2>${d.needs.length ? `<span class="meta">${d.needs.length}</span>` : ''}</div>${needs}</section>
+      ${plans}
       <section><div class="sec-head"><h2>Today</h2><span class="meta">the team room</span></div>${timeline}</section>
     </div><aside>
       <section><div class="sec-head"><h2>Crew</h2><a class="link small" href="/team">All</a></div>${mini}</section>
@@ -737,8 +756,9 @@ PAGES.employee = (r) => {
   if (!e) return `<div class="empty"><b>No employee called “${esc(r.id)}”.</b><p><a class="link" href="/team">Back to the team</a></p></div>`;
   const dt = S.detail && S.detailId === r.id ? S.detail : null;
   const nKnow = dt ? dt.skills.own.length + dt.skills.team.length : '';
-  const tabs = [['work', 'Work', ''], ['chat', 'Chat', ''], ['knowledge', 'Knowledge', nKnow || ''], ['manage', 'Manage', '']];
-  const body = { chat: tabChat, knowledge: tabKnowledge, work: tabWork, manage: tabManage }[r.tab](e, dt, r);
+  const pl = (e.plan || {}).status;
+  const tabs = [['plan', 'Plan', pl === 'proposed' ? 'needs your OK' : ''], ['work', 'Work', ''], ['chat', 'Chat', ''], ['knowledge', 'Knowledge', nKnow || ''], ['manage', 'Manage', '']];
+  const body = { plan: tabPlan, chat: tabChat, knowledge: tabKnowledge, work: tabWork, manage: tabManage }[r.tab](e, dt, r);
   const canCall = dt && dt.abilities.includes('meetings') && e.status !== 'paused';
   const callBtn = callOf(e.id) ? '' : canCall && !Object.keys(S.data.calls || {}).length
     ? `<button class="btn" data-act="order" data-kind="call_start" data-emp="${e.id}" title="${esc(e.name)} listens on this ${MAC()} and takes notes. Tell the others you're taking notes.">${icon('mic')}Listen to a call</button>` : '';
@@ -746,6 +766,42 @@ PAGES.employee = (r) => {
   return `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span>·</span><span>reports to ${esc(e.supervisor)}</span><span>·</span>${statusHtml(e)}</div></div><div class="actions">${claudeBtn}${callBtn}</div></header>${callCard(e.id)}
     <nav class="tabs">${tabs.map(([k, l, n]) => `<a href="/e/${e.id}/${k}" class="${r.tab === k ? 'on' : ''}">${l}${n !== '' ? `<small>${esc(n)}</small>` : ''}</a>`).join('')}</nav>${body}`;
 };
+
+// The plan: PLAN.md, the one place a crew member's strategy lives. Agreed by the owner with one click,
+// scored every evening, reviewed and rewritten every week.
+function lastWorkday() { const w = S.data.workdays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']; return w[w.length - 1]; }
+function tabPlan(e, dt) {
+  if (!dt) return loading;
+  const p = e.plan || {}, raw = (dt.memory || {})['PLAN.md'] || '';
+  if (p.status === 'none' || !raw.trim()) {
+    return `<div class="empty"><b>${esc(e.name)} hasn't proposed a plan yet.</b><p>Their next standup proposes one: the goal in numbers, how they'll get there, the cadence and the milestones. Then you agree to it here.</p>
+      <p><button class="btn btn-primary" data-act="order" data-kind="run_job" data-job="standup" data-emp="${e.id}">${icon('target')}Ask for the plan now</button></p></div>`;
+  }
+  const doc = raw.replace(/^# .*\n+/, '').replace(/^Status:.*\n+/m, '');
+  const agreed = p.status === 'agreed';
+  const nx = p.next;
+  const facts = [
+    ['Goal', esc(p.goal || '—'), ''],
+    ['Next milestone', nx ? esc(nx.what) : 'All done', nx ? 'by ' + esc(nx.by) : ''],
+    ['Strategy review', p.reviewed ? 'Last on ' + esc(p.reviewed) : 'First one this ' + esc(lastWorkday()), 'every ' + esc(lastWorkday()) + ', plus a score of each day'],
+  ].map(([k, val, sub]) => `<div class="fact"><span class="k">${k}</span><b>${val}</b>${sub ? `<span class="meta">${sub}</span>` : ''}</div>`).join('');
+  const nums = (p.numbers || []).length ? `<div class="plan-nums">${p.numbers.map((n) => `<div><span class="meta">${esc(n.metric)}</span><b class="num">${esc(n.value)}</b><span class="meta">target ${esc(n.target || '—')} · ${esc(n.date)}</span></div>`).join('')}</div>` : '';
+  return `<section class="plan-head ${agreed ? 'agreed' : 'proposed'}">
+      <div class="plan-top"><div>${agreed ? `<span class="badge accent">${icon('check')}Agreed</span> <span class="meta">${esc(p.agreed)}</span>` : `<span class="badge warn">Proposed · waiting for your OK</span>`}</div>
+      <div class="actions">${agreed ? '' : `<button class="btn btn-primary" data-act="order" data-kind="agree_plan" data-emp="${e.id}">${icon('check')}Agree to this plan</button>`}
+        <button class="btn" data-act="plan-change" data-emp="${e.id}">${icon('chat')}Ask for changes</button>
+        <button class="btn btn-ghost" data-act="order" data-kind="run_job" data-job="review" data-emp="${e.id}" title="${esc(e.name)} checks the numbers, what worked and what didn't, and rewrites the plan">Review it now</button></div></div>
+      <div class="plan-facts">${facts}</div>${nums}</section>
+    <article class="md prose plan-doc">${md(doc)}</article>
+    ${shareHint(e)}`;
+}
+// After a week of real learning: the owner who trained them is offered to share it.
+function shareHint(e) {
+  const l = e.learned || {};
+  if (e.shared_as || !(l.days >= 7 && (l.lessons >= 8 || l.skills >= 2))) return '';
+  return `<section class="share-hint">${icon('share')}<div><b>${esc(e.name)} has learned a lot: ${plural(l.lessons, 'lesson')} and ${plural(l.skills, 'skill')} of their own in ${plural(l.days, 'day')}.</b>
+    <p class="meta">Others hiring a ${esc(e.role)} could start with all of it, credited to you. Nothing private leaves.</p></div><a class="btn btn-sm" href="/e/${e.id}/manage#share">Share it</a></section>`;
+}
 
 function tabChat(e, dt) {
   const rows = dt ? dt.chat : [];
@@ -946,10 +1002,42 @@ function tabManage(e, dt) {
       <form id="ab-${e.id}" data-form="abilities" data-emp="${e.id}"><div class="ab-bar"><button class="btn btn-primary" type="submit">Save</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="default">Default</button><button class="btn" type="button" data-act="preset" data-emp="${e.id}" data-preset="super">Super agent</button><span class="meta">${on.size} of ${S.cat.abilities.length} on</span></div></form>
       <div class="ab-groups">${groups}</div></section>
     ${connectorsSection(e)}
-    <section><h2>${icon('file')} Save as a role</h2><p class="desc">Turn ${esc(e.name)}'s job, skills and rules into a role you can hire from again, or share. Their notes, files and access stay private.</p>
-      <form class="row-form" data-form="save-role" data-emp="${e.id}"><input class="input" name="title" maxlength="80" placeholder="${esc(e.role)}" aria-label="Role name"><button class="btn" type="submit">Save as a role</button></form></section>
+    ${shareSection(e)}
     <section><h2>Retire</h2><p class="desc">They stop working; their folder and memory stay on this ${MAC()}.</p><div><button class="btn btn-danger" data-act="retire" data-emp="${e.id}" data-name="${esc(e.name)}">Retire ${esc(e.name)}…</button></div></section>
   </div>`;
+}
+
+// Share what a crew member knows: Claude drafts a private-free copy (job, rules, skills, experience); the owner
+// reads and edits every word; it's saved as a role; then it goes out as a file or to the Orbit community.
+function shareSection(e) {
+  const l = e.learned || {}, st = (S.share || {})[e.id];
+  const intro = `<p class="desc">${esc(e.name)} has ${plural(l.lessons || 0, 'lesson')} and ${plural(l.skills || 0, 'skill')} of their own after ${plural(l.days || 0, 'day')} on the job. Share it as a role anyone can hire, credited to you: the job, the rules, the skills and the experience. Claude first takes out names, accounts, links and your business's numbers; you read and edit every word before anything is saved or leaves this ${MAC()}.</p>`;
+  let body;
+  if (!st) {
+    body = `<div class="save-bar"><button class="btn btn-primary" data-act="share-prepare" data-emp="${e.id}">${icon('share')}Prepare a shareable copy</button>${e.shared_as ? `<span class="meta">Shared before as “${esc(e.shared_as)}”. <a class="link" href="/api/role/${esc(e.shared_as)}.orbit-role.zip" download>Download that file</a></span>` : '<span class="meta">Takes a minute or two.</span>'}</div>`;
+  } else if (st.stage === 'busy') {
+    body = thinking('Preparing a shareable copy', ['Reading the lessons and skills', 'Taking out names, accounts, links and numbers', 'Writing it as know-how anyone can use']);
+  } else if (st.stage === 'draft') {
+    const d = st.draft;
+    body = `<form class="form share-form" data-form="share-save" data-emp="${e.id}">
+      <div class="field"><label for="sh-title-${e.id}">Role name</label><input id="sh-title-${e.id}" class="input" name="title" maxlength="80" value="${esc(d.title)}" required></div>
+      <div class="field"><label for="sh-sum-${e.id}">One line: what they're good at</label><input id="sh-sum-${e.id}" class="input" name="summary" maxlength="300" value="${esc(d.summary)}"></div>
+      <div class="field"><label for="sh-by-${e.id}">Credited to</label><input id="sh-by-${e.id}" class="input" name="trained_by" maxlength="60" value="${esc(d.trained_by || S.data.me)}"></div>
+      <div class="field"><label for="sh-xp-${e.id}">What they learned (EXPERIENCE.md)</label><textarea id="sh-xp-${e.id}" class="textarea mono" name="experience" rows="14">${esc(d.experience)}</textarea></div>
+      <div class="field"><label for="sh-rules-${e.id}">Rules for the role</label><textarea id="sh-rules-${e.id}" class="textarea mono" name="rules" rows="5">${esc(d.rules)}</textarea></div>
+      ${(d.skills || []).length ? `<fieldset class="field"><legend>Skills that go with it</legend>${d.skills.map((k, i) => `<details class="skill-pick"><summary><label><input type="checkbox" name="skill" value="${i}" checked> ${esc(k.name)}</label></summary><textarea class="textarea mono" name="skill-${i}" rows="10" aria-label="${esc(k.name)}">${esc(k.text)}</textarea></details>`).join('')}</fieldset>` : ''}
+      ${(d.removed || []).length ? `<p class="meta">Taken out: ${esc(d.removed.join(', '))}. Read it once more: you know your business best.</p>` : ''}
+      <div class="save-bar"><button class="btn btn-primary" type="submit">Save as a role</button><button class="btn btn-ghost" type="button" data-act="share-reset" data-emp="${e.id}">Start over</button></div></form>`;
+  } else {
+    const rid = st.rid;
+    body = `<div class="shared"><p><b>Saved as “${esc(st.title)}”.</b> It's on your hiring page, and now you can send it anywhere:</p>
+      <ul class="share-ways">
+        <li><a class="btn" href="/api/role/${esc(rid)}.orbit-role.zip" download>${icon('download')}Download the file</a><span class="meta">One file. Send it to anyone with Orbit; they add it on their hiring page (“Add a role from a file or link”).</span></li>
+        <li><button class="btn btn-primary" data-act="share-publish" data-role="${esc(rid)}">${icon('share')}Share with the Orbit community</button><span class="meta">Goes to the Orbit project on GitHub for a quick check that nothing private is in it, then reaches every Orbit with the next update, credited to you.</span></li>
+        <li><a class="btn btn-ghost" href="/hire?role=${esc(rid)}">${icon('plus')}Hire another from it</a></li></ul>
+      ${st.published ? `<p class="meta">${esc(st.published.how)} <a class="link" href="${esc(st.published.url)}" target="_blank" rel="noopener">${st.published.pr ? 'See the pull request' : 'Open the page again'}</a></p>` : ''}</div>`;
+  }
+  return `<section id="share" class="share"><h2>${icon('share')} Share what ${esc(e.name)} knows</h2>${intro}${body}</section>`;
 }
 
 // ---- abilities matrix
@@ -976,7 +1064,9 @@ PAGES.hire = (r) => {
   if (!S.roles) return loading;
   if (r.role && !S.job) { S.situation = S.situation || 'other'; pickJob(r.role, false); }
   const sit = situationOf();
-  return `<header class="page-head"><div><h1>${sit ? 'What should they take off your plate?' : 'Build an AI employee.'}</h1><p class="sub">${sit ? 'Pick a job; they start with a real first task.' : 'First, what do you do?'}</p></div></header>${jobPicker('hire')}`;
+  const imp = `<section class="role-import"><h2>${icon('download')} Add a role from a file or link</h2><p class="desc">Someone shared a crew member they trained? Add its file (.orbit-role.zip) or paste its https link. Everything it brings (rules, skills, experience) shows before you hire.</p>
+    <form class="row-form" data-form="role-import"><input class="file" type="file" name="file" accept=".zip,application/zip" aria-label="Role file"><input class="input" name="url" type="url" placeholder="https://… link to a role file" pattern="https://.*" aria-label="Role link"><button class="btn" type="submit">Add</button></form></section>`;
+  return `<header class="page-head"><div><h1>${sit ? 'What should they take off your plate?' : 'Build an AI employee.'}</h1><p class="sub">${sit ? 'Pick a job; they start with a real first task.' : 'First, what do you do?'}</p></div></header>${jobPicker('hire')}${S.ob && S.ob.stage !== 'basics' ? '' : imp}`;
 };
 
 // ---- settings
@@ -1096,7 +1186,7 @@ async function sendMessage(f) {
 
 document.addEventListener('click', async (ev) => {
   const a = ev.target.closest('a[href]');
-  if (a && a.getAttribute('href').startsWith('/') && !a.target && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey) { ev.preventDefault(); go(a.getAttribute('href')); return; }
+  if (a && a.getAttribute('href').startsWith('/') && !a.getAttribute('href').startsWith('/api/') && !a.hasAttribute('download') && !a.target && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey) { ev.preventDefault(); go(a.getAttribute('href')); return; }
   const b = ev.target.closest('[data-act]');
   if (!b) return;
   const act = b.dataset.act;
@@ -1172,8 +1262,32 @@ document.addEventListener('click', async (ev) => {
   else if (act === 'order') {
     const body = { kind: b.dataset.kind, employee_id: b.dataset.emp };
     if (b.dataset.from) body.job = $(b.dataset.from).value;
+    if (b.dataset.job) body.job = b.dataset.job;
     if (b.dataset.kind === 'set_autonomy') body.on = !!b.dataset.on;
     b.disabled = true; await order(body); b.disabled = false; schedule();
+  }
+  else if (act === 'plan-change') {
+    S.vals['message:' + b.dataset.emp] = { text: 'About your plan: ' }; go(`/e/${b.dataset.emp}/chat`);
+    setTimeout(() => { const t = $('#composer-' + b.dataset.emp); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }, 50);
+  }
+  else if (act === 'share-prepare') {
+    const emp = b.dataset.emp; S.share = { ...(S.share || {}), [emp]: { stage: 'busy' } }; render(false);
+    try { const r = await api('/api/share/prepare', { employee: emp }); S.share[emp] = { stage: 'draft', draft: r }; }
+    catch (err) { delete S.share[emp]; toast(err.message, 'err'); }
+    render(false);
+  }
+  else if (act === 'share-reset') { delete (S.share || {})[b.dataset.emp]; render(false); }
+  else if (act === 'share-publish') {
+    b.disabled = true;
+    try {
+      const r = await api('/api/order', { kind: 'publish_role', role: b.dataset.role }), out = r.message || {};
+      const emp = Object.keys(S.share || {}).find((k) => S.share[k].rid === b.dataset.role);
+      if (emp) S.share[emp].published = out;
+      if (out.url) window.open(out.url, '_blank', 'noopener');
+      if (!out.pr) { const a = document.createElement('a'); a.href = `/api/role/${b.dataset.role}.orbit-role.zip`; a.download = ''; document.body.appendChild(a); a.click(); a.remove(); }
+      toast(out.how || 'Shared');
+    } catch (err) { toast(err.message, 'err'); }
+    b.disabled = false; render(false);
   }
   else if (act === 'preset') { await order({ kind: 'set_abilities', employee_id: b.dataset.emp, preset: b.dataset.preset }); if (S.detailId === b.dataset.emp) await loadDetail(b.dataset.emp); render(true); }
   else if (act === 'retire') {
@@ -1321,6 +1435,23 @@ document.addEventListener('submit', async (ev) => {
     } else if (kind === 'save-role') {
       const r = await api('/api/order', { kind: 'save_role', employee_id: emp, title: fd.get('title') || '' });
       toast(r.message); S.roles = null;
+    } else if (kind === 'share-save') {
+      const d = S.share[emp].draft, keep = fd.getAll('skill').map(Number);
+      const draft = { title: fd.get('title'), summary: fd.get('summary'), trained_by: fd.get('trained_by'), experience: fd.get('experience'), rules: fd.get('rules'),
+        skills: (d.skills || []).map((k, i) => ({ name: k.name, text: fd.get('skill-' + i) || k.text })).filter((k, i) => keep.includes(i)) };
+      const r = await api('/api/order', { kind: 'save_role', employee_id: emp, title: draft.title, draft });
+      S.roles = null; toast(r.message); await refresh(false);
+      const me = S.data.employees.find((x) => x.id === emp);
+      S.share[emp] = { stage: 'saved', rid: me ? me.shared_as : '', title: draft.title }; render(false);
+    } else if (kind === 'role-import') {
+      const file = f.querySelector('input[type=file]').files[0], url = String(fd.get('url') || '').trim();
+      if (!file && !url) { toast('Pick a role file or paste its link', 'err'); return; }
+      let body = { kind: 'import_role', url };
+      if (file) {
+        if (file.size > 5000000) { toast('That file is over 5 MB', 'err'); return; }
+        body = { kind: 'import_role', data: await new Promise((ok, no) => { const rd = new FileReader(); rd.onload = () => ok(rd.result); rd.onerror = no; rd.readAsDataURL(file); }) };
+      }
+      const r = await api('/api/order', body); toast(r.message); f.reset(); S.roles = await api('/api/roles'); S.situation = 'yours'; render(true);
     } else if (kind === 'conn-search') {
       delete S.conn[emp]; loadConnectors(emp, String(fd.get('q') || '').trim());
     } else if (kind === 'conn-link') {

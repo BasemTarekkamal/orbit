@@ -25,6 +25,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
@@ -293,14 +294,52 @@ def command(emp: dict, model: str) -> list:
     return cmd
 
 
+NETWORK = re.compile(r"ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|network|reach the API", re.I)
+
+
+def online(timeout: float = 4) -> bool:
+    """Can this computer reach Claude right now? A DNS lookup and a TCP connect to the API; nothing is sent.
+    Behind a proxy we can't tell, so we say yes and let the run find out."""
+    if any(os.environ.get(k) for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY")):
+        return True
+    try:
+        with socket.create_connection(("api.anthropic.com", 443), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def wait_online(limit: int = 600, every: int = 20) -> bool:
+    """After a network failure (the Mac just woke up, the Wi-Fi dropped): wait up to `limit` seconds for it back."""
+    end = time.time() + limit
+    while time.time() < end:
+        if online():
+            return True
+        time.sleep(every)
+    return online()
+
+
 def friendly_error(err: str) -> str:
     if re.search(r"usage limit|rate limit|limit reached", err, re.I):
         return "I've hit the Claude usage limit; I'll pick this up after it resets. Nothing is lost."
     if re.search(r"authenticate|OAuth|not logged in|log in", err, re.I):
         return osinfo.local("My Claude sign-in on this Mac has expired. Owner: run `claude auth login` in Terminal.")
-    if re.search(r"ENOTFOUND|ECONNRESET|network|reach the API", err, re.I):
-        return "I couldn't reach Claude (internet down?). Please resend in a few minutes."
+    if NETWORK.search(err):
+        return "I couldn't reach Claude for 10 minutes: this computer looks offline. Send it again when it's back."
     return "Something went wrong on my side (logged). Please resend."
+
+
+def why_failed(err: str) -> str:
+    """The reason a routine didn't run, in a few plain words (for the team room)."""
+    if NETWORK.search(err):
+        return "this computer was offline when it was due"
+    if re.search(r"usage limit|rate limit|limit reached", err, re.I):
+        return "your Claude plan's limit was reached"
+    if re.search(r"authenticate|OAuth|not logged in|log in", err, re.I):
+        return "my Claude sign-in expired (run `claude auth login` in a terminal)"
+    if re.search(r"timed out", err, re.I):
+        return "it ran out of time"
+    return "an error on my side (logged)"
 
 
 def stream(cmd: list, prompt: str, ws: str, env: dict, timeout: int, on_step=None):
@@ -379,6 +418,8 @@ def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
         attempts.append(("resume", sessions[session_key]))
     attempts.append(("new", str(uuid.uuid4())))
     t0, d, steps = time.time(), {}, []
+    if not online():
+        wait_online()                                      # just woke up, or the Wi-Fi dropped: give it up to 10 minutes
     for kind, sid in attempts:
         cmd = base + (["--resume", sid] if kind == "resume" else ["--session-id", sid])
         d, steps = stream(cmd, prompt, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)
@@ -389,7 +430,16 @@ def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
                 with open(sessions_f, "w") as fh:
                     json.dump(sessions, fh, indent=1)
             break
-        if re.search(r"limit|network|ENOTFOUND|ECONNRESET|authenticate", str(d.get("result", "")), re.I):
+        if NETWORK.search(str(d.get("result", ""))) and wait_online():
+            d, steps = stream(cmd, prompt, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)   # back online: once more
+            if not d.get("is_error"):
+                if session_key:
+                    sessions[session_key] = sid
+                    os.makedirs(os.path.dirname(sessions_f), exist_ok=True)
+                    with open(sessions_f, "w") as fh:
+                        json.dump(sessions, fh, indent=1)
+                break
+        if re.search(r"limit|authenticate", str(d.get("result", ""))) or NETWORK.search(str(d.get("result", ""))):
             break                                          # a fresh session won't help
     err = str(d.get("result", "")) if d.get("is_error") else ""
     text = friendly_error(err) if d.get("is_error") else (d.get("result") or "").strip()
@@ -401,7 +451,8 @@ def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
     with open(os.path.join(ws, "state", "runs.jsonl"), "a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
     return {"ok": not d.get("is_error"), "text": text, "error": err, "model": model, "steps": steps[-40:],
-            "secs": rec["secs"], "cost_usd": rec["cost_usd"], "tokens": rec["tokens"]}
+            "secs": rec["secs"], "cost_usd": rec["cost_usd"], "tokens": rec["tokens"],
+            "transient": bool(err) and bool(NETWORK.search(err) or re.search(r"usage limit|rate limit|limit reached", err, re.I))}
 
 
 def run_tokens(d: dict) -> int:

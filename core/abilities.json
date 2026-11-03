@@ -257,9 +257,19 @@
       "id": "eod",
       "name": "End of day",
       "group": "Routines",
+      "default": true,
       "job": "eod",
-      "description": "Workdays at 17:00: what got done, what slipped.",
-      "can": "Send an end-of-day summary"
+      "description": "Workdays at 17:00: scores the day against the plan (what worked, what didn't), gets tomorrow's work ready, and tells you what's prepared.",
+      "can": "Score the day and get tomorrow ready"
+    },
+    {
+      "id": "review",
+      "name": "Weekly review",
+      "group": "Routines",
+      "default": true,
+      "job": "review",
+      "description": "The week's last workday: the real numbers against the plan, what worked and what didn't, and the changes it makes to the strategy. Big changes come to you as a decision.",
+      "can": "Review the strategy every week and change what isn't working"
     },
     {
       "id": "scout",

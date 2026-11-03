@@ -13,7 +13,7 @@ import hire
 import team
 
 KINDS = ("message", "hire", "pause", "resume", "retire", "run_job", "set_abilities", "set_field", "set_browser", "set_autonomy",
-         "connect", "connector", "teach", "save_role", "call_start", "call_stop")
+         "connect", "connector", "teach", "save_role", "publish_role", "import_role", "agree_plan", "call_start", "call_stop")
 
 
 class OrderError(ValueError):
@@ -158,14 +158,50 @@ def execute(by, kind, p):
             prompt = team.job_prompt(eid, engine.employee(eid), "learn").replace("$FILE", rel)
             team.run_async(eid, prompt, "learn", None, [], who=by, on_done=team.to_room(eid, e["name"], by, "panel"))
             summary, res = "Teach %s" % e["name"], "%s is reading it and turning it into skills" % e["name"]
-        elif kind == "save_role":
-            _emp(eid, want_active=False)
+        elif kind == "save_role":                         # with the draft the owner read and edited (Share)
+            e = _emp(eid, want_active=False)
             import rolebook
+            d = p.get("draft") if isinstance(p.get("draft"), dict) else None
+            if d:
+                d = {"title": str(d.get("title") or "")[:80], "summary": str(d.get("summary") or "")[:300],
+                     "rules": str(d.get("rules") or "")[:20000], "experience": str(d.get("experience") or "")[:40000],
+                     "trained_by": str(d.get("trained_by") or by)[:60],
+                     "skills": [{"name": str(x.get("name") or ""), "text": str(x.get("text") or "")[:40000]}
+                                for x in (d.get("skills") or [])[:30] if isinstance(x, dict)]}
             try:
-                res = rolebook.save_role(eid, str(p.get("title") or ""), by)
+                res = rolebook.save_role(eid, str(p.get("title") or ""), by, draft=d)
             except rolebook.RoleError as ex:
                 raise OrderError(str(ex))
-            summary = "Save a role"
+            summary = "Save %s as a role" % e["name"]
+        elif kind == "publish_role":
+            import rolebook
+            try:
+                out = rolebook.publish(re.sub(r"[^a-z0-9-]", "", str(p.get("role") or ""))[:40], by)
+            except rolebook.RoleError as ex:
+                raise OrderError(str(ex))
+            summary, res = "Share a role with the community", out["url"]
+            team.order_log(by, kind, summary, "done", res)
+            return out
+        elif kind == "import_role":
+            import base64
+            import rolebook
+            try:
+                if p.get("data"):
+                    res = rolebook.import_role(data=base64.b64decode(str(p["data"]).split(",")[-1]))
+                else:
+                    res = rolebook.import_role(str(p.get("url") or "").strip())
+            except (rolebook.RoleError, ValueError, OSError) as ex:
+                raise OrderError(str(ex) or "Couldn't read that role")
+            summary = "Add a role"
+        elif kind == "agree_plan":
+            e = _emp(eid, want_active=False)
+            import plan
+            try:
+                res = plan.agree(eid, by)
+            except ValueError as ex:
+                raise OrderError(str(ex))
+            team.feed(by, by, eid, "I agree to your plan. Go.", "panel")
+            summary = "Agree to %s's plan" % e["name"]
         elif kind == "connect":
             e = _emp(eid, want_active=False)
             res = hire.connect(eid, str(p.get("other") or ""), str(p.get("note") or ""), by)
