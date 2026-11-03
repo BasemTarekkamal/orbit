@@ -40,6 +40,8 @@ a decision, with a link that proves it. Silence beats an unsourced claim.
 | Data portals, SPAs, dashboards | `staff-browse --network`, then staff-fetch the JSON endpoint | |
 | YouTube | staff-fetch the watch page (title, date, channel, description JSON) | transcripts: `youtube-transcript` (paid) |
 | TikTok, Instagram, Facebook, X, Threads, LinkedIn companies, Reddit | social-media skill (staff-apify) | their robots.txt or bot walls block direct reading |
+| Today's prices, stock and sellers on online stores (Amazon incl. .eg/.sa/.ae, Walmart, eBay, any shop) | `staff-apify run prices` | training data and old pages give stale prices; every record is timestamped |
+| A job no catalog tool fits | `staff-apify find <the job>` | Apify Store, 100,000+ tools by use case; Full autonomy runs ones that pass the bar |
 | Businesses in a place, reviews | local-business skill (`maps-places`, `maps-reviews`) | |
 | Ads, trends, news at scale, product reviews | market-signals skill | |
 | A person to contact | people-finder skill | official channels only |

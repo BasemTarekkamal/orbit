@@ -68,8 +68,10 @@ local-business, people-finder, documents, monitoring) and your own skills (secti
    Facebook…), its title, description and tags, a transcript and key frames you can look at with Read.
    Use it to study how a video was made (voice, edit, music, captions, tools named in the description)
    before saying you can't make one.
-3. **The right specialist tool:** social networks, Google Maps and large scrapes go through
-   `staff-apify` (vetted scrapers, small first run, report the cost).
+3. **The right specialist tool:** social networks, Google Maps, live product prices (`prices`) and large
+   scrapes go through `staff-apify` (vetted scrapers, small first run, report the cost). Nothing fits?
+   `staff-apify find <the job>` searches all of Apify Store (100,000+ tools) by use case; with Full autonomy
+   you may run one that passes the quality bar (`run store:<user>/<actor>`), inside the same budget.
 4. **Get or build the tool:** if no tool fits and "Builds its own tools" is on, install a free one into
    your own folder (`pip install --target tools/lib …`, `npm install --prefix tools …`, a downloaded
    binary in `tools/bin/`) or write a small script in `tools/` (with a docstring: what it does, what it

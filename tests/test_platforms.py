@@ -669,3 +669,51 @@ class Proactive(unittest.TestCase):
         finally:
             osinfo.notify = real
         self.assertEqual(shown, [("Suoo · Orbit", "Plan for approval: 2 Shorts a day.")])
+
+
+class ApifyStore(unittest.TestCase):
+    """Live prices, fresh-only crawls, and Apify Store actors for crew with Full autonomy (no network, no spend)."""
+
+    def setUp(self):
+        import apify
+        self.apify = apify
+        self.env = {k: os.environ.get(k) for k in ("STAFF_EMPLOYEE", "STAFF_ABILITIES")}
+        self.http = apify._http
+
+    def tearDown(self):
+        self.apify._http = self.http
+        for k, v in self.env.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        for k in [k for k in self.apify.CATALOG if k.startswith("store-")]:
+            self.apify.CATALOG.pop(k)
+
+    def fake_actor(self, users, ok, cats=("SOCIAL_MEDIA",)):
+        total = 1000
+        self.apify._http = lambda *a, **k: {"data": {"title": "Some tool", "categories": list(cats), "pricingInfos": [{"pricingModel": "PAY_PER_EVENT", "minimalMaxTotalChargeUsd": 0.5}],
+                                                      "stats": {"totalUsers30Days": users, "publicActorRunStats30Days": {"TOTAL": total, "SUCCEEDED": int(total * ok)}}}}
+
+    def test_prices_alias(self):
+        inp, dropped, notes = self.apify.build_input("prices", {"keyword": "kettle", "marketplaces": ["www.amazon.eg"],
+                                                                "maxProductResults": 50, "customPrompt": "x"}, 10)
+        self.assertEqual(inp["maxProductResults"], 10)
+        self.assertIn("customPrompt", dropped)
+        self.assertEqual(self.apify.resolve("price"), "prices")
+        self.assertEqual(self.apify.resolve("store:apify/e-commerce-scraping-tool"), "prices")   # vetted: for anyone
+
+    def test_store_actors_need_full_autonomy_and_the_bar(self):
+        os.environ["STAFF_EMPLOYEE"] = "suoo"
+        os.environ["STAFF_ABILITIES"] = "web,apify"
+        self.fake_actor(5000, 0.99)
+        with self.assertRaises(PermissionError):
+            self.apify.resolve("store:someone/good-tool")
+        os.environ["STAFF_ABILITIES"] = "web,apify,full_autonomy"
+        self.assertTrue(self.apify.resolve("store:someone/good-tool").startswith("store-"))
+        self.fake_actor(40, 0.99)
+        with self.assertRaises(PermissionError):
+            self.apify.resolve("store:someone/tiny-tool")
+        self.fake_actor(5000, 0.80)
+        with self.assertRaises(PermissionError):
+            self.apify.resolve("store:someone/flaky-tool")
+        self.fake_actor(5000, 0.99, ("FINANCE",))
+        with self.assertRaises(PermissionError):
+            self.apify.resolve("store:someone/money-tool")
