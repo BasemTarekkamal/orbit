@@ -729,7 +729,7 @@
    "id": "apify",
    "name": "Apify",
    "url": "https://mcp.apify.com",
-   "what": "Thousands of ready scrapers: social networks, Maps, any site (paid per use)",
+   "what": "100,000+ ready tools by use case: social networks, Maps, live product prices, any site, plus building and debugging your own Actors (paid per use)",
    "category": "Research and web",
    "roles": [
     "researcher",

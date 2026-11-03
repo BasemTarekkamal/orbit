@@ -7,13 +7,18 @@ YouTube, LinkedIn, Reddit, Google Maps, Google Search/News/Trends, Meta Ad Libra
     staff-apify run <alias> '<json>' [--max-items N] [--max-usd X] [--tag slug] [--wait S]
     staff-apify run <alias> @inputs/x.json        input from a JSON file in your workspace
     staff-apify results <run-id>                  collect a run that was still going when run returned
+    staff-apify find <the job, in words>           search all of Apify Store (100k+ actors) by use case: users,
+                                                  success rate, price, and whether you may run it
+    staff-apify run store:<user>/<actor> '<json>'  with Full autonomy: run a store actor that passes the
+                                                  quality bar, inside the same budget and caps
     staff-apify budget                            this month's spend, per-run cap, recent runs
     staff-apify verify                            (owner) re-check every catalog actor exists and is
                                                   maintained, using Apify's free public metadata
 
 Why a gateway: Apify spends real money and its actors touch the open web. This runs outside the
 sandbox (it alone reads the token, ~/Staff/.secrets/apify_token) and enforces:
-  * a vetted catalog only: no arbitrary actors;
+  * a vetted catalog, plus (only for crew with Full autonomy) store actors that pass a quality bar:
+    300+ users in 30 days and 95%+ of runs succeeding, never in a money category;
   * input sanitising: no webhooks, connectors, "deliver to" or MCP fields (nothing sends data
     anywhere else), no cookies/logins/headers/proxy overrides/custom code, no paid lead/email
     enrichment, reviewers' personal data off, crawlers stay on robots.txt; URL objects reduced to
@@ -85,7 +90,8 @@ CATALOG = {
     "crawl": dict(
         actor="apify/website-content-crawler",
         what="Clean, LLM-ready markdown from given URLs or a whole site section (follows links). "
-             "crawlerType cheerio (default, cheap) or playwright:adaptive for JS sites.",
+             "crawlerType cheerio (default, cheap) or playwright:adaptive for JS sites. Keeping notes fresh: "
+             "onlyCrawlPagesModifiedSince \"YYYY-MM-DD\" re-reads only pages changed since then (cheaper).",
         cost="no actor fee: compute only (cheerio is cheapest; browser modes cost several times more); "
              "bounded by memory/timeout",
         verified="14k users/30d, 4.6 stars, 96% runs ok",
@@ -283,8 +289,21 @@ CATALOG = {
         defaults={"maxReviews": 20, "sort": "recent"}, force={"includeGdprSensitive": False},
         limits=["maxReviews"], urls=["productUrls"], needs=["productUrls"], items=20,
         show=["ratingScore", "reviewTitle", "reviewDescription", "date", "isVerified"]),
+    "prices": dict(
+        actor="apify/e-commerce-scraping-tool",
+        what="Live prices, stock and sellers, each with a timestamp: product or category page URLs from any store, "
+             "or a keyword across marketplaces (Amazon, Walmart, eBay and more). For quoting today's prices, not "
+             "months-old ones.",
+        cost="$0.006 per product on Apify's free plan (less on paid plans); Apify needs a cap of $1 per run, so "
+             "the owner's per-run cap must be $1 or more",
+        verified="818 users/30d, 98.7% runs ok (Apify's own actor)",
+        defaults={"scrapeMode": "AUTO", "maxProductResults": 20, "deduplicateProducts": True},
+        deny=["fieldsToAnalyze", "customPrompt", "influencerUrls", "scrapeInfluencerProducts"],
+        limits=["maxProductResults", "maxSearchEngineResults", "maxReviewResults", "maxSellerResults"],
+        urls=["detailsUrls", "listingUrls"], needs=["detailsUrls", "listingUrls", "keyword", "searchEngineKeyword"],
+        items=20, min_cap=1.0, show=["name", "title", "price", "currency", "availability", "url"]),
 }
-ALIASES = {"search": "google-search", "fetch": "rag-browser", "places": "maps-places", "news": "google-news",
+ALIASES = {"search": "google-search", "price": "prices", "products": "prices", "shop": "prices", "fetch": "rag-browser", "places": "maps-places", "news": "google-news",
            "trends": "google-trends", "tweets": "x", "twitter": "x", "transcript": "youtube-transcript",
            "facebook": "facebook-page"}
 
@@ -401,8 +420,93 @@ def _http(method: str, path: str, params: dict = None, body=None, auth: bool = T
 # Input sanitising
 
 
+STORE_MIN_USERS = 300
+STORE_MIN_OK = 0.95
+STORE_DENY_CATEGORIES = {"FINANCE"}      # nothing near money moves through a scraper
+
+
+def _store_stats(item: dict):
+    stats = item.get("stats") or {}
+    runs = stats.get("publicActorRunStats30Days") or {}
+    total = float(runs.get("TOTAL") or 0)
+    ok = (float(runs.get("SUCCEEDED") or 0) / total) if total else 0.0
+    users = int(stats.get("totalUsers30Days") or 0)
+    return users, ok
+
+
+def store_check(actor_id: str) -> dict:
+    """A store actor's public facts and whether it passes the bar (free metadata call, no token)."""
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", actor_id or ""):
+        raise ValueError("store actors are named store:<user>/<actor>, e.g. store:apify/e-commerce-scraping-tool")
+    d = _http("GET", "/acts/%s" % actor_id.replace("/", "~"), auth=False).get("data") or {}
+    users, ok = _store_stats(d)
+    cats = set(d.get("categories") or [])
+    pricing = (d.get("pricingInfos") or [{}])[-1]
+    why = []
+    if users < STORE_MIN_USERS:
+        why.append("only %d users in 30 days (the bar is %d)" % (users, STORE_MIN_USERS))
+    if ok < STORE_MIN_OK:
+        why.append("%.0f%% of runs succeed (the bar is %.0f%%)" % (ok * 100, STORE_MIN_OK * 100))
+    if cats & STORE_DENY_CATEGORIES:
+        why.append("it's in a money category")
+    if d.get("isDeprecated"):
+        why.append("it's deprecated")
+    return {"actor": actor_id, "title": d.get("title", ""), "users": users, "ok": ok, "categories": sorted(cats),
+            "pricing": pricing.get("pricingModel", ""), "min_cap": float(pricing.get("minimalMaxTotalChargeUsd") or 0),
+            "passes": not why, "why": "; ".join(why)}
+
+
+def _store_alias(actor_id: str) -> str:
+    """Registers a store actor that passed the bar as a run-time catalog entry (generic, no fixed defaults)."""
+    for k, v in CATALOG.items():                          # already vetted: its own alias, for anyone
+        if v["actor"].lower() == actor_id.lower():
+            return k
+    key = "store-" + re.sub(r"[^a-z0-9]+", "-", actor_id.lower()).strip("-")[:60]
+    if key not in CATALOG:
+        allowed = "full_autonomy" in (os.environ.get("STAFF_ABILITIES") or "").split(",") or not _kit.employee_id()
+        if not allowed:
+            raise PermissionError("store actors outside the vetted catalog need Full autonomy (your owner's switch). "
+                                  "Use a catalog alias, or ask with request_access (kind full_autonomy).")
+        c = store_check(actor_id)
+        if not c["passes"]:
+            raise PermissionError("%s doesn't pass the quality bar: %s. Pick another from staff-apify find." % (actor_id, c["why"]))
+        free = c["pricing"] in ("FREE", "")
+        CATALOG[key] = dict(actor=actor_id, what=c["title"], cost=c["pricing"], verified="%d users/30d, %.0f%% ok" % (c["users"], c["ok"] * 100),
+                            defaults={}, deny=[], limits=[], items=10, min_cap=c["min_cap"], show=[],
+                            **({"memory": 2048, "timeout": 600} if free else {}))
+    return key
+
+
+def cmd_find(words: str) -> int:
+    if not words.strip():
+        raise ValueError("usage: staff-apify find <the job, in words>, e.g. staff-apify find instagram hashtag posts")
+    d = _http("GET", "/store", params={"search": words.strip()[:80], "limit": 12, "sortBy": "popularity"}, auth=False).get("data") or {}
+    vetted = {v["actor"].lower(): k for k, v in CATALOG.items()}
+    autonomy = "full_autonomy" in (os.environ.get("STAFF_ABILITIES") or "").split(",") or not _kit.employee_id()
+    _out("Apify Store for \"%s\" (sorted by popularity). Vetted aliases run for anyone; others need Full autonomy and "
+         "the bar (%d+ users/30d, %d%%+ runs ok)." % (words.strip(), STORE_MIN_USERS, STORE_MIN_OK * 100))
+    for it in d.get("items", []):
+        aid = "%s/%s" % (it.get("username"), it.get("name"))
+        users, ok = _store_stats(it)
+        model = (it.get("currentPricingInfo") or {}).get("pricingModel", "")
+        cats = ",".join((it.get("categories") or [])[:3])
+        if aid.lower() in vetted:
+            how = "vetted: staff-apify run %s" % vetted[aid.lower()]
+        elif users >= STORE_MIN_USERS and ok >= STORE_MIN_OK and not set(it.get("categories") or []) & STORE_DENY_CATEGORIES:
+            how = ("passes: staff-apify run store:%s '<json>' --max-items 10" % aid) if autonomy else \
+                  "passes the bar (needs Full autonomy)"
+        else:
+            how = "below the bar"
+        _out("- %s  %s [%s]  %d users/30d, %.0f%% ok, %s\n    %s" % (aid, (it.get("title") or "")[:60], cats, users, ok * 100,
+                                                                     model, how))
+    _out("Check an actor's input fields first: staff-apify schema <alias or store:user/actor>.")
+    return 0
+
+
 def resolve(alias: str) -> str:
     a = (alias or "").strip().lower()
+    if a.startswith("store:"):
+        return _store_alias(a[6:])
     a = ALIASES.get(a, a)
     if a in CATALOG:
         return a
@@ -497,6 +601,7 @@ EXAMPLES = {
     "threads": {"mode": "search", "keywords": ["coffee subscription"], "max_posts": 20},
     "linkedin-company": {"companies": ["https://www.linkedin.com/company/example"]},
     "reddit": {"searchTerms": ["best budget espresso machine"], "maxPostsCount": 10},
+    "prices": {"keyword": "espresso machine", "marketplaces": ["www.amazon.com"], "maxProductResults": 10},
     "amazon-reviews": {"productUrls": [{"url": "https://www.amazon.com/dp/B000000000"}], "maxReviews": 20},
 }
 
@@ -859,6 +964,8 @@ def main(argv=None) -> int:
             return cmd_list()
         if cmd == "budget":
             return cmd_budget()
+        if cmd == "find":
+            return cmd_find(" ".join(args[1:]))
         if cmd == "verify":
             return cmd_verify()
         if cmd == "schema":
