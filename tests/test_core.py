@@ -437,9 +437,12 @@ class LiveSteps(unittest.TestCase):
         hire.hire("Tess", "Research", supervisor="Alex")
         self.emp = engine.employee("tess")
         self.real = engine.resolve_claude
+        self.real_online = engine.online
+        engine.online = lambda *a, **k: True               # the fake claude needs no internet
 
     def tearDown(self):
         engine.resolve_claude = self.real
+        engine.online = self.real_online
 
     def fake(self, sleep=0):
         p = os.path.join(TMP, "fake-claude")

@@ -272,7 +272,8 @@ OLD_GOALS = "_Agreed with {supervisor}. Until then: do the scope well, stay quie
 
 def upgrade_workspace(emp_id: str) -> None:
     """Brings an existing crew member up to the kit's current way of working (run by staffd on start): a
-    PLAN.md if missing, the proactive GOALS placeholder, and once, the standup and initiative routines on."""
+    PLAN.md if missing (with a Reviews section), the proactive GOALS placeholder, and once each: the standup and
+    initiative routines on (0.6), the end-of-day and weekly review on (0.7)."""
     reg = engine.registry()
     e = reg.get("employees", {}).get(emp_id)
     if not e or e.get("status") == "retired":
@@ -302,6 +303,15 @@ def upgrade_workspace(emp_id: str) -> None:
         if "abilities" in e:
             e["abilities"] = sorted(set(e["abilities"]) | {"standup", "initiative"})
         engine.save_registry(reg, "proactive routines on for %s" % emp_id)
+    if not e.get("strategy_v1"):                        # 0.7: score the day, get tomorrow ready, review the plan weekly
+        reg = engine.registry()
+        e = reg["employees"][emp_id]
+        e["strategy_v1"] = True
+        if "abilities" in e:
+            e["abilities"] = sorted(set(e["abilities"]) | {"eod", "review"})
+        engine.save_registry(reg, "assessment routines on for %s" % emp_id)
+    import plan as plans
+    plans.ensure_reviews(emp_id)
 
 
 def set_status(emp_id: str, status: str) -> None:

@@ -28,18 +28,20 @@ ORDERS = os.path.join(TEAM, "orders.jsonl")      # what owners asked for in the 
 CHATLOG = os.path.join(TEAM, "chatlog.jsonl")
 DAYS = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
 JOBS = {"brief": "Morning brief", "standup": "Standup", "initiative": "Initiative", "eod": "End of day",
-        "scout": "Self-improvement", "evals": "Weekly self-test"}
+        "review": "Weekly review", "scout": "Self-improvement", "evals": "Weekly self-test"}
 LABELS = {**JOBS, "first_day": "First day", "minutes": "Meeting minutes", "followup": "a follow-up", "learn": "your know-how",
           "bus": "a colleague's question"}
 PAIRING = os.path.join(TEAM, "pairing.json")     # the one-time code that links an owner's phone to the team
 DEFAULT_JOBS = {"brief": {"at": "08:30", "days": "work"}, "standup": {"at": "09:00", "days": "work"},
                 "initiative": {"at": "13:00", "days": "work"},
-                "eod": {"at": "17:00", "days": "work"}, "scout": {"at": "19:00", "days": "daily"},
+                "eod": {"at": "17:00", "days": "work"}, "review": {"at": "15:00", "days": "last_workday"},
+                "scout": {"at": "19:00", "days": "daily"},
                 "evals": {"at": "10:00", "days": "Fri"}}
 LOCKS = {}                 # one run at a time per employee
 DOING = {}                 # employee id → what they're running now
 LIVE = {}                  # employee id → {"doing", "started", "steps"}: the live work view
 LAST = {}                  # employee id → the finished run's receipt {"steps", "secs", "cost_usd"}
+SLOTS = []                 # routines running at once across the crew (registry "parallel_routines", default 2)
 _io = threading.Lock()
 
 
@@ -255,9 +257,19 @@ def fmt_tokens(n):
     return "%.1fM" % (n / 1e6) if n >= 1e6 else "%dk" % round(n / 1e3) if n >= 1e3 else str(n)
 
 
-def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None, extra_env=None, said=None, channel=None):
+def routine_slot():
+    """A crew of many shares one Claude plan: at most N routines run at once (the rest queue a few minutes).
+    Chats and owner requests never wait for a slot."""
+    if not SLOTS:
+        SLOTS.append(threading.BoundedSemaphore(max(1, int(engine.registry().get("parallel_routines") or 2))))
+    return SLOTS[0]
+
+
+def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None, extra_env=None, said=None, channel=None,
+              retry=None):
     """Runs an employee in the background (one run at a time each). on_done(output) gets the final text.
-    `said` is the owner's own words (for the chat log); the prompt wraps them."""
+    `said` is the owner's own words (for the chat log); the prompt wraps them. A routine that fails because this
+    computer was offline or the plan's limit was hit calls retry() instead of telling anyone: it runs again later."""
     if job == "chat":
         import calls                                      # on a live call: point them at the running transcript
         prompt += calls.live_note(emp_id)
@@ -268,6 +280,10 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
             emp = engine.employee(emp_id)
             if job in DEFAULT_JOBS and over_budget(emp):     # routines wait; chats and owner requests never do
                 return
+            routine = job in DEFAULT_JOBS
+            if routine:
+                DOING[emp_id] = "Waiting for a free slot for %s" % LABELS.get(job, job)
+                routine_slot().acquire()
             DOING[emp_id] = ("Talking with %s" % who) if job == "chat" and who else "Working on %s" % LABELS.get(job, job)
             LIVE[emp_id] = {"doing": DOING[emp_id], "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "steps": []}
 
@@ -281,14 +297,22 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
             finally:
                 DOING.pop(emp_id, None)
                 LIVE.pop(emp_id, None)
+                if routine:
+                    routine_slot().release()
             LAST[emp_id] = {"steps": res.get("steps") or [], "secs": res.get("secs"), "cost_usd": res.get("cost_usd")}
+            if not res["ok"] and routine and res.get("transient") and retry:
+                log("%s/%s failed (%s): retrying later" % (emp_id, job, (res.get("error") or "")[:80]))
+                retry()
+                return
             out = res["text"]
+            if not res["ok"] and routine:
+                on_done = None                            # "please resend" is for chats; a routine says it below
             if on_done:
                 try:
                     on_done(out)
                 except Exception:  # noqa: BLE001
                     log("on_done error: %s" % traceback.format_exc()[-300:])
-            if job == "chat" or (out and not out.upper().startswith("SILENT")):
+            if job == "chat" or ((res["ok"] or not routine) and out and not out.upper().startswith("SILENT")):
                 for c in deliver_to:
                     send(c, out, emp)
             if job == "chat":
@@ -303,8 +327,13 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
                 if not st.get(k):
                     st[k] = 1
                     jsave(STATEF, st)
+                    note = "My %s didn't run: %s. I'll pick it up at my next routine." % (
+                        JOBS.get(job, job).lower(), engine.why_failed(res.get("error") or ""))
+                    feed(emp_id, emp["name"], emp.get("supervisor", "team"), note, "job")
                     for c in to_people(emp, "supervisor"):
-                        send(c, "My %s run failed (%s). I'll retry next time." % (JOBS.get(job, job), res["error"][:120]), emp)
+                        send(c, note, emp)
+            if not res["ok"] and routine:
+                return
             subprocess.run(["git", "add", "-A"], cwd=emp["workspace"], capture_output=True)
             subprocess.run(["git", "-c", "user.name=%s" % emp["name"], "-c", "user.email=%s@staffroom.local" % emp_id,
                             "commit", "-qm", "%s: %s" % (job, (out.splitlines() or ["-"])[0][:80])],
@@ -387,8 +416,11 @@ def job_spec(emp, job):
 def due_today(spec_days, wd):
     if spec_days == "daily":
         return True
+    work = engine.registry().get("workdays", ["Mon", "Tue", "Wed", "Thu", "Fri"])
     if spec_days == "work":
-        return wd in [DAYS[d] for d in engine.registry().get("workdays", ["Mon", "Tue", "Wed", "Thu", "Fri"])]
+        return wd in [DAYS[d] for d in work]
+    if spec_days == "last_workday":                    # the week's last workday, in the owner's own week (Sun–Thu, Mon–Fri…)
+        return bool(work) and wd == DAYS.get(work[-1], 4)
     return wd in [DAYS[d] for d in str(spec_days).split(",") if d in DAYS]
 
 

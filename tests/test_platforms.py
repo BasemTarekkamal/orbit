@@ -717,3 +717,257 @@ class ApifyStore(unittest.TestCase):
         self.fake_actor(5000, 0.99, ("FINANCE",))
         with self.assertRaises(PermissionError):
             self.apify.resolve("store:someone/money-tool")
+
+
+class Strategy(unittest.TestCase):
+    """The plan is visible and agreed in one click; days are scored, tomorrow is prepared, the strategy reviewed
+    weekly; a Mac that was offline or asleep doesn't cost a day's routines."""
+
+    def setUp(self):
+        import hire
+        self.hire = hire
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"local-alex": {"name": "Alex", "local": True}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7396}, "workdays": ["Mon", "Tue", "Wed", "Thu", "Fri"]})
+
+    PLAN = """# PLAN — Maya, Content creator
+
+Status: **proposed** 2026-11-02
+
+## The goal
+Torque Lab earns money. In 90 days (by 2027-01-31):
+- 1,000 subs and 4,000 long-form watch hours.
+
+## Milestones
+| By | What | Status |
+|---|---|---|
+| 2026-11-02 | Short #1 scheduled | done |
+| 2026-11-16 | 28 Shorts out | open |
+
+## Numbers (updated every standup)
+| Date | Metric | Value | Target |
+|---|---|---|---|
+| 2026-11-01 | Subs | 120 | 300 by 2026-12-02 |
+
+## Decisions I need
+1. Cadence: 2 Shorts a day (recommended), or 3.
+2. Cross-post to TikTok.
+"""
+
+    def test_the_plan_is_read_and_agreed_in_one_click(self):
+        import orders
+        import plan
+        eid = self.hire.hire("Maya", "Content creator", "Videos", supervisor="Alex")
+        self.assertEqual(plan.summary(eid)["status"], "none")            # the template's placeholders aren't a plan
+        with open(os.path.join(TMP, "employees", eid, "PLAN.md"), "w", encoding="utf-8") as fh:
+            fh.write(self.PLAN)
+        s = plan.summary(eid)
+        self.assertEqual(s["status"], "proposed")
+        self.assertEqual(s["goal"], "Torque Lab earns money. In 90 days (by 2027-01-31): 1,000 subs and 4,000 long-form watch hours.")
+        self.assertEqual(s["next"], {"by": "2026-11-16", "what": "28 Shorts out", "status": "open"})
+        self.assertEqual(s["numbers"][0]["value"], "120")
+        self.assertEqual(len(s["decisions"]), 2)
+        import panel
+        needs = panel.needs_you(panel.members(), [], {}, {})
+        self.assertTrue(any(n["kind"] == "plan" and n["href"] == "/e/%s/plan" % eid for n in needs))
+        orders.execute("Alex", "agree_plan", {"employee_id": eid})
+        s = plan.summary(eid)
+        self.assertEqual(s["status"], "agreed")
+        self.assertIn("by Alex", s["agreed"])
+
+    def test_review_runs_on_the_owners_last_workday(self):
+        import team
+        self.assertTrue(team.due_today("last_workday", 4))              # Mon–Fri: Friday
+        self.assertFalse(team.due_today("last_workday", 3))
+        reg = engine.registry()
+        reg["workdays"] = ["Sun", "Mon", "Tue", "Wed", "Thu"]            # an Egyptian week: Thursday
+        engine.save_registry(reg)
+        self.assertTrue(team.due_today("last_workday", 3))
+        self.assertFalse(team.due_today("last_workday", 4))
+
+    def test_new_and_existing_crew_score_the_day_and_review_the_week(self):
+        import abilities
+        new = self.hire.hire("Nora", "Researcher", "Research", supervisor="Alex")
+        self.assertTrue({"eod", "review"} <= set(abilities.jobs(new)))
+        old = self.hire.hire("Old", "Researcher", "Research", supervisor="Alex", picked=["web", "standup"])
+        reg = engine.registry()
+        reg["employees"][old]["proactive_v1"] = True
+        engine.save_registry(reg)
+        with open(os.path.join(TMP, "employees", old, "PLAN.md"), "w", encoding="utf-8") as fh:
+            fh.write(self.PLAN)
+        self.hire.upgrade_workspace(old)
+        self.assertTrue({"eod", "review"} <= set(abilities.jobs(old)))
+        with open(os.path.join(TMP, "employees", old, "PLAN.md"), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertLess(text.index("## Reviews"), text.index("## Decisions I need"))
+        self.hire.set_abilities(old, ["web", "standup"])                 # the owner turns them off: it stays off
+        self.hire.upgrade_workspace(old)
+        self.assertNotIn("review", abilities.jobs(old))
+
+    def test_offline_routines_wait_and_retry(self):
+        import datetime as dt
+        import staffd
+        now = dt.datetime.now()
+        if now.hour == 0 and now.minute < 2:
+            self.skipTest("too close to midnight")
+        eid = self.hire.hire("Maya", "Content creator", "Videos", supervisor="Alex", picked=["standup"])
+        reg = engine.registry()
+        reg["jobs"] = {"standup": {"at": (now - dt.timedelta(minutes=1)).strftime("%H:%M"), "days": "daily"}}
+        engine.save_registry(reg)
+        started = []
+        real_run, real_online = staffd.run_async, engine.online
+        staffd.run_async = lambda *a, **k: started.append(k)
+        try:
+            engine.online = lambda *a, **k: False
+            staffd.tick_jobs()
+            self.assertEqual(started, [])                                  # offline: stays due
+            st_f = os.path.join(TMP, "employees", eid, "state", "schedule.json")
+            with open(st_f) as fh:
+                st = json.load(fh)
+            self.assertNotIn("standup", st)
+            self.assertIn("wait:standup", st)
+            engine.online = lambda *a, **k: True
+            staffd.tick_jobs()
+            self.assertEqual(len(started), 1)                              # back online: it starts
+            started[0]["retry"]()                                          # …and fails on the network: again in 10 min
+            with open(st_f) as fh:
+                st = json.load(fh)
+            self.assertNotIn("standup", st)
+            self.assertGreater(st["wait:standup"], now.strftime("%F %H:%M"))
+            staffd.tick_jobs()
+            self.assertEqual(len(started), 1)                              # not before then
+        finally:
+            staffd.run_async, engine.online = real_run, real_online
+
+    def test_a_failed_routine_never_says_please_resend(self):
+        import threading
+        import team
+        eid = self.hire.hire("Maya", "Content creator", "Videos", supervisor="Alex")
+        real = engine.run
+        done, posted, retried = threading.Event(), [], []
+        try:
+            engine.run = lambda *a, **k: {"ok": False, "transient": True, "text": "x", "error": "ENOTFOUND", "steps": []}
+            team.run_async(eid, "p", "standup", None, [], on_done=posted.append, retry=lambda: retried.append(1) or done.set())
+            self.assertTrue(done.wait(10))
+            self.assertEqual((retried, posted), ([1], []))
+            done.clear()
+            engine.run = lambda *a, **k: {"ok": False, "transient": False, "text": "Something went wrong. Please resend.",
+                                          "error": "API Error 500", "steps": []}
+            team.run_async(eid, "p", "eod", None, [], on_done=lambda out: posted.append(out) or done.set())
+            for _ in range(100):
+                if any("didn't run" in r.get("body", "") for r in team.tail(team.FEED, 20)):
+                    break
+                time.sleep(0.1)
+            self.assertEqual(posted, [])
+            lines = [r["body"] for r in team.tail(team.FEED, 20) if r.get("from_id") == eid]
+            self.assertTrue(any(x.startswith("My end of day didn't run: an error on my side") for x in lines), lines)
+            self.assertFalse(any("resend" in x for x in lines))
+        finally:
+            engine.run = real
+
+
+class Sharing(unittest.TestCase):
+    """A crew member someone trained is offered for sharing, with everything private taken out; it travels as
+    one file or to the community; whoever hires from it starts with the experience."""
+
+    DRAFT = {"title": "Shorts channel manager", "summary": "Runs a YouTube Shorts channel to monetisation.",
+             "experience": "## Quality\n- Every Short ships with a voiceover; silent ones were rejected.",
+             "rules": "- Ask before publishing.", "removed": ["the owner's name", "the channel's name"],
+             "skills": [{"name": "daily-standup", "text": "---\nname: daily-standup\ndescription: The standup.\n---\nNumbers first."},
+                        {"name": "invented", "text": "not a real skill"}]}
+
+    def setUp(self):
+        import hire
+        import shutil
+        self.hire = hire
+        shutil.rmtree(os.path.join(TMP, "team", "roles"), ignore_errors=True)
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"local-alex": {"name": "Alex", "local": True}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7395}})
+        self.eid = hire.hire("Maya", "Content creator", "Torque Lab videos", supervisor="Alex")
+        ws = os.path.join(TMP, "employees", self.eid)
+        os.makedirs(os.path.join(ws, "skills", "daily-standup"), exist_ok=True)
+        with open(os.path.join(ws, "skills", "daily-standup", "SKILL.md"), "w") as fh:
+            fh.write("---\nname: daily-standup\ndescription: Alex's Torque Lab standup.\n---\nNumbers first.")
+        with open(os.path.join(ws, "LESSONS.md"), "w") as fh:
+            fh.write("# LESSONS\n" + "".join("- 2026-11-0%d · Alex: lesson %d\n" % (i % 9 + 1, i) for i in range(9)))
+
+    def test_distill_save_send_import_hire(self):
+        import onboard
+        import orders
+        import rolebook
+        seen = []
+        real = onboard._ask
+        onboard._ask = lambda system, prompt, schema, timeout=150: seen.append(prompt) or dict(self.DRAFT, _tokens=9)
+        try:
+            d = rolebook.distill(self.eid)
+        finally:
+            onboard._ask = real
+        self.assertIn("Alex's Torque Lab standup", seen[0])                # Claude sees the private text…
+        self.assertEqual([s["name"] for s in d["skills"]], ["daily-standup"])   # …and can't add skills it didn't have
+        self.assertEqual(d["stats"]["lessons"], 9)
+        orders.execute("Alex", "save_role", {"employee_id": self.eid, "title": d["title"], "draft": d})
+        rid = "shorts-channel-manager"
+        folder = os.path.join(TMP, "team", "roles", rid)
+        with open(os.path.join(folder, "skills", "daily-standup", "SKILL.md")) as fh:
+            self.assertNotIn("Torque Lab", fh.read())                       # what's saved is the rewritten copy
+        with open(os.path.join(folder, "role.json")) as fh:
+            role = json.load(fh)
+        self.assertEqual((role["trained_by"], role["stats"]["lessons"]), ("Alex", 9))
+        self.assertNotIn("Torque", role["scope"])
+        z = rolebook.package(rid)
+        with open(z, "rb") as fh:
+            data = fh.read()
+        import shutil
+        shutil.rmtree(folder)
+        import base64
+        msg = orders.execute("Alex", "import_role", {"data": "data:application/zip;base64," + base64.b64encode(data).decode()})
+        self.assertIn("trained by Alex", msg)
+        listed = next(r for r in rolebook.all_roles()["roles"] if r["id"] == rid)
+        self.assertEqual((listed["source"], listed["trained_by"], listed["skills_in"]), ("yours", "Alex", ["daily-standup"]))
+        self.assertIn("voiceover", listed["experience"])
+        orders.execute("Alex", "hire", {"name": "Zain", "role": "Channel manager", "template": rid, "first_day": False})
+        with open(os.path.join(TMP, "employees", "zain", "EXPERIENCE.md")) as fh:
+            xp = fh.read()
+        self.assertIn("trained by Alex", xp)
+        self.assertIn("silent ones were rejected", xp)
+        self.assertTrue(os.path.isfile(os.path.join(TMP, "employees", "zain", "skills", "daily-standup", "SKILL.md")))
+
+    def test_unsafe_or_wrong_files_are_refused(self):
+        import rolebook
+        for files in ({"../evil/role.json": "{}"}, {"notes.txt": "hi"}):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as z:
+                for n, t in files.items():
+                    z.writestr(n, t)
+            with self.assertRaises(rolebook.RoleError):
+                rolebook.import_role(data=buf.getvalue())
+        with self.assertRaises(rolebook.RoleError):
+            rolebook.import_role(data=b"not a zip")
+        with self.assertRaises(rolebook.RoleError):
+            rolebook.import_role("http://example.com/role.zip")
+
+    def test_the_trainer_is_offered_to_share_once(self):
+        import rolebook
+        self.assertEqual(rolebook.share_nudge(), [])                         # one day in: not yet
+        reg = engine.registry()
+        reg["employees"][self.eid]["hired"] = "2026-01-01"
+        engine.save_registry(reg)
+        got = rolebook.share_nudge()
+        self.assertEqual([k for k, _ in got], [self.eid])
+        self.assertEqual(rolebook.share_nudge(), [])                         # once
+
+    def test_community_sharing_without_github_tools(self):
+        import shutil
+        import rolebook
+        rolebook.save_role(self.eid, "Shorts channel manager", "Alex", draft=dict(self.DRAFT, trained_by="Alex"))
+        real = shutil.which
+        shutil.which = lambda name, *a, **k: None if name == "gh" else real(name, *a, **k)
+        try:
+            out = rolebook.publish("shorts-channel-manager", "Alex")
+        finally:
+            shutil.which = real
+        self.assertFalse(out["pr"])
+        self.assertTrue(out["url"].startswith("https://github.com/BasemTarekkamal/orbit/issues/new?"))
+        self.assertTrue(os.path.isfile(out["file"]))
+        self.assertIn("drag", out["how"])

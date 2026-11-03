@@ -117,8 +117,13 @@ and claim comes with a source link.
   or use the control panel. A new hire has the full toolbelt from day one.
 - **Colleagues:** employees ask each other on the team bus (your researcher asks your finance
   assistant for last month's ad spend) and you see every exchange in the team room.
-- **Routines:** morning brief, standup, end of day, a daily self-improvement scout, and a weekly
-  self-test against their own test cases. Each one can be switched on or off.
+- **A plan, scored and re-planned:** each crew member proposes its plan (the goal in numbers, how, the cadence,
+  milestones) and you agree to it in one click on its Plan tab. Every evening it scores the day (what
+  worked, what didn't) and gets tomorrow's work ready; every week it reviews the strategy against the
+  numbers and changes what isn't working, bringing big changes to you as a decision.
+- **Routines:** morning brief, standup, a midday initiative, end of day, a weekly review, a daily
+  self-improvement scout, and a weekly self-test. Each one can be switched on or off. If your computer was
+  asleep or offline when one was due, it runs when the internet is back.
 - **Memory in files:** each employee keeps STATE, TASKS, GOALS and LESSONS in its own folder (a git
   repository). Correct them once and they write the lesson down.
 - **They learn:** tell one "from now on, when I ask for X, do Y" and it writes a skill it loads on
@@ -203,8 +208,12 @@ An autonomous agent that reads the open web needs locks, not promises. Every run
   ones that would help; you say yes in Claude, in chat ("connect Maya to Canva") or in their Manage tab, and
   sign in to the app once. Money apps are read-only.
 - **Your experience, built in:** "Teach from your experience" (paste or attach your playbook; they turn it into
-  skills and rules), and "Save as a role" (a trained crew member becomes a role you hire from again, or share:
-  `orbit roles export`, or a pull request to `core/roles.d/`).
+  skills and rules).
+- **Share what they learned:** after a week of real learning Orbit offers it to whoever trained them. One
+  click prepares a copy (the job, rules, skills and experience) with names, accounts, links and your numbers
+  taken out; you read and edit every word; then send it as one file (anyone adds it on their hiring page,
+  from the file or a link) or to the Orbit community, credited to you. Whoever hires from it starts with
+  that experience.
 - **Updates you choose:** when a new release is out, Mission Control shows what's new with Update and
   Later. Only official releases, only for an unmodified copy of the official repository; never automatic.
 - **Owners only:** only people you approve can direct the team. Strangers who message the bot are

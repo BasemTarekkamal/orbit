@@ -680,3 +680,43 @@ details.adv > summary:hover { color: var(--ink); }
 .connectors .row-form { display: flex; gap: 8px; margin-top: 8px; max-width: 80ch; flex-wrap: wrap; }
 .connectors .row-form .input { flex: 1; min-width: 160px; }
 .manage section h2 svg, .connectors h2 svg { width: 16px; height: 16px; vertical-align: -3px; color: var(--accent-text); }
+
+/* Plan tab: the crew member's strategy, agreed with one click, scored daily, reviewed weekly */
+.plan-head { padding: 16px 18px; margin: 4px 0 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); }
+.plan-head.proposed { border-color: var(--warn); background: var(--warn-soft); }
+.plan-top { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.plan-top .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.plan-top .badge svg { width: 12px; height: 12px; margin-right: 4px; }
+.plan-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 24px; margin-top: 14px; }
+.fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fact .k { font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+.fact b { font-weight: 500; text-wrap: pretty; }
+.plan-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.plan-nums > div { display: flex; flex-direction: column; gap: 1px; }
+.plan-nums b { font-size: 15px; font-weight: 600; }
+.plan-doc { max-width: 80ch; }
+.plans .plan-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+.plans .plan-row .title .badge { margin-left: 6px; vertical-align: 1px; }
+.plans .plan-row .meta { text-wrap: pretty; }
+.needs .row.plan .k { color: var(--warn-text); }
+.share-hint { display: flex; gap: 12px; align-items: center; margin-top: 24px; padding: 14px 16px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--accent-soft); }
+.share-hint > svg { width: 20px; height: 20px; flex: none; color: var(--accent-text); }
+.share-hint > div { flex: 1; }
+.share-form { max-width: 80ch; }
+.share-form .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+.share-form fieldset { border: 0; padding: 0; margin: 0; }
+.skill-pick { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; margin-top: 6px; }
+.skill-pick summary { cursor: pointer; }
+.skill-pick textarea { margin-top: 8px; width: 100%; }
+.share-ways { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 10px; }
+.share-ways li { display: grid; grid-template-columns: max-content 1fr; gap: 12px; align-items: center; }
+.share-ways .btn svg, .share .btn svg { width: 15px; height: 15px; margin-right: 6px; }
+.brings { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg-2); }
+.brings summary { cursor: pointer; font-size: 13px; }
+.brings h4 { margin: 10px 0 4px; font-size: 12px; color: var(--ink-3); }
+.role-import { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); }
+.role-import h2 svg { width: 16px; height: 16px; vertical-align: -3px; color: var(--accent-text); }
+.role-import .row-form { display: flex; gap: 8px; flex-wrap: wrap; max-width: 80ch; }
+.role-import .row-form .input { flex: 1; min-width: 180px; }
+.role-import .file { flex: 1; min-width: 180px; font-size: 13px; color: var(--ink-2); align-self: center; }
+@media (max-width: 640px) { .share-ways li { grid-template-columns: 1fr; } }
