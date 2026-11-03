@@ -305,11 +305,10 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
                 retry()
                 return
             out = res["text"]
-            if not res["ok"] and routine:
-                on_done = None                            # "please resend" is for chats; a routine says it below
-            if on_done:
+            post = on_done if res["ok"] or not routine else None   # "please resend" is for chats; a routine says it below
+            if post:
                 try:
-                    on_done(out)
+                    post(out)
                 except Exception:  # noqa: BLE001
                     log("on_done error: %s" % traceback.format_exc()[-300:])
             if job == "chat" or ((res["ok"] or not routine) and out and not out.upper().startswith("SILENT")):
