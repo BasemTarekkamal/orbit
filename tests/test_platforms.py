@@ -822,10 +822,11 @@ Torque Lab earns money. In 90 days (by 2027-01-31):
             staffd.tick_jobs()
             self.assertEqual(started, [])                                  # offline: stays due
             st_f = os.path.join(TMP, "employees", eid, "state", "schedule.json")
-            with open(st_f) as fh:
-                st = json.load(fh)
+            st = {}
+            if os.path.exists(st_f):
+                with open(st_f) as fh:
+                    st = json.load(fh)
             self.assertNotIn("standup", st)
-            self.assertIn("wait:standup", st)
             engine.online = lambda *a, **k: True
             staffd.tick_jobs()
             self.assertEqual(len(started), 1)                              # back online: it starts
@@ -985,3 +986,410 @@ class Sharing(unittest.TestCase):
         self.assertTrue(out["url"].startswith("https://github.com/BasemTarekkamal/orbit/issues/new?"))
         self.assertTrue(os.path.isfile(out["file"]))
         self.assertIn("drag", out["how"])
+
+
+class Asleep(unittest.TestCase):
+    """A sleeping laptop: no run starts in its few-second wakes, a missed day is made up for in one run, a due
+    follow-up isn't lost, its report reaches the owner, and the computer stays up while a run is going."""
+
+    def setUp(self):
+        import hire
+        self.hire = hire
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"local-alex": {"name": "Alex", "local": True}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7394}, "workdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]})
+        import awake
+        import staffd
+        self.awake, self.staffd = awake, staffd
+        self.real = (staffd.run_async, engine.online, awake._since)
+        self.started = []
+        staffd.run_async = lambda *a, **k: self.started.append((a, k))
+        engine.online = lambda *a, **k: True
+        self.eid = hire.hire("Maya", "Content creator", "Videos", supervisor="Alex", picked=["standup", "eod", "reminders"])
+        self.st_f = os.path.join(TMP, "employees", self.eid, "state", "schedule.json")
+        if os.path.exists(self.st_f):                                     # an earlier test's Maya, same folder
+            os.remove(self.st_f)
+
+    def tearDown(self):
+        self.staffd.run_async, engine.online, self.awake._since = self.real
+
+    def write_schedule(self, st):
+        os.makedirs(os.path.dirname(self.st_f), exist_ok=True)
+        with open(self.st_f, "w") as fh:
+            json.dump(st, fh)
+
+    def test_no_run_starts_in_a_few_second_wake(self):
+        import datetime as dt
+        now = dt.datetime.now()
+        reg = engine.registry()
+        reg["jobs"] = {"standup": {"at": (now - dt.timedelta(minutes=1)).strftime("%H:%M"), "days": "daily"}}
+        engine.save_registry(reg)
+        self.awake._since = time.time() - 5                               # awake for 5 seconds
+        self.assertFalse(self.awake.settled())
+        self.staffd.tick_jobs()
+        self.staffd.tick_reminders()
+        self.assertEqual(self.started, [])
+        self.awake._since = time.time() - 120                             # really awake now
+        self.staffd.tick_jobs()
+        self.assertEqual(len(self.started), 1)
+
+    def test_a_missed_day_is_made_up_for_in_one_run(self):
+        import datetime as dt
+        import team
+        now = dt.datetime.now()
+        reg = engine.registry()
+        at = (now - dt.timedelta(hours=6)).strftime("%H:%M") if now.hour >= 6 else "00:00"
+        if now.hour < 6:
+            self.skipTest("too close to midnight")
+        reg["jobs"] = {"standup": {"at": at, "days": "daily"}, "eod": {"at": at, "days": "daily"}}
+        engine.save_registry(reg)
+        old = (now - dt.timedelta(days=2)).strftime("%F")
+        self.write_schedule({"standup": old, "eod": old})
+        self.staffd.tick_jobs()
+        self.assertEqual(len(self.started), 1)
+        a, k = self.started[0]
+        self.assertEqual(a[2], "catchup")
+        self.assertIn("Standup", a[1])
+        self.assertIn("End of day", a[1])
+        self.assertFalse(any("offline" in r.get("body", "") for r in team.tail(team.FEED, 5)))
+        self.staffd.tick_jobs()
+        self.assertEqual(len(self.started), 1)                            # once
+        k["retry"]()                                                      # the network failed again: it comes back
+        with open(self.st_f) as fh:
+            st = json.load(fh)
+        self.assertEqual(st["catchup"], ["eod", "standup"])
+
+    def test_a_new_routine_is_not_a_missed_one(self):
+        import datetime as dt
+        now = dt.datetime.now()
+        if now.hour < 6:
+            self.skipTest("too close to midnight")
+        reg = engine.registry()
+        reg["jobs"] = {"standup": {"at": (now - dt.timedelta(hours=6)).strftime("%H:%M"), "days": "daily"},
+                       "eod": {"at": (now - dt.timedelta(hours=6)).strftime("%H:%M"), "days": "daily"}}
+        engine.save_registry(reg)
+        self.staffd.tick_jobs()
+        self.assertEqual(self.started, [])
+
+    def test_a_followup_waits_runs_reports_and_retries(self):
+        import datetime as dt
+        import osinfo
+        sys.path.insert(0, os.path.join(KIT, "core", "tools"))
+        import remind
+        import team
+        ws = os.path.join(TMP, "employees", self.eid)
+        past = (dt.datetime.now() - dt.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
+        remind.save(ws, [{"id": "R-0001", "at": past, "to": "me", "text": "Make the batch", "repeat": "daily", "agent": True}])
+        engine.online = lambda *a, **k: False
+        self.staffd.tick_reminders()
+        self.assertEqual(self.started, [])                                # offline: not consumed
+        self.assertEqual(remind.load(ws)[0]["at"], past)
+        engine.online = lambda *a, **k: True
+        self.staffd.tick_reminders()
+        a, k = self.started[0]
+        self.assertEqual(a[2], "followup")
+        shown, real = [], osinfo.notify
+        osinfo.notify = lambda t, b: shown.append(b) or True
+        try:
+            k["on_done"]("Standup: 3 Shorts ready.")                      # no phone channel: it still reaches the owner
+        finally:
+            osinfo.notify = real
+        self.assertTrue(any(r.get("body") == "Standup: 3 Shorts ready." for r in team.tail(team.FEED, 5)))
+        self.assertEqual(shown, ["Standup: 3 Shorts ready."])
+        k["retry"]()
+        ids = [r["id"] for r in remind.load(ws)]
+        self.assertIn("R-0001r", ids)                                     # the failed one comes back in 10 minutes
+        self.assertIn("R-0001", ids)                                      # the daily one still stands
+
+    def test_sleep_is_seen_and_told(self):
+        import panel
+        now = time.time()
+        with open(self.awake.FILE, "w") as fh:
+            json.dump([], fh)
+        self.awake.record(now - 8 * 3600, now - 7 * 3600)
+        self.awake.record(now - 7 * 3600 + 30, now - 3600)                 # a dark wake between: one sleep
+        s = self.awake.slept(24)
+        self.assertEqual(s["longest"], 7.0)
+        needs = panel.needs_you(panel.members(), [], {}, {})
+        self.assertEqual(needs[0]["kind"], "asleep")
+        self.assertIn("slept 7.0 hours", needs[0]["title"])
+        os.remove(self.awake.FILE)
+
+    def test_the_computer_stays_up_during_a_run(self):
+        real = osinfo.KIND
+        try:
+            osinfo.KIND = "mac"
+            self.assertEqual(osinfo.keep_awake_cmd(42, battery=True), ["caffeinate", "-s", "-i", "-w", "42"])
+            self.assertEqual(osinfo.keep_awake_cmd(42), ["caffeinate", "-s", "-w", "42"])
+            self.assertEqual(osinfo.keep_awake_cmd(42, battery=True, seconds=120), ["caffeinate", "-s", "-i", "-t", "120"])
+            osinfo.KIND = "wsl"
+            cmd = osinfo.keep_awake_cmd(42, battery=True)
+            self.assertEqual(cmd[:2], ["bash", "-c"])
+            self.assertIn("kill -0 42", cmd[2])
+            self.assertIn("SetThreadExecutionState(1)", cmd[2])
+        finally:
+            osinfo.KIND = real
+        spawned, real_spawn = [], self.awake._spawn
+        self.awake._spawn = lambda c: spawned.append(c)
+        try:
+            self.awake.hold(42)
+            reg = engine.registry()
+            reg["keep_awake"] = "off"
+            engine.save_registry(reg)
+            self.awake.hold(42)
+        finally:
+            self.awake._spawn = real_spawn
+        self.assertLessEqual(len(spawned), 1)                             # "off" means off
+
+
+class CloudShift(unittest.TestCase):
+    """Laptop first; closed or offline, the crew carries on in the cloud; back, the work comes home. No real cloud here."""
+
+    def setUp(self):
+        import cloud
+        import hire
+        self.cloud, self.hire = cloud, hire
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {"local-alex": {"name": "Alex", "local": True}}, "employees": {},
+                              "defaults": {"model": "sonnet"}, "panel": {"port": 7392}, "workdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+                              "cloud_environment": "env_test"})
+        self.eid = hire.hire("Cleo", "Researcher", "Coffee", supervisor="Alex")
+        self.ws = os.path.join(TMP, "employees", self.eid)
+        if os.path.exists(cloud._path(self.eid)):
+            os.remove(cloud._path(self.eid))
+        self.calls, self.sent = [], []
+        self.real = (cloud.trigger, cloud.send, cloud.new_session, cloud.pull)
+        cloud.trigger = lambda action, tid="", body=None: self.calls.append((action, tid, body)) or {"trigger": {"id": "trig_%d" % len(self.calls)}}
+        cloud.send = lambda sid, text: self.sent.append(text)
+        cloud.new_session = lambda emp, desk, first: "session_new"
+
+    def tearDown(self):
+        self.cloud.trigger, self.cloud.send, self.cloud.new_session, self.cloud.pull = self.real
+
+    def test_the_schedule_skips_only_today(self):
+        import datetime as dt
+        thu = dt.date(2026, 11, 5)
+        days = self.cloud.cron_for("10:00", thu, today=thu).split()[3].split(",")
+        self.assertNotIn("5", days)
+        self.assertIn("6", days)                                         # Friday: on
+        self.assertNotIn("7", days)                                      # Saturday: not a workday here
+        self.assertIn("9", days)
+        everyday = self.cloud.cron_for("14:30", None, today=thu)
+        self.assertEqual(everyday.split()[1:3], ["30", "14"])
+        self.assertIn("5", everyday.split()[3].split(","))
+        self.assertTrue(everyday.startswith("CRON_TZ="))
+
+    def test_setup_makes_one_routine_per_check_time_with_no_connected_apps(self):
+        st = self.cloud.setup(self.eid)
+        self.assertEqual(sorted(st["slots"]), ["10:00", "14:00", "18:00"])     # an hour after standup, initiative, end of day
+        made = [c for c in self.calls if c[0] == "create"]
+        self.assertEqual(len(made), 3)
+        self.assertTrue(all(c[2]["persistent_session_id"] == "session_new" for c in made))
+        self.assertTrue(all(c[2]["notifications"]["channel"]["push"] for c in made))
+        self.assertEqual(sum(1 for c in self.calls if c[2] == {"clear_mcp_connections": True}), 3)
+        self.assertIn("Standing instructions from Alex", self.sent[0])     # the owner's instruction, not a stray prompt
+
+    def test_here_says_skip_gone_it_fires_back_it_pulls(self):
+        import datetime as dt
+        now = dt.datetime.now()
+        if not 1 <= now.hour <= 22:
+            self.skipTest("too close to midnight")
+        reg = engine.registry()
+        reg["workdays"] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        at = (now + dt.timedelta(minutes=30)).strftime("%H:%M")
+        reg["jobs"] = {"standup": {"at": (now + dt.timedelta(minutes=30) - dt.timedelta(hours=1)).strftime("%H:%M")}}
+        engine.save_registry(reg)
+        yesterday = (now - dt.timedelta(days=1)).strftime("%F")
+        self.cloud._save(self.eid, {"session": "session_old", "seeded_at": time.strftime("%F"), "slots": {at: {"trigger": "t1", "skipped": yesterday}}})
+        self.calls.clear()
+        self.cloud._tick_one(self.eid)                                    # 30 minutes ahead, and here: skip today
+        self.assertEqual(self.calls[0][:2], ("update", "t1"))
+        self.assertIn("cron_expression", self.calls[0][2])
+        self.assertEqual(self.cloud.state(self.eid)["slots"][at]["skipped"], now.strftime("%F"))
+        self.calls.clear()
+        self.cloud._tick_one(self.eid)
+        self.assertEqual(self.calls, [])                                  # once a day
+        self.assertFalse(self.cloud.missed(self.cloud.state(self.eid)))
+        # a check time passed with no skip: the cloud took that shift
+        past = (now - dt.timedelta(minutes=30)).strftime("%H:%M")
+        self.cloud._save(self.eid, {"session": "session_old", "seeded_at": time.strftime("%F"), "slots": {past: {"trigger": "t2", "skipped": yesterday}}})
+        self.assertTrue(self.cloud.missed(self.cloud.state(self.eid)))
+        pulled = []
+        self.cloud.pull = lambda e: pulled.append(e) or {"files": 2, "reports": 1}
+        self.cloud._tick_one(self.eid)
+        self.assertEqual(pulled, [self.eid])
+        self.assertEqual(self.cloud.state(self.eid)["session"], "session_old")   # one desk, for good
+        self.assertFalse(self.cloud.missed(self.cloud.state(self.eid)))
+        with open(os.path.join(self.ws, "state", "schedule.json")) as fh:
+            self.assertIn("cloud", json.load(fh)["catchup"])              # and the crew member merges the work
+
+    def test_the_desk_hears_what_changed_here(self):
+        self.cloud.build_desk(self.eid)
+        self.cloud._commit(self.cloud._desk_dir(self.eid))
+        self.assertEqual(self.cloud.delta(self.eid), "")
+        with open(os.path.join(self.ws, "LESSONS.md"), "a") as fh:
+            fh.write("- A new lesson.\n")
+        with open(os.path.join(self.ws, "TASKS.md"), "a") as fh:
+            fh.write("- A new task.\n")
+        change = self.cloud.delta(self.eid)
+        self.assertIn("+- A new lesson.", change)
+        self.assertNotIn("A new task", change)                            # the board travels in the note itself
+        self.assertEqual(self.cloud.delta(self.eid), "")
+
+    def test_the_desk_carries_know_how_not_secrets_or_media(self):
+        for rel, body in (("research/a.md", "notes"), ("content/x.mp4", "video"), ("api_token.txt", "s3cret"), (".env", "KEY=1"),
+                          ("state/cloud.json", "{}"), (".mcp.json", "{}"), ("kit/Poppins.ttf", "font")):
+            p = os.path.join(self.ws, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w") as fh:
+                fh.write(body)
+        desk = self.cloud.build_desk(self.eid)
+        have = {os.path.relpath(os.path.join(b, n), desk) for b, _, ns in os.walk(desk) for n in ns if ".git" + os.sep not in b + os.sep}
+        self.assertTrue({"research/a.md", "kit/Poppins.ttf", "ROLE.md", "CLAUDE.md", "handbook.md", "handoff.py", "PLAN.md"} <= have)
+        self.assertFalse({"content/x.mp4", "api_token.txt", ".env", "state/cloud.json", ".mcp.json"} & have)
+        with open(os.path.join(desk, "CLAUDE.md")) as fh:
+            md = fh.read()
+        self.assertIn("Cleo", md)
+        self.assertIn("Never post, publish, upload, log in", md)
+        with open(os.path.join(desk, "jobs", "standup.md")) as fh:
+            self.assertNotIn("{name}", fh.read())
+        self.assertEqual(subprocess.run(["git", "remote"], cwd=desk, capture_output=True, text=True).stdout, "")   # uploaded as it is
+
+    def test_handoff_prints_what_changed_and_only_once(self):
+        desk = self.cloud.build_desk(self.eid)
+        with open(os.path.join(desk, "research.md"), "w") as fh:
+            fh.write("found it")
+        with open(os.path.join(desk, "render.mp4"), "wb") as fh:
+            fh.write(b"x" * 100)
+        run = lambda: subprocess.run([sys.executable, "handoff.py"], cwd=desk, capture_output=True, text=True).stdout
+        out = run()
+        self.assertIn("<<<ORBIT-FILE research.md\nfound it\n>>>ORBIT-FILE", out)
+        self.assertIn("ORBIT-LEFT-ON-DESK render.mp4 (100 bytes)", out)
+        self.assertTrue(out.strip().endswith("ORBIT-DONE"))
+        self.assertNotIn("research.md", run())
+
+    def test_the_work_comes_home_without_touching_memory(self):
+        import team
+        lines = [{"type": "user", "timestamp": "2026-11-05T07:00:00Z", "message": {"content": [{"type": "tool_result", "content":
+                  "<<<ORBIT-FILE research/new.md\nfresh\n>>>ORBIT-FILE\n<<<ORBIT-FILE PLAN.md\ncloud plan\n>>>ORBIT-FILE\n"
+                  "<<<ORBIT-FILE ../../evil.md\nno\n>>>ORBIT-FILE\n<<<ORBIT-FILE .git/config\nno\n>>>ORBIT-FILE\nORBIT-LEFT-ON-DESK a.mp4 (5 bytes)\nORBIT-DONE"}]}},
+                 {"type": "assistant", "timestamp": "2026-11-05T07:01:00Z", "message": {"content": [{"type": "text", "text": "Cloud shift: wrote research/new.md."}]}},
+                 {"type": "assistant", "timestamp": "2026-11-04T07:01:00Z", "message": {"content": [{"type": "text", "text": "Cloud shift: an older one."}]}}]
+        path = os.path.join(TMP, "transcript.jsonl")
+        with open(path, "w") as fh:
+            fh.write("\n".join(json.dumps(x) for x in lines))
+        self.cloud._transcript = lambda emp, sid: path
+        with open(os.path.join(self.ws, "PLAN.md"), encoding="utf-8") as fh:
+            before = fh.read()
+        self.cloud._save(self.eid, {"session": "session_x", "pulled_upto": "2026-11-04T12:00:00Z"})
+        got = self.real[3](self.eid)
+        self.assertEqual(got["reports"], 1)
+        day = time.strftime("%F")
+        root = os.path.join(self.ws, "notes", "cloud", day)
+        with open(os.path.join(root, "research", "new.md")) as fh:
+            self.assertEqual(fh.read(), "fresh")
+        with open(os.path.join(self.ws, "PLAN.md"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), before)                           # its memory is merged by the crew member, never overwritten
+        self.assertFalse(os.path.exists(os.path.join(self.ws, "notes", "evil.md")))
+        self.assertFalse(os.path.exists(os.path.join(root, ".git")))
+        with open(os.path.join(root, "REPORTS.md")) as fh:
+            self.assertIn("ORBIT-LEFT-ON-DESK a.mp4", fh.read())
+        self.assertTrue(any(r.get("body") == "Cloud shift: wrote research/new.md." for r in team.tail(team.FEED, 5)))
+        self.assertIn("notes/cloud/%s/" % day, self.cloud.merge_note(self.eid))
+        self.assertEqual(self.cloud.merge_note(self.eid), "")             # once
+
+    def test_switching_it_on_and_off(self):
+        import grants
+        self.assertIsNone(grants.from_text("Alex", "Nobody cloud on"))
+        reply = grants.from_text("Alex", "Cleo cloud on")
+        self.assertIn("cloud desk", reply)
+        self.assertTrue(self.cloud.is_on(self.eid))
+        self.calls.clear()
+        reply = grants.from_text("Alex", "Cleo cloud off")
+        self.assertIn("off", reply)
+        self.assertFalse(self.cloud.is_on(self.eid))
+        self.assertTrue(all(c[2] == {"enabled": False} for c in self.calls) and self.calls)
+
+    def test_paused_or_retired_means_no_cloud_shifts(self):
+        import orders
+        self.cloud.enable(self.eid)
+        self.calls.clear()
+        orders.execute("Alex", "pause", {"employee_id": self.eid})
+        self.assertEqual(len(self.calls), 3)
+        self.assertTrue(all(c[2] == {"enabled": False} for c in self.calls))
+        self.calls.clear()
+        orders.execute("Alex", "resume", {"employee_id": self.eid})
+        self.assertTrue(all(c[2].get("enabled") is True for c in self.calls) and self.calls)
+        self.calls.clear()
+        orders.execute("Alex", "retire", {"employee_id": self.eid})
+        self.assertTrue(all(c[2] == {"enabled": False} for c in self.calls) and self.calls)
+
+    def test_new_hires_get_it_and_an_api_key_cant(self):
+        import orders
+        orders.execute("Alex", "hire", {"name": "Nia", "role": "Writer", "first_day": False})
+        self.assertTrue(self.cloud.is_on("nia"))
+        reg = engine.registry()
+        reg["auth"] = "api_key"
+        engine.save_registry(reg)
+        self.assertIn("API key", self.cloud.available())
+        with self.assertRaises(self.cloud.CloudError):
+            self.cloud.enable(self.eid)
+
+
+class ExtraComputing(unittest.TestCase):
+    """The third option: the owner's own private GitHub repository. Never needed; nothing happens until it's connected."""
+
+    def setUp(self):
+        os.makedirs(os.path.join(TMP, "team"), exist_ok=True)
+        engine.save_registry({"team_name": "Test", "owners": {}, "employees": {}, "panel": {"port": 7391}})
+        import compute
+        self.c = compute
+        self.bin = tempfile.mkdtemp(dir=TMP)
+        self.path = os.environ["PATH"]
+
+    def tearDown(self):
+        os.environ["PATH"] = self.path
+
+    def fake_gh(self, visibility="PRIVATE", permission="ADMIN"):
+        log = os.path.join(self.bin, "gh.log")
+        with open(os.path.join(self.bin, "gh"), "w") as fh:
+            fh.write("#!/bin/sh\necho \"$@\" >> %s\ncase \"$1 $2\" in\n"
+                     "\"repo view\") echo '{\"visibility\":\"%s\",\"viewerPermission\":\"%s\"}';;\n"
+                     "\"api repos/a/b/contents/.github/workflows/orbit-compute.yml\") exit 1;;\n"
+                     "*) echo '{}';;\nesac\n" % (log, visibility, permission))
+        os.chmod(os.path.join(self.bin, "gh"), 0o755)
+        os.environ["PATH"] = self.bin + os.pathsep + self.path
+        return log
+
+    def test_connect_needs_a_private_repo_you_can_write_to(self):
+        self.fake_gh("PUBLIC")
+        with self.assertRaisesRegex(self.c.ComputeError, "isn't private"):
+            self.c.connect("a/b")
+        self.fake_gh("PRIVATE", "READ")
+        with self.assertRaisesRegex(self.c.ComputeError, "can't write"):
+            self.c.connect("a/b")
+        log = self.fake_gh()
+        self.assertEqual(self.c.connect("https://github.com/a/b"), "a/b")
+        with open(log) as fh:
+            self.assertIn("-X PUT repos/a/b/contents/.github/workflows/orbit-compute.yml", fh.read())
+        with self.assertRaisesRegex(self.c.ComputeError, "owner/name"):
+            self.c.connect("justaname")
+
+    def test_not_connected_is_fine(self):
+        self.assertEqual(self.c.repo(), "")
+        with self.assertRaisesRegex(self.c.ComputeError, "isn't connected"):
+            self.c.run("echo hi", [], 5)
+
+    def test_only_your_own_files_travel(self):
+        ws = tempfile.mkdtemp(dir=TMP)
+        with self.assertRaisesRegex(self.c.ComputeError, "isn't in your folder"):
+            self.c._within(ws, "../../etc/passwd")
+        with self.assertRaisesRegex(self.c.ComputeError, "doesn't exist"):
+            self.c._within(ws, "nope.txt")
+
+    def test_the_workflow_is_valid_and_has_no_secrets(self):
+        self.assertIn("workflow_dispatch", self.c.WORKFLOW_YML)
+        self.assertIn("contents: read", self.c.WORKFLOW_YML)
+        self.assertNotIn("secrets.", self.c.WORKFLOW_YML)
+        self.assertIn("COMMAND: ${{ inputs.command }}", self.c.WORKFLOW_YML)   # passed by env, never pasted into the script
+

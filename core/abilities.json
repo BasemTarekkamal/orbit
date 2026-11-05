@@ -204,6 +204,15 @@
       "can": "Plan and run your ad campaigns and read their numbers, with you approving every spend"
     },
     {
+      "id": "compute",
+      "name": "Extra computing",
+      "group": "Building",
+      "default": true,
+      "commands": ["staff-compute"],
+      "description": "Only if you connect it in Settings: runs a heavy job on your own private GitHub repository, on your free GitHub Actions minutes, when this computer and the cloud can't. Nothing happens until you connect one.",
+      "can": "Run heavy jobs on your own GitHub, if you connect it"
+    },
+    {
       "id": "build_tools",
       "name": "Builds its own tools",
       "group": "Building",

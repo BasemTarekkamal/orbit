@@ -13,7 +13,7 @@ import hire
 import team
 
 KINDS = ("message", "hire", "pause", "resume", "retire", "run_job", "set_abilities", "set_field", "set_browser", "set_autonomy",
-         "connect", "connector", "teach", "save_role", "publish_role", "import_role", "agree_plan", "call_start", "call_stop")
+         "connect", "connector", "teach", "save_role", "publish_role", "import_role", "agree_plan", "set_cloud", "call_start", "call_stop")
 
 
 class OrderError(ValueError):
@@ -76,6 +76,11 @@ def execute(by, kind, p):
             if p.get("template"):                         # a saved or community role: its skills and rules come along
                 import rolebook
                 rolebook.apply_template(new, re.sub(r"[^a-z0-9-]", "", str(p["template"]))[:40])
+            import cloud
+            if p.get("cloud", True) and not cloud.available():   # the service sets up their cloud desk
+                reg = engine.registry()
+                reg["employees"][new]["cloud_shift"] = True
+                engine.save_registry(reg, "cloud shift on for new hire %s" % new)
             e = engine.registry()["employees"][new]
             team.feed("staff", "Orbit", "team", "%s joined as %s, reporting to %s. Message them here, or /%s (@%s on "
                       "Slack and Discord) in your chat." % (e["name"], e["role"], e["supervisor"], new, new), "panel")
@@ -86,6 +91,15 @@ def execute(by, kind, p):
         elif kind in ("pause", "resume", "retire"):
             e = _emp(eid, want_active=False)
             hire.set_status(eid, {"pause": "paused", "resume": "active", "retire": "retired"}[kind])
+            import cloud
+            if cloud.is_on(eid) and cloud.state(eid).get("slots"):
+                try:                                      # resuming: the next tick brings them back on schedule
+                    if kind == "resume":
+                        cloud.rearm(eid, cloud.state(eid))
+                    else:
+                        cloud.hold(eid)
+                except cloud.CloudError as ex:
+                    team.log("cloud %s: %s" % (eid, ex))
             verb = {"pause": "Paused", "resume": "Resumed", "retire": "Retired"}[kind]
             summary, res = "%s %s" % (kind.capitalize(), e["name"]), "%s %s" % (verb, e["name"])
         elif kind == "run_job":
@@ -193,6 +207,14 @@ def execute(by, kind, p):
             except (rolebook.RoleError, ValueError, OSError) as ex:
                 raise OrderError(str(ex) or "Couldn't read that role")
             summary = "Add a role"
+        elif kind == "set_cloud":                         # the owner's choice: work on in the cloud when this computer is away
+            e = _emp(eid, want_active=False)
+            import cloud
+            try:
+                res = cloud.enable(eid, by) if p.get("on") else cloud.disable(eid, by)
+            except cloud.CloudError as ex:
+                raise OrderError(str(ex))
+            summary = "Cloud shift for %s" % e["name"]
         elif kind == "agree_plan":
             e = _emp(eid, want_active=False)
             import plan

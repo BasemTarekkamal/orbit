@@ -15,6 +15,7 @@
   orbit secret telegram | slack | discord | apify | anthropic    save a token (typed hidden, stored only on this computer)
   orbit group <chat id> [--channel telegram|slack|discord]      use a group or channel as the team chat
   orbit roles list | save <handle> [title] | export <role> [folder] | import <folder>   roles you can hire from
+  orbit cloud on|off|status <handle>                     keep working in Anthropic's cloud when this computer is away
   orbit doctor                     check everything the team needs
   orbit doctor --get-voice-model   download the speech model for voice notes and calls (~550 MB)
   orbit doctor --get-whisper       Windows/Linux: build the speech engine (whisper.cpp) for this computer
@@ -244,6 +245,13 @@ def stop():
     else:
         stop_service_run()
     say("Stopped. `orbit start` to bring the team back.")
+    try:
+        import cloud
+        on = [k for k in engine.registry().get("employees", {}) if cloud.is_on(k)]
+        if on:
+            say("Their cloud shifts still run while this is stopped. To stop those too: orbit cloud off <handle> (%s)." % ", ".join(on))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # Windows (WSL) and Linux. Linux with systemd: a user service. Windows: WSL closes Linux soon after its
@@ -594,6 +602,8 @@ def main():
     sub.add_parser("demo").add_argument("--stop", action="store_true", help="end the demo")
     ro = sub.add_parser("roles")                         # your own roles: save, share, import
     ro.add_argument("action", choices=["list", "save", "export", "import"]); ro.add_argument("args", nargs="*")
+    cl = sub.add_parser("cloud")                         # the cloud shift: on, off, status
+    cl.add_argument("action", choices=["on", "off", "status"]); cl.add_argument("handle")
     gr = sub.add_parser("grant")                         # called by the guard after an owner's Yes in Claude
     gr.add_argument("handle"); gr.add_argument("kind", choices=["autonomy", "browser", "connect", "connector"]); gr.add_argument("args", nargs="*")
     for c in ("start", "stop", "restart", "status", "panel", "list", "logs", "service-run"):
@@ -632,6 +642,16 @@ def main():
         return start()
     if args.cmd == "service-run":
         return service_run()
+    if args.cmd == "cloud":
+        import cloud
+        try:
+            if args.action == "status":
+                print(json.dumps(cloud.status(args.handle), indent=1))
+            else:
+                say(cloud.enable(args.handle, "owner") if args.action == "on" else cloud.disable(args.handle, "owner"))
+        except (cloud.CloudError, KeyError) as e:
+            sys.exit(str(e))
+        return
     if args.cmd == "roles":
         import rolebook
         a = args.args

@@ -494,6 +494,7 @@ function cardHtml(sel, ob, name, from) {
         <p class="meta">Apps ${esc(name || 'they')} can work in. The first time, you sign in to each in a Claude session with them. More in Manage, any time.</p></section>` : ''}
       <section class="wide grant"><h3>${icon('claude')} How independent?</h3>
         <div class="seg budget" role="group" aria-label="Independence"><button type="button" class="${ed.autonomy ? '' : 'on'}" data-act="ob-autonomy" data-v=""><b>Checks in with me</b><span>Asks before anything new or public</span></button><button type="button" class="${ed.autonomy ? 'on' : ''}" data-act="ob-autonomy" data-v="1"><b>Full autonomy</b><span>Does the whole job, finds its own tools; the sandbox keeps it in its folder</span></button></div></section>
+      <p class="meta card-cloud">${icon('claude')} If this ${MAC()} is closed or offline, they keep working in Anthropic's cloud, on your Claude plan. Turn it off any time in their Manage tab.</p>
       <section><h3>Tools</h3>${access}</section>
       <section><h3>Routines</h3><div class="chips">${routines}</div><p class="meta">Reports land in the team room and on your phone.</p></section>
       <section class="wide"><h3>Weekly budget on your Claude plan</h3><div class="seg budget" role="group" aria-label="Weekly budget">${budget}</div>
@@ -633,7 +634,7 @@ PAGES.today = () => {
     const L = d.live[e.id];
     return `<a class="row" href="/e/${e.id}">${avatar(e.id, e.name)}<div><div class="title">${esc(e.name)} <span class="meta">${esc(L.doing || '')}</span></div><div class="now-step"><i class="dot working"></i>${esc(lastStep(e.id))}</div></div><span class="meta num" data-since="${esc(L.started)}"></span></a>`;
   }).join('')}</div></section>` : '';
-  const kinds = { owner: 'user', failed: 'alert', paused: 'pause', waiting: 'clock', reminder: 'bell', usage: 'gauge', plan: 'target' };
+  const kinds = { owner: 'user', failed: 'alert', paused: 'pause', waiting: 'clock', reminder: 'bell', usage: 'gauge', plan: 'target', asleep: 'alert' };
   const plans = emps.length ? `<section><div class="sec-head"><h2>Plans</h2><span class="meta">what each one is working toward</span></div><div class="list plans">${emps.map((e) => {
     const p = e.plan || {}, st = p.status || 'none';
     const badge = st === 'agreed' ? '<span class="badge accent">agreed</span>' : st === 'proposed' ? '<span class="badge warn">needs your OK</span>' : '<span class="badge">no plan yet</span>';
@@ -708,6 +709,16 @@ async function loadConnectors(emp, q = '') {
   try { S.conn = { ...(S.conn || {}), [emp]: { ...(await api(`/api/connectors?emp=${encodeURIComponent(emp)}&q=${encodeURIComponent(q)}`)), q } }; }
   catch (err) { S.conn = { ...(S.conn || {}), [emp]: { granted: [], suggested: [], results: [], q } }; }
   S.connLoading = ''; render(false);
+}
+// Laptop first; when this computer is closed or offline, they keep working on Anthropic's cloud, on the owner's plan.
+function cloudSection(e) {
+  const c = e.cloud || {};
+  const state = c.on ? `<span class="badge accent">On</span>` : `<span class="badge">Off</span>`;
+  const when = c.on && c.next_shift ? `<p class="meta">While this ${MAC()} is on, ${esc(e.name)} works here. If it's closed or offline, the next cloud shift starts ${esc(c.next_shift)}.${c.last_shift ? ` Last cloud shift: ${esc(c.last_shift)}.` : ''}${c.session ? ` <a class="link" href="${esc(c.session)}" target="_blank" rel="noopener">Open their cloud desk</a>` : ''}</p>` : '';
+  return `<section class="grant"><h2>${icon('claude')} Cloud shift</h2>
+    <p class="desc">${esc(e.name)} works on this ${MAC()} first. When it's closed or offline, they carry on in Anthropic's cloud, on your own Claude plan: research, plans, scripts and code, with a report to your phone. When this ${MAC()} is back, they bring that work home. The cloud has no access to your Chrome or your accounts, so anything that needs them waits for this ${MAC()}. ${state}</p>
+    ${when}${c.error ? `<p class="meta warn-text">${esc(c.error)}</p>` : ''}${c.why_not ? `<p class="meta warn-text">${esc(c.why_not)}</p>` : ''}
+    <div class="save-bar"><button type="button" class="btn ${c.on ? '' : 'btn-primary'}" data-act="order" data-kind="set_cloud" data-emp="${e.id}" data-on="${c.on ? '' : '1'}" ${c.why_not ? 'disabled' : ''}>${c.on ? 'Turn off' : 'Turn on the cloud shift'}</button></div></section>`;
 }
 function autonomySection(e) {
   const on = (e.abilities || []).includes('full_autonomy');
@@ -995,6 +1006,7 @@ function tabManage(e, dt) {
     <section><h2>Run a routine now</h2><p class="desc">The result shows up in the chat and the team room.</p>
       <div class="save-bar"><select class="select auto" id="run-job" aria-label="Routine">${jobs}</select><button class="btn" data-act="order" data-kind="run_job" data-emp="${e.id}" data-from="#run-job" ${paused ? 'disabled' : ''}>Launch now</button></div></section>
     <section><h2>Model</h2><p class="desc">${esc(e.name)} switches to the lightest model on their own when your plan is nearly used up.</p><div><select class="select auto" data-field="model" data-emp="${e.id}" aria-label="Model">${models}</select></div></section>
+    ${cloudSection(e)}
     ${autonomySection(e)}
     ${browserSection(e)}
     <section><h2>Weekly budget</h2><p class="desc">Tokens a week on your Claude plan. When it's used up, routines wait and ${esc(e.name)} still answers you. This week: ${fmtTok(e.tokens_7d)} tokens.</p><div><select class="select auto" data-field="weekly_tokens" data-emp="${e.id}" aria-label="Weekly budget">${[[0, 'No cap'], [1000000, 'Light · 1M tokens'], [3000000, 'Regular · 3M tokens'], [8000000, 'Heavy · 8M tokens'], [20000000, 'Very heavy · 20M tokens']].map(([n, l]) => `<option value="${n}" ${Number(e.weekly_tokens || 0) === n ? 'selected' : ''}>${l}</option>`).join('')}</select></div></section>
@@ -1091,6 +1103,10 @@ PAGES.settings = () => {
       <div class="field"><label for="tn">Team name</label><input id="tn" class="input" name="team_name" maxlength="60" value="${esc(v('settings', 'team_name', s.team_name))}"></div>
       <div class="field"><label for="ab">About the business</label><textarea id="ab" class="textarea" name="about" rows="7" maxlength="6000" placeholder="What you do, for whom, what matters most right now, names they should know.">${esc(v('settings', 'about', s.about))}</textarea></div>
       <div class="field"><span class="lbl">Workdays</span><div class="chips">${days}</div><span class="hint">Routines run on these days.</span></div></section>
+    <section id="awake"><h2>Keep awake</h2><p class="desc">Your crew only works while this ${MAC()} is awake. Asleep, nothing runs; when it wakes, they catch up on what they missed. A running job always keeps it awake until it ends. Closing a laptop's lid can still put it to sleep.</p>
+      <div><select class="select auto" name="keep_awake" aria-label="Keep awake">${[['plugged', 'While plugged in (recommended)'], ['always', 'Always, on battery too (uses more battery)'], ['off', 'Never']].map(([k, l]) => `<option value="${k}" ${v('settings', 'keep_awake', s.keep_awake) === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div></section>
+    <section id="compute"><h2>Extra computing <span class="badge">optional</span></h2><p class="desc">Your crew works on this ${MAC()} first, then on Anthropic's cloud. If they ever need more for a heavy job, they can use your own GitHub's free minutes. You don't need this. To add it: <a class="link" href="https://github.com/new" target="_blank" rel="noopener">make a private repository</a> and put its name here. Only the files a job needs go there.</p>
+      <div class="field"><label for="compute-repo">Private repository</label><input id="compute-repo" class="input" name="compute" maxlength="120" placeholder="yourname/orbit-compute" value="${esc(v('settings', 'compute', s.compute || ''))}"></div></section>
     <section><h2>Routine times</h2><p class="desc">Local time on this ${MAC()}. Each employee runs only the routines ticked in their abilities.</p><div class="times">${times}</div></section>
     <section id="research"><h2>Research budget</h2><p class="desc">Apify reads TikTok, Instagram, Facebook, YouTube, X and Google Maps for your employees. Paid per use, never beyond this budget.</p>
       <div class="usage-box"><div class="row2"><span>Spent this month</span><b class="num">${money(spent)} of ${money(budget)}</b></div><div class="meter ${pct >= 80 ? 'hot' : ''}"><i data-w="${pct}"></i></div></div>
@@ -1263,7 +1279,7 @@ document.addEventListener('click', async (ev) => {
     const body = { kind: b.dataset.kind, employee_id: b.dataset.emp };
     if (b.dataset.from) body.job = $(b.dataset.from).value;
     if (b.dataset.job) body.job = b.dataset.job;
-    if (b.dataset.kind === 'set_autonomy') body.on = !!b.dataset.on;
+    if (b.dataset.kind === 'set_autonomy' || b.dataset.kind === 'set_cloud') body.on = !!b.dataset.on;
     b.disabled = true; await order(body); b.disabled = false; schedule();
   }
   else if (act === 'plan-change') {
@@ -1463,6 +1479,7 @@ document.addEventListener('submit', async (ev) => {
     } else if (kind === 'settings') {
       const body = { team_name: fd.get('team_name'), about: fd.get('about'), workdays: fd.getAll('workdays'), network_domains: fd.get('network_domains'), jobs: {}, apify: {} };
       for (const k of Object.keys(JOB_LABELS)) body.jobs[k] = fd.get('jobs.' + k);
+      body.keep_awake = fd.get('keep_awake'); body.compute = String(fd.get('compute') || '').trim();
       body.apify.monthly_budget_usd = fd.get('apify.monthly_budget_usd'); body.apify.max_run_usd = fd.get('apify.max_run_usd');
       const r = await api('/api/settings', body);
       toast(r.message); delete S.vals.settings; S.settings = await api('/api/settings'); await refresh(true);

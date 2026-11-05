@@ -29,7 +29,7 @@ CHATLOG = os.path.join(TEAM, "chatlog.jsonl")
 DAYS = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
 JOBS = {"brief": "Morning brief", "standup": "Standup", "initiative": "Initiative", "eod": "End of day",
         "review": "Weekly review", "scout": "Self-improvement", "evals": "Weekly self-test"}
-LABELS = {**JOBS, "first_day": "First day", "minutes": "Meeting minutes", "followup": "a follow-up", "learn": "your know-how",
+LABELS = {**JOBS, "catchup": "catching up", "first_day": "First day", "minutes": "Meeting minutes", "followup": "a follow-up", "learn": "your know-how",
           "bus": "a colleague's question"}
 PAIRING = os.path.join(TEAM, "pairing.json")     # the one-time code that links an owner's phone to the team
 DEFAULT_JOBS = {"brief": {"at": "08:30", "days": "work"}, "standup": {"at": "09:00", "days": "work"},
@@ -37,6 +37,8 @@ DEFAULT_JOBS = {"brief": {"at": "08:30", "days": "work"}, "standup": {"at": "09:
                 "eod": {"at": "17:00", "days": "work"}, "review": {"at": "15:00", "days": "last_workday"},
                 "scout": {"at": "19:00", "days": "daily"},
                 "evals": {"at": "10:00", "days": "Fri"}}
+CATCH_UP = ("brief", "standup", "initiative", "eod", "review")   # missed while asleep: made up for in one run
+LONG_JOBS = ("catchup", "initiative", "eod", "followup")          # real production work: an hour, not 30 minutes
 LOCKS = {}                 # one run at a time per employee
 DOING = {}                 # employee id → what they're running now
 LIVE = {}                  # employee id → {"doing", "started", "steps"}: the live work view
@@ -278,9 +280,9 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
         lock = LOCKS.setdefault(emp_id, threading.Lock())
         with lock:
             emp = engine.employee(emp_id)
-            if job in DEFAULT_JOBS and over_budget(emp):     # routines wait; chats and owner requests never do
+            routine = job in DEFAULT_JOBS or job == "catchup"
+            if routine and over_budget(emp):                 # routines wait; chats and owner requests never do
                 return
-            routine = job in DEFAULT_JOBS
             if routine:
                 DOING[emp_id] = "Waiting for a free slot for %s" % LABELS.get(job, job)
                 routine_slot().acquire()
@@ -290,7 +292,8 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
             def on_step(step, steps):
                 LIVE[emp_id] = {**LIVE.get(emp_id, {}), "steps": [dict(s) for s in steps[-8:]], "count": len(steps)}
             try:
-                res = engine.run(emp, prompt, job=job, session_key=session_key, extra_env=extra_env, on_step=on_step)
+                res = engine.run(emp, prompt, job=job, session_key=session_key, extra_env=extra_env, on_step=on_step,
+                                 timeout=3600 if job in LONG_JOBS else 1800)
             except Exception:  # noqa: BLE001
                 log("run error %s/%s: %s" % (emp_id, job, traceback.format_exc()[-400:]))
                 res = {"ok": False, "text": "Something went wrong on my side (logged).", "error": "crash"}
@@ -300,7 +303,7 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
                 if routine:
                     routine_slot().release()
             LAST[emp_id] = {"steps": res.get("steps") or [], "secs": res.get("secs"), "cost_usd": res.get("cost_usd")}
-            if not res["ok"] and routine and res.get("transient") and retry:
+            if not res["ok"] and res.get("transient") and retry:
                 log("%s/%s failed (%s): retrying later" % (emp_id, job, (res.get("error") or "")[:80]))
                 retry()
                 return
@@ -421,6 +424,16 @@ def due_today(spec_days, wd):
     if spec_days == "last_workday":                    # the week's last workday, in the owner's own week (Sun–Thu, Mon–Fri…)
         return bool(work) and wd == DAYS.get(work[-1], 4)
     return wd in [DAYS[d] for d in str(spec_days).split(",") if d in DAYS]
+
+
+def last_due(spec, now):
+    """The most recent moment this routine was due, up to a week back, or None."""
+    h, m = [int(x) for x in spec["at"].split(":")]
+    for back in range(8):
+        when = (now - dt.timedelta(days=back)).replace(hour=h, minute=m, second=0, microsecond=0)
+        if when <= now and due_today(spec.get("days", "daily"), when.weekday()):
+            return when
+    return None
 
 
 def next_job(emp_id):

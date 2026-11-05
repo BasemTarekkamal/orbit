@@ -109,6 +109,7 @@ def members():
         s = engine.stats(emp)
         paused = m.get("status") == "paused"
         nj, nw = team.next_job(k) if not paused else (None, None)
+        import cloud
         import plan
         import rolebook
         out.append({"id": k, "name": m["name"], "role": m["role"], "scope": m.get("scope", ""), "supervisor": m.get("supervisor", ""),
@@ -120,7 +121,7 @@ def members():
                     "runs_7d": s["runs_7d"], "failures_7d": s["failures_7d"], "card": m.get("card") or {}, "browser": m.get("browser") or {},
                     "abilities": sorted(abilities.effective(k)), "abilities_on": len(abilities.effective(k)), "abilities_total": total,
                     "model": m.get("model") or emp.get("model", "sonnet"), "effort": m.get("effort") or emp.get("effort", "medium"),
-                    "plan": plan.summary(k), "learned": rolebook.stats(k), "shared_as": m.get("shared_as") or ""})
+                    "plan": plan.summary(k), "learned": rolebook.stats(k), "shared_as": m.get("shared_as") or "", "cloud": cloud.status(k)})
     return out
 
 
@@ -174,6 +175,12 @@ def needs_you(emps, ords, pending, usage):
             if r.get("to") != "me" and r.get("at", "")[:10] <= today:
                 out.append({"kind": "reminder", "title": r.get("text", ""), "detail": "Reminder from %s · %s" % (e["name"], r.get("at", "")[11:]),
                             "href": "/e/%s" % e["id"], "emp": e["id"]})
+    import awake
+    away = awake.slept(24)
+    if emps and away["hours"] >= 3:
+        out.insert(0, {"kind": "asleep", "title": osinfo.local("This Mac slept %s hours in the last day, so your crew couldn't work" % away["hours"]),
+                       "detail": "Nothing runs on a sleeping computer. Leave it plugged in with the lid open, or change Keep awake in Settings.",
+                       "href": "/settings#awake"})
     if usage.get("five_hour", 0) >= 80 or usage.get("seven_day", 0) >= 90:
         out.append({"kind": "usage", "title": "Claude plan usage is high", "detail": "Employees switch to the light model until it resets.", "href": "/settings"})
     return out[:30]
@@ -521,6 +528,20 @@ def save_settings(f, by):
         if d and all(c.isalnum() or c in ".-*" for c in d) and "." in d:
             doms.append(d)
     reg["network_domains"] = sorted(set(doms))[:100]
+    if f.get("keep_awake") in ("plugged", "always", "off"):
+        reg["keep_awake"] = f["keep_awake"]
+    if "compute" in f and str(f.get("compute") or "").strip() != (reg.get("compute") or {}).get("repo", ""):
+        name = str(f.get("compute") or "").strip()              # the owner's own private repository, checked before it's saved
+        if name:
+            sys.path.insert(0, os.path.join(CORE, "tools"))
+            import compute
+            try:
+                name = compute.connect(name)
+            except (compute.ComputeError, subprocess.SubprocessError, OSError, ValueError) as ex:
+                raise orders.OrderError(str(ex))
+            reg["compute"] = {"repo": name}
+        else:
+            reg.pop("compute", None)
     jobs = reg.setdefault("jobs", {})
     for j, v in (f.get("jobs") or {}).items():
         v = str(v).strip()
@@ -586,7 +607,7 @@ def settings_view():
             "apify": {"token": bool(engine.secret("apify_token")), "spent": spent + pending, **reg.get("apify", {})},
             "auth": reg.get("auth", "subscription"), "claude": claude_auth(),
             "channels": {n: {"on": n in on, "team_chat": chats.get(n, "")} for n in channels.NAMES},
-            "home": engine.HOME, "kit": engine.KIT, "port": port()}
+            "keep_awake": reg.get("keep_awake") or "plugged", "compute": (reg.get("compute") or {}).get("repo", ""), "home": engine.HOME, "kit": engine.KIT, "port": port()}
 
 
 # ------------------------------------------------------------------ HTTP

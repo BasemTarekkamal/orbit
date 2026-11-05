@@ -310,6 +310,13 @@ def upgrade_workspace(emp_id: str) -> None:
         if "abilities" in e:
             e["abilities"] = sorted(set(e["abilities"]) | {"eod", "review"})
         engine.save_registry(reg, "assessment routines on for %s" % emp_id)
+    if not e.get("compute_v1"):                         # 0.8: the optional extra computing (nothing happens until connected)
+        reg = engine.registry()
+        e = reg["employees"][emp_id]
+        e["compute_v1"] = True
+        if "abilities" in e:
+            e["abilities"] = sorted(set(e["abilities"]) | {"compute"})
+        engine.save_registry(reg, "extra computing available to %s" % emp_id)
     import plan as plans
     plans.ensure_reviews(emp_id)
 
