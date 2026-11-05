@@ -325,14 +325,14 @@ def friendly_error(err: str) -> str:
     if re.search(r"authenticate|OAuth|not logged in|log in", err, re.I):
         return osinfo.local("My Claude sign-in on this Mac has expired. Owner: run `claude auth login` in Terminal.")
     if NETWORK.search(err):
-        return "I couldn't reach Claude for 10 minutes: this computer looks offline. Send it again when it's back."
+        return "I couldn't reach Claude for 10 minutes: this computer looks asleep or offline. Send it again when it's back."
     return "Something went wrong on my side (logged). Please resend."
 
 
 def why_failed(err: str) -> str:
     """The reason a routine didn't run, in a few plain words (for the team room)."""
     if NETWORK.search(err):
-        return "this computer was offline when it was due"
+        return "this computer was asleep or offline when it was due"
     if re.search(r"usage limit|rate limit|limit reached", err, re.I):
         return "your Claude plan's limit was reached"
     if re.search(r"authenticate|OAuth|not logged in|log in", err, re.I):
@@ -349,6 +349,8 @@ def stream(cmd: list, prompt: str, ws: str, env: dict, timeout: int, on_step=Non
     t0, steps, result, killed = time.time(), [], None, []
     errf = tempfile.TemporaryFile()
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errf, text=True, cwd=ws, env=env)
+    import awake                                           # the computer stays up until this run ends
+    awake.hold(p.pid)
 
     def kill():
         killed.append(1)

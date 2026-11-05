@@ -320,38 +320,37 @@ def minutes(emp_id, info, who, title):
 
 # ------------------------------------------------------------------ routines, reminders, bus, skills
 def tick_jobs():
-    """Starts each routine when it's due. Offline (the Mac just woke up, the Wi-Fi dropped)? It stays due and
-    starts when the internet is back; one that fails for that reason runs again 10 minutes later. Only after
-    its 4-hour window passes is it skipped for the day, with one line saying why."""
+    """Starts each routine when it's due, once this computer is really awake and online. Until then it stays due.
+    A network failure runs it again 10 minutes later. Asleep past its 4-hour window, it's made up for: everything
+    missed goes into one catch-up run the moment the computer is back, with one report, not a line per routine."""
+    import awake
+    if not awake.settled():
+        return                                            # asleep, or one of its few-second wakes: a run would only freeze
     now = dt.datetime.now()
-    hm, today = now.strftime("%H:%M"), now.strftime("%F")
+    stamp = now.strftime("%F %H:%M")
     net = None
     for k, e in team.active().items():
         emp = engine.employee(k)
         st_f = os.path.join(emp["workspace"], "state", "schedule.json")
         st = jload(st_f, {})
+        missed = []
         for job in abilities.jobs(k):
             spec = team.job_spec(emp, job)
-            if not spec or not team.due_today(spec.get("days", "daily"), now.weekday()):
+            due = team.last_due(spec, now) if spec else None
+            if not due or st.get(job, "") >= due.strftime("%F") or st.get("wait:" + job, "") > stamp:
                 continue
-            if hm < spec["at"] or st.get(job) == today or st.get("wait:" + job, "") > now.strftime("%F %H:%M"):
-                continue
-            late = (dt.datetime.strptime(spec["at"], "%H:%M") + dt.timedelta(hours=4)).strftime("%H:%M")
-            if hm > late:
-                st[job] = today                           # missed its window (Mac asleep or offline all along)
-                if st.pop("wait:" + job, None):
-                    team.feed(k, emp["name"], emp.get("supervisor", "team"), "I couldn't run my %s today: this computer "
-                              "was offline from %s to %s. I'll catch up at my next routine." % (team.JOBS.get(job, job).lower(),
-                                                                                              spec["at"], late), "job")
+            if now - due > dt.timedelta(hours=4):
+                if job in st and job in team.CATCH_UP:    # a routine that never ran before isn't a missed one
+                    missed.append(job)
+                st[job] = due.strftime("%F")
+                st.pop("wait:" + job, None)
                 jsave(st_f, st)
                 continue
             if net is None:
                 net = engine.online()
             if not net:
-                st["wait:" + job] = now.strftime("%F %H:%M")  # due, waiting for the internet: tried again next minute
-                jsave(st_f, st)
-                continue
-            st[job] = today
+                continue                                  # stays due: tried again next minute
+            st[job] = due.strftime("%F")
             st.pop("wait:" + job, None)
             jsave(st_f, st)
             log("job %s/%s" % (k, job))
@@ -363,26 +362,75 @@ def tick_jobs():
                 jsave(st_f, s2)
             run_async(k, team.job_prompt(k, emp, job), job, None, to_people(emp, spec.get("to", "supervisor")),
                       on_done=team.to_room(k, emp["name"], emp.get("supervisor", ""), "job"), retry=retry)
+        pending = sorted(set(st.get("catchup", [])) | set(missed))
+        if missed:
+            st["catchup"] = pending
+            jsave(st_f, st)
+        if pending and st.get("wait:catchup", "") <= stamp:
+            if net is None:
+                net = engine.online()
+            if not net:
+                continue
+            st.pop("catchup", None)
+            st.pop("wait:catchup", None)
+            jsave(st_f, st)
+            log("job %s/catchup: %s" % (k, ", ".join(pending)))
+
+            def again(st_f=st_f, pending=pending):
+                s2 = jload(st_f, {})
+                s2["catchup"] = sorted(set(s2.get("catchup", [])) | set(pending))
+                s2["wait:catchup"] = (dt.datetime.now() + dt.timedelta(minutes=10)).strftime("%F %H:%M")
+                jsave(st_f, s2)
+            import cloud
+            away = awake.slept(72)
+            routines = [team.JOBS[j] for j in pending if j in team.JOBS]
+            note = (" Missed: %s." % ", ".join(routines) if routines else "") + (
+                " This computer was asleep for %s hours, from %s to %s." % (away["longest"], away["from"], away["to"])
+                if away["longest"] else "") + cloud.merge_note(k)
+            run_async(k, team.job_prompt(k, emp, "catchup", note), "catchup", None, to_people(emp, "supervisor"),
+                      on_done=team.to_room(k, emp["name"], emp.get("supervisor", ""), "job"), retry=again)
 
 
 def tick_reminders():
+    """A due reminder stays due while this computer is asleep or offline. A follow-up the crew member set itself
+    runs then; if the network still fails it runs again in 10 minutes. What it reports goes in the team room."""
+    import awake
     import remind
+    if not awake.settled():
+        return
+    stamp, net = dt.datetime.now().strftime("%Y-%m-%d %H:%M"), None
     for k in team.active():
         if not abilities.has(k, "reminders"):
             continue
         emp = engine.employee(k)
+        if not any(r.get("at", "9") <= stamp for r in remind.load(emp["workspace"])):
+            continue
+        if net is None:
+            net = engine.online()
+        if not net:
+            return
+        room = team.to_room(k, emp["name"], emp.get("supervisor", ""), "job")
         for r in remind.due(emp["workspace"]):
             targets = to_people(emp, r["to"]) if r["to"] != "me" else to_people(emp, "supervisor")
             if r.get("agent"):
+                def again(ws=emp["workspace"], r=r):
+                    items = remind.load(ws)
+                    later = (dt.datetime.now() + dt.timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M")
+                    items.append({**r, "id": r["id"].rstrip("r") + "r", "at": later, "repeat": "none"})
+                    remind.save(ws, items)
                 run_async(k, "Scheduled follow-up %s (you set it): %s\nDo it now. Your output is sent to %s; "
                           "reply SILENT if nothing needs saying." % (r["id"], r["text"], r["to"]),
-                          "followup", None, targets)
+                          "followup", None, targets, on_done=room, retry=again)
             else:
+                room("Reminder: " + r["text"])
                 for c in targets:
                     send(c, "Reminder: " + r["text"], emp)
 
 
 def tick_bus():
+    import awake
+    if not awake.settled():
+        return
     st = jload(team.STATEF, {})
     done = set(st.get("bus_done", []))
     rows = team.tail(team.BUS, 2000)
@@ -500,6 +548,12 @@ def tick_update():
                   "Control when you're ready; nothing changes until you do." % (s["latest"], s["current"]), "panel")
 
 
+def tick_cloud():
+    """The laptop's side of the cloud shift: keep it from starting while this computer is here; bring its work back."""
+    import cloud
+    cloud.tick()
+
+
 def tick_share():
     """Once per crew member, after a week of real learning: the owner who trained them is offered to share it."""
     import rolebook
@@ -516,6 +570,8 @@ def tick_share():
 def main():
     os.makedirs(team.TEAM, exist_ok=True)
     log("staffd up (pid %d)" % os.getpid())
+    import awake
+    awake.start()
     try:
         import panel
         threading.Thread(target=panel.serve, daemon=True).start()
@@ -532,7 +588,7 @@ def main():
         with open(os.path.join(team.TEAM, "staffd_alive"), "w") as fh:
             fh.write(str(int(time.time())))
         for name, fn, every in (("jobs", tick_jobs, 60), ("reminders", tick_reminders, 60), ("bus", tick_bus, 10),
-                                ("skills", tick_skills, 30), ("update", tick_update, 3600), ("share", tick_share, 3600)):
+                                ("skills", tick_skills, 30), ("update", tick_update, 3600), ("share", tick_share, 3600), ("cloud", tick_cloud, 60)):
             if time.time() - last.get(name, 0) >= every:
                 last[name] = time.time()
                 try:

@@ -55,6 +55,8 @@ def apply(kind: str, emp_id: str, by: str, **kw) -> str:
     elif kind == "browser":
         res = orders.execute(by, "set_browser", {"employee_id": emp_id, "sites": kw.get("sites") or [],
                                                   "approval": kw.get("approval") or "each"})
+    elif kind == "cloud":
+        res = orders.execute(by, "set_cloud", {"employee_id": emp_id, "on": bool(kw.get("on"))})
     elif kind == "connect":
         res = hire.connect(emp_id, kw.get("other", ""), kw.get("note", ""), by)
     elif kind == "connector":
@@ -72,6 +74,7 @@ AUTONOMY = re.compile(r"^\s*(?:(?:give|turn on|switch on|enable)\s+)?(?:/)?(?P<w
 POST = re.compile(r"^\s*(?:let\s+)?(?P<who>[\w-]+)\s+(?:can|may)?\s*post\s+on\s+(?P<sites>[\w .,&-]+?)"
                   r"(?P<mode>\s+without asking|\s+once per batch|\s+ask(?:ing)? me first)?\s*[.!]?\s*$", re.I)
 NOPOST = re.compile(r"^\s*(?P<who>[\w-]+)\s+(?:stop posting|can'?t post|no browser)\s*[.!]?\s*$", re.I)
+CLOUD = re.compile(r"^\s*(?:/)?(?P<who>[\w-]+)\s*:?\s*cloud(?:\s+shift)?\s+(?P<on>on|off)\s*[.!]?\s*$", re.I)
 CONNECTOR = re.compile(r"^\s*(?P<verb>give|connect|disconnect|remove)\s+(?P<who>[\w-]+)\s+(?:to\s+|from\s+)?(?P<what>[\w .;:/&-]+?)(?:\s+connector)?\s*[.!]?\s*$", re.I)
 CONNECT = re.compile(r"^\s*connect\s+(?P<a>[\w-]+)\s+(?:with|to|and)\s+(?P<b>[\w-]+)(?:\s*[:,-]\s*(?P<note>.+))?$", re.I)
 
@@ -94,6 +97,12 @@ def from_text(by: str, text: str):
         return ("Done: %s has full autonomy now. They do the whole job without asking; the sandbox keeps them in their "
                 "own folder. Start a fresh Claude session with them to use it there." % e["name"]) if on else \
                "Done: full autonomy is off for %s. They check in with you again." % e["name"]
+    m = CLOUD.match(t)
+    if m:
+        emp_id, e = _who(m.group("who"))
+        if not emp_id:
+            return None
+        return apply("cloud", emp_id, by, on=m.group("on").lower() == "on")
     m = POST.match(t)
     if m:
         emp_id, e = _who(m.group("who"))

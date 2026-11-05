@@ -76,6 +76,23 @@ def open_url(url: str) -> bool:
     return False
 
 
+def keep_awake_cmd(pid: int, battery: bool = False, seconds: int = 0):
+    """The command that stops this computer sleeping from idle until `pid` ends (or for `seconds`). battery=False:
+    only while plugged in, where the system can tell. None when there's no way here. No admin rights, no setting changed."""
+    if KIND == "mac":
+        return ["caffeinate", "-s"] + (["-i"] if battery else []) + (["-t", str(seconds)] if seconds else ["-w", str(pid)])
+    if KIND == "linux" and which("systemd-inhibit"):
+        wait = ["sleep", str(seconds)] if seconds else ["tail", "--pid=%d" % pid, "-f", "/dev/null"]
+        return ["systemd-inhibit", "--what=sleep:idle", "--who=Orbit", "--why=Your crew is working", "--mode=block"] + wait
+    if KIND == "wsl":                                     # Windows' own sleep timer, reset from Linux until the process ends
+        ps = ("$s=Add-Type -PassThru -Name OrbitAwake -MemberDefinition "
+              "'[DllImport(\\\"kernel32.dll\\\")] public static extern uint SetThreadExecutionState(uint f);';"
+              "[void]$s::SetThreadExecutionState(1)")
+        check = "[ $SECONDS -lt %d ]" % seconds if seconds else "kill -0 %d 2>/dev/null" % pid
+        return ["bash", "-c", 'while %s; do powershell.exe -NoProfile -NonInteractive -Command "%s" >/dev/null 2>&1; sleep 50; done' % (check, ps)]
+    return None
+
+
 def notify(title: str, text: str) -> bool:
     """A desktop notification on the owner's computer (when no phone channel is connected, so a crew member's
     routine message isn't missed). Best effort; False when this computer has no way to show one."""

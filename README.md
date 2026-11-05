@@ -122,8 +122,20 @@ and claim comes with a source link.
   worked, what didn't) and gets tomorrow's work ready; every week it reviews the strategy against the
   numbers and changes what isn't working, bringing big changes to you as a decision.
 - **Routines:** morning brief, standup, a midday initiative, end of day, a weekly review, a daily
-  self-improvement scout, and a weekly self-test. Each one can be switched on or off. If your computer was
-  asleep or offline when one was due, it runs when the internet is back.
+  self-improvement scout, and a weekly self-test. Each one can be switched on or off.
+- **Your computer first, then the cloud, so they don't stop when the lid closes:**
+  1. **Your computer.** The crew runs here, on your hardware. Orbit keeps it awake while plugged in and during any
+     job (Settings → Keep awake; closing a laptop's lid can still put it to sleep).
+  2. **Anthropic's cloud, on your Claude plan (Cloud shift, on for new hires).** Each crew member gets a cloud desk: a
+     session seeded with their know-how, no GitHub needed. Shortly before each check time (an hour after the standup, the
+     initiative and the end of day), your computer tells the cloud "skip this one, I'm here". If it can't, because it's
+     closed or offline, the shift starts by itself and the crew member works there, with a report to your phone, day
+     after day. When your computer is back, their cloud work comes home and they merge it. The cloud has no access to
+     your Chrome or accounts, so posting and uploads wait for your computer. It costs a few thousand tokens a day when
+     your computer is on; a real shift when it's away counts like any other run on your plan.
+  3. **Your own GitHub, only if you want it (Settings → Extra computing).** A private repository you make, for heavy
+     jobs on your free GitHub Actions minutes. Nothing depends on it.
+  Anything your computer missed while it was away, the crew makes up for in one run when it's back.
 - **Memory in files:** each employee keeps STATE, TASKS, GOALS and LESSONS in its own folder (a git
   repository). Correct them once and they write the lesson down.
 - **They learn:** tell one "from now on, when I ask for X, do Y" and it writes a skill it loads on
