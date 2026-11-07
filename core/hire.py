@@ -76,7 +76,7 @@ def card_md(card: dict) -> str:
 
 def hire(name: str, role: str, scope: str = "", supervisor: str = "", emp_id: str = None,
          preset: str = "default", picked: list = None, model: str = None, domains: list = None,
-         card: dict = None) -> str:
+         card: dict = None, brain: str = None) -> str:
     name, role, scope = name.strip()[:60], role.strip()[:120], scope.strip()[:2000]
     if not name or not role:
         raise HireError("A name and a role are needed")
@@ -113,6 +113,8 @@ def hire(name: str, role: str, scope: str = "", supervisor: str = "", emp_id: st
              "abilities": abilities.validate(picked if picked is not None else abilities.preset(preset))}
     if model:
         entry["model"] = model
+    if brain:
+        entry["brain"] = brain
     if card:
         keep = {k: card[k] for k in ("responsibilities", "first_task", "plan", "access", "interview") if card.get(k)}
         entry["card"] = keep
@@ -317,6 +319,25 @@ def upgrade_workspace(emp_id: str) -> None:
         if "abilities" in e:
             e["abilities"] = sorted(set(e["abilities"]) | {"compute"})
         engine.save_registry(reg, "extra computing available to %s" % emp_id)
+    if not e.get("brain_v1"):                           # 0.9: one running conversation; the chat with the supervisor becomes it
+        reg = engine.registry()
+        e = reg["employees"][emp_id]
+        e["brain_v1"] = True
+        engine.save_registry(reg, "one conversation for %s" % emp_id)
+        sessions_f = os.path.join(ws, "state", "sessions.json")
+        try:
+            with open(sessions_f, encoding="utf-8") as fh:
+                sessions = json.load(fh)
+        except (OSError, ValueError):
+            sessions = {}
+        if engine.SESSION not in sessions:
+            chats = [k for k in sessions if k.startswith("panel:")] + [k for k in sessions if ":" in k and not k.startswith("panel:")]
+            mine = "panel:" + (e.get("supervisor") or "").lower()
+            pick = mine if mine in sessions else (chats[0] if chats else None)
+            if pick:
+                sessions[engine.SESSION] = sessions[pick]
+                with open(sessions_f, "w", encoding="utf-8") as fh:
+                    json.dump(sessions, fh, indent=1)
     import plan as plans
     plans.ensure_reviews(emp_id)
 
@@ -346,8 +367,8 @@ def set_abilities(emp_id: str, ids: list, by: str = "owner"):
 
 
 def set_field(emp_id: str, field: str, value) -> None:
-    """Owner-editable settings: model, effort, scope, supervisor, role, weekly token budget."""
-    if field not in ("model", "effort", "scope", "supervisor", "role", "weekly_tokens"):
+    """Owner-editable settings: brain and hands (models), effort, scope, supervisor, role, weekly token budget."""
+    if field not in ("model", "brain", "effort", "scope", "supervisor", "role", "weekly_tokens"):
         raise HireError("Can't change %r" % field)
     if field == "weekly_tokens":
         try:
@@ -363,7 +384,7 @@ def set_field(emp_id: str, field: str, value) -> None:
         value = engine.owner_name(value) or ""
         if not value:
             raise HireError("The supervisor must be an owner")
-    if field == "model" and value not in ("opus", "sonnet", "haiku", ""):
+    if field in ("model", "brain") and value not in ("opus", "sonnet", "haiku", ""):
         raise HireError("Model must be opus, sonnet or haiku")
     if field == "effort" and value not in ("low", "medium", "high", ""):
         raise HireError("Effort must be low, medium or high")

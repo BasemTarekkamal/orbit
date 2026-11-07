@@ -275,7 +275,7 @@ def handle(msg):
         team.feed(who, who, emp_id, body, "group")
         on_done = team.to_room(emp_id, emp["name"], who, "group")
     run_async(emp_id, team.chat_prompt(who, where, body, extra), "chat",
-              session_key=("group" if is_group else key), deliver_to=[chat], who=who, on_done=on_done, said=body,
+              session_key=None, deliver_to=[chat], who=who, on_done=on_done, said=body,
               channel="group" if is_group else ch)
 
 

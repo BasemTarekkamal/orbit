@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -387,7 +388,7 @@ class Channels(unittest.TestCase):
             self.assertIn("@tess", sent[-1][1])
             staffd.handle({**dm, "text": "@tess what's new?"})
             a, k = runs[-1]
-            self.assertEqual((a[0], k["session_key"], k["deliver_to"], k["channel"], k["said"]), ("tess", "slack:U1", ["slack:D1"], "slack", "what's new?"))
+            self.assertEqual((a[0], k["session_key"], k["deliver_to"], k["channel"], k["said"]), ("tess", None, ["slack:D1"], "slack", "what's new?"))
             self.assertEqual(team.to_people(engine.employee("tess"), "supervisor"), ["slack:D1"])   # replies go where they wrote
             staffd.handle({**dm, "sender": "slack:U9", "sender_name": "Stranger"})
             self.assertEqual(len(runs), 1)
@@ -401,7 +402,7 @@ class Channels(unittest.TestCase):
             engine.save_registry(reg)
             staffd.handle(grp)
             a, k = runs[-1]
-            self.assertEqual((a[0], k["session_key"], k["deliver_to"], k["channel"]), ("tess", "group", ["slack:C1"], "group"))
+            self.assertEqual((a[0], k["session_key"], k["deliver_to"], k["channel"]), ("tess", None, ["slack:C1"], "group"))
             staffd.handle({**grp, "text": "just us owners talking"})
             self.assertEqual(len(runs), 2)                             # no employee named: stay out
             team.send("slack:C1", "hello room")
@@ -653,3 +654,122 @@ import urllib.parse  # noqa: E402
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Brain(unittest.TestCase):
+    """0.9: a brain and hands, and one running conversation per crew member."""
+
+    def setUp(self):
+        fresh_team()
+        self._usage = engine.usage
+        engine.usage = lambda: {}
+
+    def tearDown(self):
+        engine.usage = self._usage
+
+    def test_brain_thinks_hands_work(self):
+        hire.hire("Tess", "Research", supervisor="Alex")
+        emp = engine.employee("tess")
+        for job in ("chat", "standup", "initiative", "eod", "review", "catchup", "first_day"):
+            self.assertEqual(engine.pick_model(emp, job), "opus", job)
+        for job in ("followup", "brief", "scout", "evals", "bus"):
+            self.assertEqual(engine.pick_model(emp, job), "sonnet", job)
+        hire.set_field("tess", "brain", "sonnet")
+        hire.set_field("tess", "model", "haiku")
+        emp = engine.employee("tess")
+        self.assertEqual((engine.pick_model(emp, "standup"), engine.pick_model(emp, "followup")), ("sonnet", "haiku"))
+        with self.assertRaises(hire.HireError):
+            hire.set_field("tess", "brain", "gpt-5")
+        engine.usage = lambda: {"five_hour": 85}
+        self.assertEqual(engine.pick_model(emp, "standup"), "haiku")   # the plan is nearly used up: both go light
+
+    def test_conversation_runs_on_until_heavy(self):
+        hire.hire("Tess", "Research", supervisor="Alex")
+        ws = engine.employee("tess")["workspace"]
+        sid = "11111111-2222-3333-4444-555555555555"
+        folder = os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(ws)))
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, sid + ".jsonl")
+
+        def transcript(ctx):
+            with open(path, "w") as fh:
+                fh.write(json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}}) + "\n")
+                fh.write(json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [], "usage": {
+                    "input_tokens": 10, "cache_read_input_tokens": ctx - 20, "cache_creation_input_tokens": 10}}}) + "\n")
+        try:
+            self.assertFalse(engine.fresh_start({}, ws))                                    # nothing to resume
+            s = {engine.SESSION: sid, engine.SESSION + "_day": "2026-11-06"}
+            self.assertFalse(engine.fresh_start(s, ws, today="2026-11-07"))                 # no transcript yet: resume
+            transcript(30_000)
+            self.assertFalse(engine.fresh_start(s, ws, today="2026-11-07"))                 # light: runs on across days
+            transcript(90_000)
+            self.assertFalse(engine.fresh_start(s, ws, today="2026-11-06"))                 # heavy, same day: runs on
+            self.assertTrue(engine.fresh_start(s, ws, today="2026-11-07"))                  # heavy, new day: fresh
+            transcript(170_000)
+            self.assertTrue(engine.fresh_start(s, ws, today="2026-11-06"))                  # near the limit: fresh now
+            self.assertEqual(engine.context_tokens(ws, sid), 170_000)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    def test_upgrade_turns_the_supervisor_chat_into_the_conversation(self):
+        hire.hire("Tess", "Research", supervisor="Alex")
+        ws = engine.employee("tess")["workspace"]
+        os.makedirs(os.path.join(ws, "state"), exist_ok=True)
+        with open(os.path.join(ws, "state", "sessions.json"), "w") as fh:
+            json.dump({"terminal": "t-1", "panel:alex": "p-1"}, fh)
+        reg = engine.registry()
+        reg["employees"]["tess"].pop("brain_v1", None)
+        engine.save_registry(reg)
+        hire.upgrade_workspace("tess")
+        with open(os.path.join(ws, "state", "sessions.json")) as fh:
+            self.assertEqual(json.load(fh)[engine.SESSION], "p-1")
+        self.assertTrue(engine.registry()["employees"]["tess"]["brain_v1"])
+
+
+FAKE_TWICE = r'''#!/usr/bin/env python3
+import json, sys
+sys.stdin.read()
+def out(d):
+    print(json.dumps(d), flush=True)
+out({"type": "system", "subtype": "init"})
+out({"type": "assistant", "message": {"stop_reason": "tool_use", "content": [{"type": "text", "text": "Checking the render first."},
+     {"type": "tool_use", "name": "Bash", "input": {"command": "python3 WS/tools/render.py"}}]}})
+out({"type": "user", "message": {"content": [{"type": "tool_result", "content": "started in the background"}]}})
+out({"type": "assistant", "message": {"stop_reason": "end_turn", "content": [{"type": "text", "text": "Subs 259 (+9). Today: wheel nuts, then 9 Nov 21:00."}]}})
+out({"type": "user", "message": {"content": "<task-notification>render done</task-notification>"}})
+out({"type": "assistant", "message": {"stop_reason": "end_turn", "content": [{"type": "text", "text": "LAST"}]}})
+out({"type": "result", "subtype": "success", "is_error": False, "result": "LAST", "num_turns": 3, "total_cost_usd": 0.01})
+'''
+
+
+class Spoken(unittest.TestCase):
+    """A run that ends more than one turn (a background job woke it again) delivers everything it said."""
+
+    def setUp(self):
+        fresh_team()
+        hire.hire("Tess", "Research", supervisor="Alex")
+        self.emp = engine.employee("tess")
+        self.real, self.real_online = engine.resolve_claude, engine.online
+        engine.online = lambda *a, **k: True
+
+    def tearDown(self):
+        engine.resolve_claude, engine.online = self.real, self.real_online
+
+    def fake(self, last):
+        p = os.path.join(TMP, "fake-claude-twice")
+        with open(p, "w") as fh:
+            fh.write(FAKE_TWICE.replace("WS", self.emp["workspace"]).replace("LAST", last))
+        os.chmod(p, 0o755)
+        engine.resolve_claude = lambda: p
+
+    def test_the_standup_is_not_lost_behind_the_render_update(self):
+        self.fake("The render passed QC; uploading next.")
+        res = engine.run(self.emp, "standup", job="standup")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["text"], "Subs 259 (+9). Today: wheel nuts, then 9 Nov 21:00.\n\nThe render passed QC; uploading next.")
+        self.assertEqual([s["text"] for s in res["steps"]], ["Running my tool tools/render.py"])   # narration isn't a step
+
+    def test_a_silent_second_turn_keeps_the_first(self):
+        self.fake("SILENT")
+        res = engine.run(self.emp, "standup", job="standup")
+        self.assertEqual(res["text"], "Subs 259 (+9). Today: wheel nuts, then 9 Nov 21:00.")
