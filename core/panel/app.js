@@ -215,6 +215,7 @@ async function render(nav) {
   if (inMain && !nav && (active.value || active.tagName === 'SELECT' || active.type === 'checkbox')) { patchLive(); return; }
   const focusId = inMain ? active.id : '';
   const chat = r.page === 'employee' && r.tab === 'chat';
+  if (chat || r.page === 'today') markSeen();
   const cm = chat && $('.chat-main', main);
   const following = !!cm && cm.getBoundingClientRect().bottom <= window.innerHeight + 60;   // you're at the latest message
   const pretend = S.data && S.data.demo && r.page !== 'today'   // Mission Control has the long note
@@ -269,7 +270,7 @@ function renderSide(r) {
   side.innerHTML = `
     <div class="brand"><img src="/icon.svg" alt=""><div><b>${esc(d.team_name)}${d.demo ? ' <span class="badge accent">demo</span>' : ''}</b><span class="meta"><i class="dot ${d.online ? 'active' : 'off'}"></i>${d.online ? 'Running' : 'Service stopped'}</span></div></div>
     <nav class="nav">
-      <a href="/" class="${on('today')}">${icon('home')}Mission Control</a>
+      <a href="/" class="${on('today')}">${icon('home')}Mission Control${d.unread ? ` <span class="badge accent" title="${d.unread} new from your crew">${d.unread}</span>` : ''}</a>
       <a href="/team" class="${on('team') || on('abilities')}">${icon('users')}Crew</a>
       <a href="/settings" class="${on('settings') || on('connect')}">${icon('sliders')}Settings</a>
     </nav>
@@ -515,14 +516,27 @@ function keepCard() {
 }
 async function openClaude(emp, btn) {
   const label = btn ? btn.innerHTML : '';
+  const e = (S.data.employees || []).find((x) => x.id === emp) || { name: emp };
   if (btn) { btn.disabled = true; btn.textContent = 'Opening Claude…'; }
   try {
     const r = await api('/api/claude_session', { employee: emp });
-    S.claudeLinks = { ...(S.claudeLinks || {}), [emp]: r.link };
-    if (!r.opened) window.location.href = r.link;
-    toast(r.opened ? 'Claude is opening. Confirm the folder once, then press Enter to say hello.' : 'If Claude didn\'t open, use the link on this page.');
-  } catch (e) { toast(e.message, 'err'); }
+    S.claudeCmd = { ...(S.claudeCmd || {}), [emp]: r.command };
+    const busy = r.busy ? ` ${esc(e.name)} is in the middle of ${esc(r.busy)}; the window opens when it's done.` : '';
+    if (r.opened) toast(`A terminal is opening on ${esc(e.name)}'s conversation.${busy}`);
+    else {
+      try { await navigator.clipboard.writeText(r.command); } catch (_) { /* no clipboard */ }
+      toast(`Run this in a terminal (copied): ${r.command}`);
+    }
+  } catch (e2) { toast(e2.message, 'err'); }
   if (btn) { btn.disabled = false; btn.innerHTML = label; }
+}
+let seenAt = 0;
+function markSeen() {                 // the owner is looking at what the crew said: nothing is unread now
+  if (S.data && S.data.demo) return;
+  const now = Date.now();
+  if (now - seenAt < 30000 || !(S.data && S.data.unread)) return;
+  seenAt = now;
+  api('/api/seen', {}).then(() => { if (S.data) S.data.unread = 0; renderSide(route()); }).catch(() => {});
 }
 // The moment after a hire: what's ready, and Claude opening on the new crew member
 function syncLaunch(r) {             // the welcome after a hire: shown once, then Claude opens on the new crew member
@@ -545,10 +559,10 @@ function launchHtml(e) {
     <p class="launch-kicker">Welcome aboard</p><h2>${esc(e.name)} joined your crew</h2><p class="launch-role">${esc(e.role)}</p>
     <ol class="launch-steps">${steps.map(([t, d], i) => `<li>${icon('check')}<div><b>${t}</b><span>${d}</span></div></li>`).join('')}</ol>
     <div class="launch-actions">
-      <button class="btn btn-primary btn-lg" data-act="open-claude" data-emp="${e.id}">${icon('claude')}Talk to ${esc(e.name)} in Claude</button>
+      <button class="btn btn-primary btn-lg" data-act="open-claude" data-emp="${e.id}" title="${esc(e.name)}'s own conversation in a Claude window">${icon('claude')}Talk to ${esc(e.name)} in Claude</button>
       ${st.paired ? '' : `<a class="btn btn-lg" href="/connect">${icon('phone')}Put ${esc(e.name)} on your phone</a>`}
     </div>
-    <p class="meta">Claude is where ${esc(e.name)} does the work, with all of Claude's power. Orbit adds the job, the memory, the routines and the locks.</p>
+    <p class="meta">Claude is where ${esc(e.name)} does the work, with all of Claude's power. Orbit adds the job, the memory, the routines and the locks. Their reports reach you here, on your phone once connected, and as notifications on this computer.</p>
     <button class="btn btn-ghost btn-sm launch-close" data-act="close-launch">Watch their first task</button>
   </div></div>`;
 }
@@ -773,7 +787,7 @@ PAGES.employee = (r) => {
   const canCall = dt && dt.abilities.includes('meetings') && e.status !== 'paused';
   const callBtn = callOf(e.id) ? '' : canCall && !Object.keys(S.data.calls || {}).length
     ? `<button class="btn" data-act="order" data-kind="call_start" data-emp="${e.id}" title="${esc(e.name)} listens on this ${MAC()} and takes notes. Tell the others you're taking notes.">${icon('mic')}Listen to a call</button>` : '';
-  const claudeBtn = S.data.demo ? '' : `<button class="btn btn-primary" data-act="open-claude" data-emp="${e.id}" title="A Claude session in ${esc(e.name)}'s folder: same job, memory and locks">${icon('claude')}Open in Claude</button>`;
+  const claudeBtn = S.data.demo ? '' : `<button class="btn btn-primary" data-act="open-claude" data-emp="${e.id}" title="${esc(e.name)}'s own running conversation in a Claude window: everything they did and said, and what you say there they remember">${icon('claude')}Open in Claude</button>`;
   return `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span>·</span><span>reports to ${esc(e.supervisor)}</span><span>·</span>${statusHtml(e)}</div></div><div class="actions">${claudeBtn}${callBtn}</div></header>${callCard(e.id)}
     <nav class="tabs">${tabs.map(([k, l, n]) => `<a href="/e/${e.id}/${k}" class="${r.tab === k ? 'on' : ''}">${l}${n !== '' ? `<small>${esc(n)}</small>` : ''}</a>`).join('')}</nav>${body}`;
 };
@@ -923,7 +937,7 @@ function reachCard(e) {
     <ol>
       <li><b>Here.</b> Type in the box above; the answer appears right under it. The whole crew talks in Mission Control's team room.</li>
       <li><b>On your phone</b> <span class="meta">recommended</span>. Telegram, Slack or Discord, through a bot of your own: message ${esc(e.name)} from anywhere, send voice notes, photos and files, and get their routine reports there. <a class="btn btn-primary btn-sm" href="/connect">Connect your phone</a> <span class="meta">about 2 minutes</span></li>
-      <li><b>In Claude.</b> <button type="button" class="btn btn-sm" data-act="open-claude" data-emp="${e.id}">${icon('claude')}Open ${esc(e.name)} in Claude</button> A session in their folder with all of Claude's power and the same memory and locks.</li>
+      <li><b>In Claude.</b> <button type="button" class="btn btn-sm" data-act="open-claude" data-emp="${e.id}">${icon('claude')}Open ${esc(e.name)} in Claude</button> Their own running conversation in a Claude window: what they did, what they said, your replies, all in one place. Routines wait while you're in it.</li>
     </ol>
     <p class="meta">What to expect: an answer in a minute or two (deep research takes longer), each with “How I did it”. On their own they only send the routines you tick in Manage (like a morning brief) and things that need you. They never post, buy or message anyone but you.</p></section>`;
 }

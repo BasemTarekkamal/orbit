@@ -661,7 +661,7 @@ class Proactive(unittest.TestCase):
         import team
         shown = []
         real = osinfo.notify
-        osinfo.notify = lambda title, text: shown.append((title, text)) or True
+        osinfo.notify = lambda title, text, **kw: shown.append((title, text)) or True
         try:
             team.to_room("suoo", "Suoo", "Alex", "job")("Plan for approval: 2 Shorts a day.")
             team.to_room("suoo", "Suoo", "Alex", "panel")("A chat reply.")
@@ -1089,7 +1089,7 @@ class Asleep(unittest.TestCase):
         a, k = self.started[0]
         self.assertEqual(a[2], "followup")
         shown, real = [], osinfo.notify
-        osinfo.notify = lambda t, b: shown.append(b) or True
+        osinfo.notify = lambda t, b, **kw: shown.append(b) or True
         try:
             k["on_done"]("Standup: 3 Shorts ready.")                      # no phone channel: it still reaches the owner
         finally:

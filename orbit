@@ -11,7 +11,9 @@
   orbit pause | resume | retire <handle>
   orbit abilities <handle> [--default | --super | --on a,b --off c]
   orbit skills [<handle>] [--share NAME | --remove NAME | --export NAME DIR]   what they learned
-  orbit run <handle> "<message>"   talk to someone right here in the terminal
+  orbit chat <handle>              open their conversation in a Claude window, right here (what they did, said, and you)
+  orbit inbox [<handle>] [--all]   what your crew said that you haven't seen (reports, results, answers)
+  orbit run <handle> "<message>"   one message, one answer, in the terminal
   orbit secret telegram | slack | discord | apify | anthropic    save a token (typed hidden, stored only on this computer)
   orbit group <chat id> [--channel telegram|slack|discord]      use a group or channel as the team chat
   orbit roles list | save <handle> [title] | export <role> [folder] | import <folder>   roles you can hire from
@@ -594,6 +596,89 @@ def demo(stop=False):
     osinfo.open_url(u)
 
 
+# ------------------------------------------------------------------ talking to the crew, right here
+def owner_name():
+    return next(iter(engine.registry().get("owners", {}).values()), {}).get("name", "Owner")
+
+
+def crew_member(handle):
+    emps = engine.registry().get("employees", {})
+    if handle not in emps or emps[handle].get("status") == "retired":
+        sys.exit("No such crew member: %s (orbit list)" % handle)
+    return engine.employee(handle)
+
+
+def show_messages(rows):
+    for r in rows:
+        say("── %s · %s" % (r.get("from_name", "?"), str(r.get("ts", ""))[:16]))
+        say(str(r.get("body", "")).strip())
+        say()
+
+
+def inbox(handle=None, show_all=False):
+    """What the crew said that you haven't seen: the team room, filtered to messages for you. Marks them seen."""
+    import team
+    if handle:
+        crew_member(handle)
+    me = owner_name()
+    if show_all:
+        emps = engine.registry().get("employees", {})
+        rows = [r for r in team.tail(team.FEED, 400) if r.get("from_id") in emps and (not handle or r.get("from_id") == handle)][-20:]
+    else:
+        rows = team.unread(me, handle)
+    if len(rows) > 15 and not show_all:
+        say("%d new messages; the last 15 are below, all of them in the control panel (orbit panel)." % len(rows))
+        say()
+        rows = rows[-15:]
+    if rows:
+        show_messages(rows)
+    else:
+        say("Nothing new from %s." % (engine.employee(handle)["name"] if handle else "your crew"))
+    team.mark_seen(me)
+    return rows
+
+
+def chat(handle, show=False):
+    """A Claude window on the crew member's own running conversation: the same session its routines, follow-ups and
+    your messages run in, so everything it did and said is there and what you say there it remembers. While the
+    window is open its routines wait (20 minutes idle and they carry on); while a routine runs, the window waits."""
+    import team
+    emp = crew_member(handle)
+    ws = emp["workspace"]
+    me = owner_name()
+    w = engine.chat_window(emp)
+    if show:
+        say(" ".join(osinfo._sh(a) if " " in a or "\n" in a else a for a in w["cmd"]))
+        return
+    rows = team.unread(me, handle)
+    if rows:
+        say("While you were away, %s said:" % emp["name"])
+        say()
+        show_messages(rows)
+        team.mark_seen(me)
+    b = engine.busy(ws)
+    if b:
+        say("%s is in the middle of %s (since %s). Your window opens when it's done; Ctrl-C to stop waiting."
+            % (emp["name"], team.LABELS.get(b.get("job"), b.get("job") or "a run"), str(b.get("since", ""))[11:16]))
+        try:
+            while engine.busy(ws):
+                time.sleep(3)
+        except KeyboardInterrupt:
+            say()
+            return
+        w = engine.chat_window(emp)                        # the run may have moved the conversation on
+    engine.remember_session(ws, engine.SESSION, w["sid"])
+    engine.mark(ws, "chat", who=me)
+    say("%s's conversation%s. Their routines wait while this window is open (20 minutes idle and they carry on). "
+        "Leave with Ctrl-D or /exit." % (emp["name"], " starts fresh (the files carry the memory)" if w["new"] else ", continued"))
+    try:
+        subprocess.call(w["cmd"], cwd=ws, env=w["env"])
+    except KeyboardInterrupt:
+        pass
+    finally:
+        engine.unmark(ws, "chat")
+
+
 # ------------------------------------------------------------------ main
 def main():
     ap = argparse.ArgumentParser(prog="orbit", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -623,6 +708,10 @@ def main():
     a.add_argument("--on", default=""); a.add_argument("--off", default="")
     r = sub.add_parser("run")
     r.add_argument("handle"); r.add_argument("message")
+    c = sub.add_parser("chat")
+    c.add_argument("handle"); c.add_argument("--show", action="store_true", help="print the command instead of opening the window")
+    i = sub.add_parser("inbox")
+    i.add_argument("handle", nargs="?"); i.add_argument("--all", action="store_true", help="the last 20, seen or not")
     k = sub.add_parser("skills")
     k.add_argument("handle", nargs="?"); k.add_argument("--share", metavar="NAME"); k.add_argument("--remove", metavar="NAME")
     k.add_argument("--export", nargs=2, metavar=("NAME", "DIR"))
@@ -751,6 +840,10 @@ def main():
     if args.cmd in ("status", "list"):
         if args.cmd == "status":
             say("Service: %s" % ("running" if running() else "stopped (`orbit start`)"))
+            import team
+            n = len(team.unread(owner_name()))
+            if n:
+                say("New from your crew: %d (orbit inbox)" % n)
         for k, e in engine.registry().get("employees", {}).items():
             if e.get("status") == "retired":
                 continue
@@ -790,11 +883,17 @@ def main():
                  "slack": "Team chat set. Invite the bot to that channel: /invite @YourBot.",
                  "discord": "Team chat set. Make sure the bot can view and post in that channel."}[ch])
         elif args.cmd == "run":
-            emp = engine.employee(args.handle)
-            me = next(iter(engine.registry().get("owners", {}).values()), {}).get("name", "Owner")
+            emp = crew_member(args.handle)
+            me = owner_name()
             import team
-            res = engine.run(emp, team.chat_prompt(me, "the terminal", args.message), job="chat", session_key="terminal")
+            res = engine.run(emp, team.chat_prompt(me, "the terminal", args.message), job="chat")   # a turn of its one conversation
+            team.append(team.CHATLOG, {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "who": me, "employee": emp["id"], "channel": "terminal",
+                                       "text": args.message[:4000], "answer": res["text"][:8000]})
             say(res["text"])
+        elif args.cmd == "chat":
+            chat(args.handle, show=args.show)
+        elif args.cmd == "inbox":
+            inbox(args.handle, show_all=args.all)
         elif args.cmd == "skills":
             me = next(iter(engine.registry().get("owners", {}).values()), {}).get("name", "Owner")
             if not args.handle:

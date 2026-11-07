@@ -167,11 +167,15 @@ ORIENT = ("[New conversation. Your memory is in your files: read CLAUDE.md, the 
           "STATE.md, TASKS.md and LESSONS.md before you act, then carry on as if you never left.]\n\n")
 
 
+def transcripts(ws: str) -> str:
+    """Where Claude Code keeps this folder's session transcripts."""
+    return os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(ws)))
+
+
 def context_tokens(ws: str, sid: str) -> int:
     """How much the conversation carries now: the context size of its last turn, read from Claude Code's own
     transcript of the session (no model call). 0 when there is no transcript yet."""
-    path = os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(ws)),
-                        sid + ".jsonl")
+    path = os.path.join(transcripts(ws), sid + ".jsonl")
     try:
         with open(path, "rb") as fh:
             fh.seek(0, 2)
@@ -318,7 +322,9 @@ def skills_plugin(emp: dict, wanted: list) -> str:
     return root
 
 
-def command(emp: dict, model: str) -> list:
+def command(emp: dict, model: str, interactive: bool = False) -> list:
+    """The claude command for one turn. interactive=True is the owner's own window on the same conversation
+    (`orbit chat`): no -p, no stream, and a tool outside the allowlist asks instead of being refused."""
     import abilities                                       # the owners' ticks decide the tools
     allow, block = abilities.tools(emp["id"])
     gateways = abilities.commands(emp["id"])
@@ -332,8 +338,9 @@ def command(emp: dict, model: str) -> list:
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"mcpServers": servers}, fh)
         mcp = ["--mcp-config", path]
-    cmd = [resolve_claude(), "-p", "--model", model, "--effort", emp.get("effort", "medium"),
-           "--permission-mode", "bypassPermissions" if autonomous(emp) else "dontAsk", "--output-format", "stream-json", "--verbose",
+    mode = "bypassPermissions" if autonomous(emp) else ("default" if interactive else "dontAsk")
+    cmd = [resolve_claude()] + ([] if interactive else ["-p"]) + ["--model", model, "--effort", emp.get("effort", "medium"),
+           "--permission-mode", mode] + ([] if interactive else ["--output-format", "stream-json", "--verbose"]) + [
            "--setting-sources", "project", "--strict-mcp-config", *mcp,
            "--settings", settings_json(emp, gateways), "--plugin-dir", GUARD, "--plugin-dir", bundle,
            "--append-system-prompt", "Paths: your team folder (~/Staff in the handbook) is %s; the kit (the handbook, "
@@ -463,6 +470,140 @@ def stream(cmd: list, prompt: str, ws: str, env: dict, timeout: int, on_step=Non
         errf.close()
 
 
+# ------------------------------------------------------------------ one conversation, two doors
+# A crew member's conversation has one writer at a time: a run (busy.json) or the owner's own window on it
+# (chat.json, written by `orbit chat`; or a Claude Code window on that session, seen in ~/.claude/sessions).
+WINDOW_IDLE = 20 * 60          # a window left open but untouched this long no longer holds the routines
+
+
+def _alive(pid) -> bool:
+    try:
+        os.kill(int(pid), 0)
+    except (ProcessLookupError, ValueError, TypeError):
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def marker(ws: str, name: str):
+    """state/<name>.json when the process that wrote it is still alive, else None (and the stale file goes)."""
+    p = os.path.join(ws, "state", name + ".json")
+    try:
+        with open(p) as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if _alive(d.get("pid")):
+        return d
+    try:
+        os.remove(p)
+    except OSError:
+        pass
+    return None
+
+
+def mark(ws: str, name: str, **data) -> None:
+    p = os.path.join(ws, "state", name + ".json")
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w") as fh:
+        json.dump({"pid": os.getpid(), "since": time.strftime("%Y-%m-%dT%H:%M:%S"), **data}, fh)
+
+
+def unmark(ws: str, name: str) -> None:
+    try:
+        os.remove(os.path.join(ws, "state", name + ".json"))
+    except OSError:
+        pass
+
+
+def busy(ws: str):
+    """The run in progress on this conversation ({"pid", "since", "job"}), or None."""
+    return marker(ws, "busy")
+
+
+def main_session(ws: str):
+    try:
+        with open(os.path.join(ws, "state", "sessions.json")) as fh:
+            return json.load(fh).get(SESSION)
+    except (OSError, ValueError):
+        return None
+
+
+def window_open(ws: str):
+    """Is the owner in a window on this crew member's conversation right now? `orbit chat` leaves state/chat.json;
+    any Claude Code window on the same session shows in ~/.claude/sessions. → {"since", "kind"} or None."""
+    m = marker(ws, "chat")
+    if m:
+        return {"since": m.get("since"), "kind": "terminal"}
+    sid = main_session(ws)
+    if not sid:
+        return None
+    for p in glob.glob(os.path.join(H, ".claude", "sessions", "*.json")):
+        try:
+            with open(p) as fh:
+                d = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if d.get("sessionId") == sid and _alive(d.get("pid")):
+            return {"since": d.get("procStart") or "", "kind": d.get("entrypoint") or "claude"}
+    return None
+
+
+def window_idle(ws: str) -> float:
+    """Seconds since the conversation's transcript last changed (a window open but untouched)."""
+    sid = main_session(ws)
+    if not sid:
+        return 0
+    p = os.path.join(transcripts(ws), sid + ".jsonl")
+    try:
+        return max(0.0, time.time() - os.path.getmtime(p))
+    except OSError:
+        return 0
+
+
+def wait_for_window(ws: str, on_wait=None, limit: int = WINDOW_IDLE, every: float = 5.0) -> bool:
+    """A run waits while the owner has a window open on the conversation, like a colleague who doesn't start
+    the standup while you're talking to them. A window left idle for `limit` seconds stops holding things:
+    the run goes ahead. True when the way is clear, False when it went ahead over an idle window."""
+    while True:
+        w = window_open(ws)
+        if not w:
+            return True
+        if window_idle(ws) >= limit:
+            return False
+        if on_wait:
+            on_wait(w)
+        time.sleep(every)
+
+
+def remember_session(ws: str, key: str, sid: str) -> None:
+    sessions_f = os.path.join(ws, "state", "sessions.json")
+    try:
+        with open(sessions_f) as fh:
+            sessions = json.load(fh)
+    except (OSError, ValueError):
+        sessions = {}
+    sessions[key], sessions[key + "_day"] = sid, time.strftime("%F")
+    os.makedirs(os.path.dirname(sessions_f), exist_ok=True)
+    with open(sessions_f, "w") as fh:
+        json.dump(sessions, fh, indent=1)
+
+
+def chat_window(emp: dict) -> dict:
+    """The owner's own Claude window on this crew member's running conversation: `claude --resume <main>` in
+    its folder with the same model, settings and locks as its runs. A new conversation (none yet, or the old
+    one is full) starts with the orientation note as its first message. → {"cmd", "env", "cwd", "sid", "new"}"""
+    ws = emp["workspace"]
+    sid = main_session(ws)
+    new = not sid or context_tokens(ws, sid) >= FULL
+    if new:
+        sid = str(uuid.uuid4())
+    cmd = command(emp, pick_model(emp, "chat"), interactive=True)
+    cmd += ["--resume", sid] if not new else ["--session-id", sid, ORIENT.strip()]
+    return {"cmd": cmd, "env": clean_env(emp), "cwd": ws, "sid": sid, "new": new}
+
+
 def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
         timeout: int = 1800, extra_env: dict = None, on_step=None) -> dict:
     """Run the employee headless in its folder, in its one running conversation: every routine, follow-up and chat
@@ -484,10 +625,17 @@ def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
     model = pick_model(emp, job)
     base = command(emp, model)
     key = session_key or SESSION
+    while True:                                            # one writer at a time: another process's run finishes first
+        b = busy(ws)
+        if not b or b.get("pid") == os.getpid():
+            break
+        time.sleep(3)
+    clear = wait_for_window(ws, on_step and (lambda w: on_step({"text": "Waiting: the owner has a chat window open", "wait": True}, [])))
     attempts = []
     if sessions.get(key) and not (key == SESSION and fresh_start(sessions, ws)):
         attempts.append(("resume", sessions[key]))
     attempts.append(("new", str(uuid.uuid4())))
+    aside = not clear and key == SESSION                   # the owner's window stays on main: this turn runs on a copy
 
     def remember(sid):
         sessions[key], sessions[key + "_day"] = sid, time.strftime("%F")
@@ -497,20 +645,27 @@ def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
     t0, d, steps = time.time(), {}, []
     if not online():
         wait_online()                                      # just woke up, or the Wi-Fi dropped: give it up to 10 minutes
-    for kind, sid in attempts:
-        cmd = base + (["--resume", sid] if kind == "resume" else ["--session-id", sid])
-        text = prompt if kind == "resume" else ORIENT + prompt
-        d, steps = stream(cmd, text, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)
-        if not d.get("is_error"):
-            remember(sid)
-            break
-        if NETWORK.search(str(d.get("result", ""))) and wait_online():
-            d, steps = stream(cmd, text, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)   # back online: once more
+    mark(ws, "busy", job=job)
+    try:
+        for kind, sid in attempts:
+            cmd = base + (["--resume", sid] + (["--fork-session"] if aside and kind == "resume" else [])
+                          if kind == "resume" else ["--session-id", sid])
+            text = prompt if kind == "resume" else ORIENT + prompt
+            d, steps = stream(cmd, text, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)
             if not d.get("is_error"):
-                remember(sid)
+                if not aside:
+                    remember(sid)
                 break
-        if re.search(r"limit|authenticate", str(d.get("result", ""))) or NETWORK.search(str(d.get("result", ""))):
-            break                                          # a fresh session won't help
+            if NETWORK.search(str(d.get("result", ""))) and wait_online():
+                d, steps = stream(cmd, text, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)   # back online: once more
+                if not d.get("is_error"):
+                    if not aside:
+                        remember(sid)
+                    break
+            if re.search(r"limit|authenticate", str(d.get("result", ""))) or NETWORK.search(str(d.get("result", ""))):
+                break                                          # a fresh session won't help
+    finally:
+        unmark(ws, "busy")
     err = str(d.get("result", "")) if d.get("is_error") else ""
     text = friendly_error(err) if d.get("is_error") else (d.get("result") or "").strip()
     rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "employee": emp["id"], "job": job,

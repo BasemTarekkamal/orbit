@@ -93,22 +93,117 @@ def keep_awake_cmd(pid: int, battery: bool = False, seconds: int = 0):
     return None
 
 
-def notify(title: str, text: str) -> bool:
+RUNTIME = os.path.join(os.path.expanduser(os.environ.get("STAFFROOM_HOME", "~/Staff")), ".runtime")
+NOTIFIER = os.path.join(RUNTIME, "Orbit.app")             # a tiny Mac app whose only job is to show notifications
+NOTIFIER_VERSION = "1"
+APPLET = """on run
+	set f to (POSIX path of (path to home folder)) & "%s"
+	try
+		set raw to do shell script "cat " & quoted form of f
+	on error
+		return
+	end try
+	set AppleScript's text item delimiters to {linefeed}
+	set parts to text items of raw
+	if (count of parts) < 2 then return
+	display notification (item 2 of parts) with title (item 1 of parts) sound name "Glass"
+end run
+"""
+
+
+def notifier() -> str:
+    """Builds (once) the Mac notifier app. Notifications from a plain script are dropped by macOS unless Script
+    Editor is allowed; from an app of its own they show as "Orbit", after the owner says yes once. '' if it can't be built."""
+    if KIND != "mac" or not which("osacompile"):
+        return ""
+    stamp = os.path.join(NOTIFIER, "Contents", "orbit-notifier.version")
+    try:
+        with open(stamp) as fh:
+            if fh.read().strip() == NOTIFIER_VERSION and os.path.isdir(NOTIFIER):
+                return NOTIFIER
+    except OSError:
+        pass
+    try:
+        os.makedirs(RUNTIME, exist_ok=True)
+        rel = os.path.relpath(os.path.join(RUNTIME, "notify.txt"), os.path.expanduser("~"))
+        src = os.path.join(RUNTIME, "notifier.applescript")
+        with open(src, "w", encoding="utf-8") as fh:
+            fh.write(APPLET % rel)
+        shutil.rmtree(NOTIFIER, ignore_errors=True)
+        subprocess.run(["osacompile", "-o", NOTIFIER, src], capture_output=True, timeout=60, check=True)
+        plist = os.path.join(NOTIFIER, "Contents", "Info.plist")
+        for key, val in (("CFBundleIdentifier", "com.orbit.notifier"), ("CFBundleName", "Orbit"), ("LSUIElement", "true")):
+            r = subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Set :%s %s" % (key, val), plist], capture_output=True)
+            if r.returncode:
+                subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :%s %s %s" % (key, "bool" if val in ("true", "false") else "string", val), plist],
+                               capture_output=True)
+        with open(stamp, "w") as fh:
+            fh.write(NOTIFIER_VERSION)
+        return NOTIFIER
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def notify(title: str, text: str, more: str = "") -> bool:
     """A desktop notification on the owner's computer (when no phone channel is connected, so a crew member's
-    routine message isn't missed). Best effort; False when this computer has no way to show one."""
-    title, text = (title or "Orbit")[:60], " ".join((text or "").split())[:220]
+    routine message isn't missed). `more`: where the whole message is (shown after the first line). Best effort;
+    False when this computer has no way to show one."""
+    title = (title or "Orbit")[:60]
+    body = " ".join((text or "").split())
+    if len(body) > 200:
+        body = body[:197].rsplit(" ", 1)[0] + "…"
+    if more:
+        body = (body + " (%s)" % more)[:240]
     try:
         if KIND == "mac":
+            app = notifier()
+            if app:
+                with open(os.path.join(RUNTIME, "notify.txt"), "w", encoding="utf-8") as fh:
+                    fh.write("%s\n%s\n" % (title, body))
+                r = subprocess.run(["open", "-g", "-a", app], capture_output=True, timeout=15)
+                if r.returncode == 0:
+                    return True
             q = lambda s: '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
-            subprocess.run(["osascript", "-e", "display notification %s with title %s sound name \"Glass\"" % (q(text), q(title))],
+            subprocess.run(["osascript", "-e", "display notification %s with title %s sound name \"Glass\"" % (q(body), q(title))],
                            capture_output=True, timeout=10)
             return True
         if KIND == "linux" and which("notify-send"):
-            subprocess.run([which("notify-send"), title, text], capture_output=True, timeout=10)
+            subprocess.run([which("notify-send"), title, body], capture_output=True, timeout=10)
             return True
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.SubprocessError):
         pass
     return False
+
+
+def open_terminal(command: str, name: str = "orbit-chat") -> bool:
+    """Opens a terminal window on the owner's screen running `command` (used for `orbit chat`). On a Mac the command
+    goes in a small .command file that Terminal opens (no AppleScript, so no permission prompt). False when this
+    computer has no way to; the caller then shows the command to type."""
+    try:
+        if KIND == "mac":
+            os.makedirs(RUNTIME, exist_ok=True)
+            script = os.path.join(RUNTIME, re.sub(r"[^a-z0-9-]", "-", name.lower()) + ".command")
+            with open(script, "w", encoding="utf-8") as fh:
+                fh.write("#!/bin/bash\nclear\n%s\n" % command)
+            os.chmod(script, 0o755)
+            r = subprocess.run(["open", "-a", "Terminal", script], capture_output=True, timeout=20)
+            return r.returncode == 0
+        if KIND == "wsl" and which("cmd.exe"):
+            r = subprocess.run([which("cmd.exe"), "/c", "start", "", "wsl.exe", "bash", "-lc", command], capture_output=True, timeout=20)
+            return r.returncode == 0
+        for term in ("x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "xterm"):
+            exe = which(term)
+            if exe:
+                args = [exe, "--", "bash", "-lc", command] if term == "gnome-terminal" else [exe, "-e", "bash -lc %s" % _sh(command)]
+                subprocess.Popen(args, start_new_session=True)
+                return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return False
+
+
+def _sh(s: str) -> str:
+    return "'" + s.replace("'", "'\\''") + "'"
 
 
 # ------------------------------------------------------------------ Windows, from inside WSL

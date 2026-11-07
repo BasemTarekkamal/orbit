@@ -74,10 +74,19 @@ in a sandbox there, the same one Claude Code uses on Linux.
 Windows and Linux support is new (November 2026). It's tested automatically on Ubuntu and on WSL,
 but few people have used it yet, so please tell us what breaks.
 
-**Talking to your crew.** In Claude: every crew member has an **Open in Claude** button, a Claude
-session in their own folder with all of Claude's power and the same job, memory and safety locks. On
-your phone: Telegram, Slack or Discord (the panel connects it in about two minutes). And in the
-control panel: the team room for the whole crew, and each crew member's page.
+**Talking to your crew, and hearing from them.** Each crew member has **one running conversation**:
+its routines, its follow-ups and your messages are all turns of the same session. You reach it three ways,
+and everything it says reaches you on all of them:
+
+- **In Claude:** **Open in Claude** (or `orbit chat suoo`) opens a Claude window on that conversation,
+  with all of Claude's power and the same job, memory and locks. You see what it did and said while you
+  were away, you reply, and it remembers. Its routines wait while you're in the window (after 20 idle
+  minutes they carry on).
+- **In the control panel:** the team room, each crew member's Chat tab, and a count of what you haven't
+  seen. In a terminal: `orbit inbox`.
+- **On your phone:** Telegram, Slack or Discord (the panel connects it in about two minutes). Without a
+  phone, routine reports also pop up as notifications on this computer; on a Mac, the first one asks you
+  to allow notifications from Orbit.
 
 **Just want to look around first?** After cloning, `~/orbit/orbit demo` opens the control panel
 with a pretend team (invented business, canned replies, no bot, no Claude run). `orbit demo --stop`
@@ -127,6 +136,9 @@ and claim comes with a source link.
   a new turn of the same running conversation, so a crew member remembers the morning at the end of the day
   and the week in its review, instead of waking up blank before each routine. Once the conversation has grown
   heavy it starts fresh on the next day, and the files (plan, state, tasks, lessons) carry the memory across.
+  **Open in Claude** opens that very conversation, so your chat window and their workday are the same thing.
+- **Nothing they say gets lost:** every report lands in the team room, on your phone when one is connected,
+  and otherwise as a notification on this computer; `orbit inbox` and the panel count what you haven't seen.
 - **A brain and hands:** the brain thinks and talks with you (standup, initiative, end of day, the weekly
   review, chats) and is Opus by default, the same brain you get in your own Claude. The hands do the production
   runs (follow-ups, the morning brief, scout, self-test) on Sonnet. Change either in Manage.
@@ -261,7 +273,9 @@ orbit hire --name … --role … [--scope …] [--super] [--brain opus|sonnet|ha
 orbit list | pause <h> | resume <h> | retire <h>
 orbit abilities <h> [--default | --super | --on a,b --off c]
 orbit skills [<h>] [--share NAME | --remove NAME | --export NAME DIR]
-orbit run <h> "message"          talk to an employee in the terminal
+orbit chat <h>                   their conversation in a Claude window, right here
+orbit inbox [<h>] [--all]        what they said that you haven't seen
+orbit run <h> "message"          one message, one answer, in the terminal
 orbit secret telegram|slack|discord|apify|anthropic
 orbit group <chat id> [--channel telegram|slack|discord]   the team chat
 ```
