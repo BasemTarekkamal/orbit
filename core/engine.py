@@ -144,11 +144,65 @@ def usage() -> dict:
     return out
 
 
-def pick_model(emp: dict) -> str:
+BRAIN_JOBS = ("chat", "standup", "initiative", "eod", "review", "catchup", "first_day", "minutes", "learn")
+
+
+def pick_model(emp: dict, job: str = "chat") -> str:
+    """Two models per crew member. The **brain** thinks and talks with the owner (standup, initiative, end of day,
+    the weekly review, catching up, chats): Opus by default, the same brain the owner gets in their own Claude.
+    The **hands** do the production runs and the scans (follow-ups, the morning brief, scout, self-test, colleague
+    questions): Sonnet by default. When the owner's plan is nearly used up, both fall back to the light model."""
     u = usage()
     if u.get("five_hour", 0) >= 80 or u.get("seven_day", 0) >= 90:
         return emp.get("fallback_model", "haiku")
+    if job in BRAIN_JOBS:
+        return emp.get("brain") or "opus"
     return emp.get("model", "sonnet")
+
+
+# ------------------------------------------------------------------ one running conversation
+SESSION = "main"              # a crew member is one conversation: routines, follow-ups and every owner's chats land in it
+HEAVY, FULL = 60_000, 150_000  # context tokens: heavy → start fresh on a new day; full → start fresh now
+ORIENT = ("[New conversation. Your memory is in your files: read CLAUDE.md, the handbook, ~/Staff/team/ABOUT.md, PLAN.md, "
+          "STATE.md, TASKS.md and LESSONS.md before you act, then carry on as if you never left.]\n\n")
+
+
+def context_tokens(ws: str, sid: str) -> int:
+    """How much the conversation carries now: the context size of its last turn, read from Claude Code's own
+    transcript of the session (no model call). 0 when there is no transcript yet."""
+    path = os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(ws)),
+                        sid + ".jsonl")
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - 400_000))
+            tail = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return 0
+    ctx = 0
+    for line in tail.splitlines():
+        if '"usage"' not in line:
+            continue
+        try:
+            u = ((json.loads(line).get("message") or {}).get("usage")) or {}
+        except (ValueError, AttributeError):
+            continue
+        if u:
+            ctx = sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+    return ctx
+
+
+def fresh_start(sessions: dict, ws: str, today: str = None) -> bool:
+    """A conversation runs on while it's light, so the crew member remembers the day and the week like a chat window
+    does. Once it has grown heavy it starts fresh on the next day (the files carry the memory across), and near
+    Claude's context limit it starts fresh at once: no run pays to re-read a week of history."""
+    sid = sessions.get(SESSION)
+    if not sid:
+        return False
+    ctx = context_tokens(ws, sid)
+    today = today or time.strftime("%F")
+    return ctx >= FULL or (ctx >= HEAVY and sessions.get(SESSION + "_day") != today)
 
 
 # ------------------------------------------------------------------ launch
@@ -344,9 +398,13 @@ def why_failed(err: str) -> str:
 
 def stream(cmd: list, prompt: str, ws: str, env: dict, timeout: int, on_step=None):
     """Runs one claude turn, reading its stream-json events as they come: each tool call becomes a plain
-    step ("Reading tiktok.com") passed to on_step(step, steps). Returns (final result event, steps)."""
+    step ("Reading tiktok.com") passed to on_step(step, steps). Returns (final result event, steps).
+    What the crew member *says* is every message that ended a turn: when a background job it started finishes,
+    Claude Code wakes it again and it ends another turn, so a run can speak more than once (the standup, then
+    "the render passed"). All of it is delivered, not only the last line; text written beside tool calls is
+    narration and stays in the receipt."""
     import steps as steps_mod
-    t0, steps, result, killed = time.time(), [], None, []
+    t0, steps, result, killed, said = time.time(), [], None, [], []
     errf = tempfile.TemporaryFile()
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errf, text=True, cwd=ws, env=env)
     import awake                                           # the computer stays up until this run ends
@@ -369,7 +427,13 @@ def stream(cmd: list, prompt: str, ws: str, env: dict, timeout: int, on_step=Non
             except ValueError:
                 continue
             if ev.get("type") == "assistant":
-                for b in (ev.get("message") or {}).get("content") or []:
+                msg = ev.get("message") or {}
+                if msg.get("stop_reason") == "end_turn":
+                    spoken = "\n".join(b.get("text", "") for b in msg.get("content") or []
+                                       if isinstance(b, dict) and b.get("type") == "text").strip()
+                    if spoken:
+                        said.append(spoken)
+                for b in msg.get("content") or []:
                     if isinstance(b, dict) and b.get("type") == "tool_use":
                         text = steps_mod.describe(b.get("name"), b.get("input"), ws)
                         if text and (not steps or steps[-1]["text"] != text):
@@ -389,6 +453,9 @@ def stream(cmd: list, prompt: str, ws: str, env: dict, timeout: int, on_step=Non
             errf.seek(0)
             err = errf.read().decode("utf-8", "replace")
             result = {"is_error": True, "result": (err or "no output")[-400:]}
+        parts = [s for s in said if not s.upper().startswith("SILENT")]
+        if not result.get("is_error") and len(said) > 1 and parts:
+            result = {**result, "result": "\n\n".join(parts)}
         return result, steps
     finally:
         timer.cancel()
@@ -398,8 +465,9 @@ def stream(cmd: list, prompt: str, ws: str, env: dict, timeout: int, on_step=Non
 
 def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
         timeout: int = 1800, extra_env: dict = None, on_step=None) -> dict:
-    """Run the employee headless in its folder. Chats resume one session per (employee, person).
-    on_step(step, steps) is called live for every tool call; the steps also come back in the result."""
+    """Run the employee headless in its folder, in its one running conversation: every routine, follow-up and chat
+    is a new turn of the same session, so it remembers the day like a chat window does (`session_key` names another
+    thread; tests use it). on_step(step, steps) is called live for every tool call; the steps also come back in the result."""
     if os.environ.get("STAFFROOM_DEMO"):                  # `orbit demo`: canned answers, no Claude run
         import demo
         return demo.fake_run(emp, prompt, job, session_key, on_step)
@@ -413,33 +481,33 @@ def run(emp: dict, prompt: str, job: str = "chat", session_key: str = None,
             sessions = json.load(fh)
     except (OSError, ValueError):
         sessions = {}
-    model = pick_model(emp)
+    model = pick_model(emp, job)
     base = command(emp, model)
+    key = session_key or SESSION
     attempts = []
-    if session_key and sessions.get(session_key):
-        attempts.append(("resume", sessions[session_key]))
+    if sessions.get(key) and not (key == SESSION and fresh_start(sessions, ws)):
+        attempts.append(("resume", sessions[key]))
     attempts.append(("new", str(uuid.uuid4())))
+
+    def remember(sid):
+        sessions[key], sessions[key + "_day"] = sid, time.strftime("%F")
+        os.makedirs(os.path.dirname(sessions_f), exist_ok=True)
+        with open(sessions_f, "w") as fh:
+            json.dump(sessions, fh, indent=1)
     t0, d, steps = time.time(), {}, []
     if not online():
         wait_online()                                      # just woke up, or the Wi-Fi dropped: give it up to 10 minutes
     for kind, sid in attempts:
         cmd = base + (["--resume", sid] if kind == "resume" else ["--session-id", sid])
-        d, steps = stream(cmd, prompt, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)
+        text = prompt if kind == "resume" else ORIENT + prompt
+        d, steps = stream(cmd, text, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)
         if not d.get("is_error"):
-            if session_key:
-                sessions[session_key] = sid
-                os.makedirs(os.path.dirname(sessions_f), exist_ok=True)
-                with open(sessions_f, "w") as fh:
-                    json.dump(sessions, fh, indent=1)
+            remember(sid)
             break
         if NETWORK.search(str(d.get("result", ""))) and wait_online():
-            d, steps = stream(cmd, prompt, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)   # back online: once more
+            d, steps = stream(cmd, text, ws, {**clean_env(emp), **(extra_env or {})}, timeout, on_step)   # back online: once more
             if not d.get("is_error"):
-                if session_key:
-                    sessions[session_key] = sid
-                    os.makedirs(os.path.dirname(sessions_f), exist_ok=True)
-                    with open(sessions_f, "w") as fh:
-                        json.dump(sessions, fh, indent=1)
+                remember(sid)
                 break
         if re.search(r"limit|authenticate", str(d.get("result", ""))) or NETWORK.search(str(d.get("result", ""))):
             break                                          # a fresh session won't help

@@ -52,7 +52,7 @@ def message(by, eid, text):
         raise OrderError("Nobody is working yet: hire someone first")
     team.feed(by, by, eid, text, "panel")
     for t in targets:
-        team.run_async(t, team.panel_prompt(by, text, team=eid == "team"), "chat", "panel:" + by.lower(), [], who=by,
+        team.run_async(t, team.panel_prompt(by, text, team=eid == "team"), "chat", None, [], who=by,
                        on_done=team.to_room(t, act[t]["name"], by, "panel"), said=text, channel="panel")
     return "Passed to " + ", ".join(act[t]["name"] for t in targets)
 

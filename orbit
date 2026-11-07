@@ -6,7 +6,7 @@
   orbit start | stop | restart     the background service (starts when you log in)
   orbit status                     is it running, who works here
   orbit panel                      open the control panel in your browser
-  orbit hire --name Sara --role "Market researcher" --scope "…" [--super] [--model sonnet]
+  orbit hire --name Sara --role "Market researcher" --scope "…" [--super] [--brain opus] [--model sonnet]
   orbit list
   orbit pause | resume | retire <handle>
   orbit abilities <handle> [--default | --super | --on a,b --off c]
@@ -614,7 +614,8 @@ def main():
     h = sub.add_parser("hire")
     h.add_argument("--name", required=True); h.add_argument("--role", required=True); h.add_argument("--scope", default="")
     h.add_argument("--supervisor", default=""); h.add_argument("--handle"); h.add_argument("--super", action="store_true")
-    h.add_argument("--model", choices=["opus", "sonnet", "haiku"])
+    h.add_argument("--model", choices=["opus", "sonnet", "haiku"], help="the hands: production runs (default sonnet)")
+    h.add_argument("--brain", choices=["opus", "sonnet", "haiku"], help="the brain: standup, reviews, chats (default opus)")
     for c in ("pause", "resume", "retire"):
         sub.add_parser(c).add_argument("handle")
     a = sub.add_parser("abilities")
@@ -759,7 +760,7 @@ def main():
         if args.cmd == "hire":
             ensure_home()
             hd = hire.hire(args.name, args.role, args.scope, supervisor=args.supervisor, emp_id=args.handle,
-                           preset="super" if args.super else "default", model=args.model)
+                           preset="super" if args.super else "default", model=args.model, brain=args.brain)
             say("Hired %s: /%s. They start within a minute." % (args.name, hd))
         elif args.cmd in ("pause", "resume", "retire"):
             hire.set_status(args.handle, {"pause": "paused", "resume": "active", "retire": "retired"}[args.cmd])

@@ -269,7 +269,8 @@ def routine_slot():
 
 def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None, extra_env=None, said=None, channel=None,
               retry=None):
-    """Runs an employee in the background (one run at a time each). on_done(output) gets the final text.
+    """Runs an employee in the background (one run at a time each), as a new turn of its one running conversation
+    (`session_key` None; a name keeps a separate thread). on_done(output) gets the final text.
     `said` is the owner's own words (for the chat log); the prompt wraps them. A routine that fails because this
     computer was offline or the plan's limit was hit calls retry() instead of telling anyone: it runs again later."""
     if job == "chat":
@@ -360,15 +361,13 @@ def now_str():
 
 
 def chat_prompt(who, where, text, extra=""):
-    return ("[Message from %s (owner) in %s, %s local time]\n%s\n%s\n\nFollow CLAUDE.md and the handbook. Your "
-            "final answer is sent to them verbatim (plain text; add 'ATTACH: <path in your folder>' to send a file). "
-            "Update your memory files before you finish." % (who, where, now_str(), text, extra))
+    return ("[Message from %s (owner) in %s, %s local time]\n%s\n%s\n\nYour final answer goes to them verbatim (plain "
+            "text; 'ATTACH: <path in your folder>' on its own line sends a file)." % (who, where, now_str(), text, extra))
 
 
 def panel_prompt(who, text, team):
-    return ("[Message from %s (owner) %sin the control panel's team room, %s local time]\n%s\n\nFollow CLAUDE.md and "
-            "the handbook. Your final answer is posted in the team room (plain text), where the owners read it.%s "
-            "Update your memory files before you finish."
+    return ("[Message from %s (owner) %sin the control panel's team room, %s local time]\n%s\n\nYour final answer is "
+            "posted in the team room (plain text), where the owners read it.%s"
             % (who, "to the whole team " if team else "", now_str(), text,
                " Reply SILENT unless it's meant for you or you have something useful to add." if team else ""))
 

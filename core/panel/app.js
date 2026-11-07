@@ -990,7 +990,9 @@ function tabManage(e, dt) {
   if (!S.cat || !dt) return loading;
   const paused = e.status === 'paused';
   const jobs = Object.entries(JOB_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
-  const models = MODELS.map((m) => `<option value="${m}" ${m === e.model ? 'selected' : ''}>${m}${m === 'sonnet' ? ' (balanced)' : m === 'haiku' ? ' (lightest on your plan)' : ' (strongest, heaviest)'}</option>`).join('');
+  const modelOpts = (cur) => MODELS.map((m) => `<option value="${m}" ${m === cur ? 'selected' : ''}>${m}${m === 'sonnet' ? ' (balanced)' : m === 'haiku' ? ' (lightest on your plan)' : ' (strongest, heaviest)'}</option>`).join('');
+  const models = modelOpts(e.model);
+  const brains = modelOpts(e.brain || 'opus');
   const on = new Set(dt.abilities);
   const groups = S.cat.groups.map((g) => {
     const items = S.cat.abilities.filter((a) => a.group === g);
@@ -1005,7 +1007,9 @@ function tabManage(e, dt) {
       <div class="save-bar"><button class="btn" data-act="order" data-kind="${paused ? 'resume' : 'pause'}" data-emp="${e.id}">${icon(paused ? 'play' : 'pause')}${paused ? 'Resume' : 'Pause'}</button></div></section>
     <section><h2>Run a routine now</h2><p class="desc">The result shows up in the chat and the team room.</p>
       <div class="save-bar"><select class="select auto" id="run-job" aria-label="Routine">${jobs}</select><button class="btn" data-act="order" data-kind="run_job" data-emp="${e.id}" data-from="#run-job" ${paused ? 'disabled' : ''}>Launch now</button></div></section>
-    <section><h2>Model</h2><p class="desc">${esc(e.name)} switches to the lightest model on their own when your plan is nearly used up.</p><div><select class="select auto" data-field="model" data-emp="${e.id}" aria-label="Model">${models}</select></div></section>
+    <section><h2>Brain and hands</h2><p class="desc">The brain thinks and talks with you: standup, initiative, end of day, the weekly review, chats. The hands do the production work: follow-ups, the morning brief, scout, self-test. Both switch to the lightest model on their own when your plan is nearly used up.</p>
+      <div class="save-bar"><label class="small muted" for="brain-${e.id}">Brain</label><select class="select auto" id="brain-${e.id}" data-field="brain" data-emp="${e.id}" aria-label="Brain model">${brains}</select>
+      <label class="small muted" for="hands-${e.id}">Hands</label><select class="select auto" id="hands-${e.id}" data-field="model" data-emp="${e.id}" aria-label="Hands model">${models}</select></div></section>
     ${cloudSection(e)}
     ${autonomySection(e)}
     ${browserSection(e)}

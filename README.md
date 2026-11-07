@@ -123,6 +123,13 @@ and claim comes with a source link.
   numbers and changes what isn't working, bringing big changes to you as a decision.
 - **Routines:** morning brief, standup, a midday initiative, end of day, a weekly review, a daily
   self-improvement scout, and a weekly self-test. Each one can be switched on or off.
+- **One conversation, like a chat window that never closes:** every routine, follow-up and message from you is
+  a new turn of the same running conversation, so a crew member remembers the morning at the end of the day
+  and the week in its review, instead of waking up blank before each routine. Once the conversation has grown
+  heavy it starts fresh on the next day, and the files (plan, state, tasks, lessons) carry the memory across.
+- **A brain and hands:** the brain thinks and talks with you (standup, initiative, end of day, the weekly
+  review, chats) and is Opus by default, the same brain you get in your own Claude. The hands do the production
+  runs (follow-ups, the morning brief, scout, self-test) on Sonnet. Change either in Manage.
 - **Your computer first, then the cloud, so they don't stop when the lid closes:**
   1. **Your computer.** The crew runs here, on your hardware. Orbit keeps it awake while plugged in and during any
      job (Settings → Keep awake; closing a laptop's lid can still put it to sleep).
@@ -181,8 +188,8 @@ who don't live in Terminal: every setting is a button or a form.
 - **Today:** who's working on what right now, what needs you, what the team said, plan use.
 - **An employee's page:** **Chat** (with suggestions to try, what they can and can never do),
   **Knowledge** (the notes they keep, skills they learned or you taught, rules you set), **Work**
-  (every file they wrote, and every run with its steps) and **Manage** (pause, model, abilities,
-  run a routine now).
+  (every file they wrote, and every run with its steps) and **Manage** (pause, brain and hands,
+  abilities, run a routine now).
 - **Settings:** your business, workdays, routine times, the research budget and Apify token, chat
   channels, who may direct the team.
 
@@ -238,9 +245,9 @@ An autonomous agent that reads the open web needs locks, not promises. Every run
   runs use your plan's limits, which you share with your own Claude use. The panel shows use in
   tokens, never dollars: each crew member's tokens this week against the weekly budget you gave them,
   and your plan's 5-hour and weekly limits. Over budget, routines wait and they still answer you. When usage is high,
-  employees switch to a lighter model on their own. A busy team uses a lot, so start with one or two
-  employees on Sonnet or Haiku. You can also use your own API key (`orbit secret anthropic`), billed
-  to your Anthropic account.
+  employees switch to a lighter model on their own. A busy team uses a lot: the brain (Opus) is where the
+  tokens go, so a crew member on a tight plan can have a Sonnet brain and Haiku hands. You can also use your
+  own API key (`orbit secret anthropic`), billed to your Anthropic account.
 - **Apify** (optional, paid per use; the free plan includes monthly credit): only when you add a
   token, and never beyond the budget you set.
 - **Everything else is free and local**, including voice transcription (whisper.cpp) and OCR
@@ -250,7 +257,7 @@ An autonomous agent that reads the open web needs locks, not promises. Every run
 
 ```
 orbit setup | start | stop | restart | status | panel | logs | doctor
-orbit hire --name … --role … [--scope …] [--super] [--model opus|sonnet|haiku]
+orbit hire --name … --role … [--scope …] [--super] [--brain opus|sonnet|haiku] [--model opus|sonnet|haiku]
 orbit list | pause <h> | resume <h> | retire <h>
 orbit abilities <h> [--default | --super | --on a,b --off c]
 orbit skills [<h>] [--share NAME | --remove NAME | --export NAME DIR]
@@ -274,7 +281,7 @@ orbit group <chat id> [--channel telegram|slack|discord]   the team chat
 ```
 ~/orbit/                 the kit (this repository; update with git pull)
   orbit                      the command (`staff` still works)
-  core/engine.py             runs one employee turn: claude -p + sandbox + guard + abilities
+  core/engine.py             runs one employee turn in its running conversation: claude -p + sandbox + guard + abilities
   core/staffd.py             the service: chat channels, routines, reminders, team bus, control panel
   core/channels/             one adapter per chat channel (telegram, slack, discord)
   core/abilities.json        the ability catalog (what the checkboxes mean)

@@ -120,7 +120,8 @@ def members():
                     "tokens_today": s["tokens_today"], "tokens_7d": s["tokens_7d"], "weekly_tokens": int(m.get("weekly_tokens") or 0),
                     "runs_7d": s["runs_7d"], "failures_7d": s["failures_7d"], "card": m.get("card") or {}, "browser": m.get("browser") or {},
                     "abilities": sorted(abilities.effective(k)), "abilities_on": len(abilities.effective(k)), "abilities_total": total,
-                    "model": m.get("model") or emp.get("model", "sonnet"), "effort": m.get("effort") or emp.get("effort", "medium"),
+                    "model": m.get("model") or emp.get("model", "sonnet"), "brain": m.get("brain") or emp.get("brain") or "opus",
+                    "effort": m.get("effort") or emp.get("effort", "medium"),
                     "plan": plan.summary(k), "learned": rolebook.stats(k), "shared_as": m.get("shared_as") or "", "cloud": cloud.status(k)})
     return out
 
