@@ -9,7 +9,9 @@ import re
 import shutil
 import sys
 import tempfile
+import subprocess
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -165,6 +167,11 @@ class Engine(unittest.TestCase):
         self.assertIn("Bash(staff-apify *)", denied)
         self.assertIn("Bash(git push *)", denied)
         self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "dontAsk")
+        win = engine.command(emp, "opus", interactive=True)                 # the owner's own window: no -p, asks
+        self.assertNotIn("-p", win)
+        self.assertNotIn("--output-format", win)
+        self.assertEqual(win[win.index("--permission-mode") + 1], "default")
+        self.assertEqual(win[win.index("--settings") + 1], cmd[cmd.index("--settings") + 1])   # same locks
 
     def test_clean_env_never_leaks_api_settings(self):
         os.environ["ANTHROPIC_BASE_URL"] = "http://localhost:4000"
@@ -250,6 +257,16 @@ class Panel(unittest.TestCase):
         self.assertEqual([f["path"] for f in d["files"]][0], "research/notes.md")          # newest first
         self.assertTrue(all(f["path"].split("/")[0] in ("research", "notes", "tools", "growth", "evals") for f in d["files"]))
         self.assertEqual(self.req("/api/employee/nobody", headers=self.auth())[0], 404)
+
+    def test_unread_and_seen_in_the_panel(self):
+        team.feed("tess", "Tess", "Alex", "Standup: all good.", "job")
+        code, _, body = self.req("/api/state", headers=self.auth())
+        self.assertEqual(code, 200)
+        self.assertGreaterEqual(json.loads(body)["unread"], 1)
+        code, _, body = self.req("/api/seen", {}, headers=self.auth({"Origin": self.base}))
+        self.assertEqual((code, json.loads(body)["ok"]), (200, True))
+        _, _, body = self.req("/api/state", headers=self.auth())
+        self.assertEqual(json.loads(body)["unread"], 0)
 
     def test_files_stay_inside_the_workspace(self):
         code, _, body = self.req("/api/file?emp=tess&path=research/notes.md", headers=self.auth())
@@ -773,3 +790,122 @@ class Spoken(unittest.TestCase):
         self.fake("SILENT")
         res = engine.run(self.emp, "standup", job="standup")
         self.assertEqual(res["text"], "Subs 140 (+6). Today: the brake-fade Short, then the 21:00 slot.")
+
+
+FAKE_ARGS = r"""#!/usr/bin/env python3
+import json, os, sys, time
+sys.stdin.read()
+time.sleep(SLEEP)
+with open(os.path.join("WS", "state", "argv.json"), "w") as fh:
+    json.dump(sys.argv[1:], fh)
+print(json.dumps({"type": "system", "subtype": "init"}), flush=True)
+print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "Done.", "num_turns": 1, "total_cost_usd": 0.001}), flush=True)
+"""
+
+
+class Window(unittest.TestCase):
+    """0.10: the owner's window on a crew member's conversation, and the inbox that reaches them."""
+
+    def setUp(self):
+        fresh_team()
+        hire.hire("Tess", "Research", supervisor="Alex")
+        self.emp = engine.employee("tess")
+        self.ws = self.emp["workspace"]
+        self.real, self.real_online, self.real_usage = engine.resolve_claude, engine.online, engine.usage
+        engine.online = lambda *a, **k: True
+        engine.usage = lambda: {}
+
+    def tearDown(self):
+        engine.resolve_claude, engine.online, engine.usage = self.real, self.real_online, self.real_usage
+
+    def fake(self, sleep=0):
+        p = os.path.join(TMP, "fake-claude-args")
+        with open(p, "w") as fh:
+            fh.write(FAKE_ARGS.replace("WS", self.ws).replace("SLEEP", str(sleep)))
+        os.chmod(p, 0o755)
+        engine.resolve_claude = lambda: p
+
+    def argv(self):
+        with open(os.path.join(self.ws, "state", "argv.json")) as fh:
+            return json.load(fh)
+
+    def test_chat_window_is_the_same_conversation(self):
+        w = engine.chat_window(self.emp)                                   # nothing yet: a new conversation, oriented
+        self.assertTrue(w["new"])
+        self.assertEqual(w["cmd"][w["cmd"].index("--session-id") + 1], w["sid"])
+        self.assertTrue(w["cmd"][-1].startswith("[New conversation."))
+        self.assertNotIn("-p", w["cmd"])
+        self.assertEqual(w["cwd"], self.ws)
+        engine.remember_session(self.ws, engine.SESSION, w["sid"])
+        w2 = engine.chat_window(self.emp)                                  # next time: the same session, resumed
+        self.assertFalse(w2["new"])
+        self.assertEqual(w2["cmd"][-2:], ["--resume", w["sid"]])
+        self.assertEqual(engine.main_session(self.ws), w["sid"])
+
+    def test_runs_wait_while_the_owner_is_in_the_window(self):
+        self.fake()
+        engine.mark(self.ws, "chat", who="Alex")                           # the window is open (this process)
+        self.assertEqual(engine.window_open(self.ws)["kind"], "terminal")
+        threading.Timer(1.2, lambda: engine.unmark(self.ws, "chat")).start()
+        t0 = time.time()
+        res = engine.run(self.emp, "hi", job="brief")
+        self.assertTrue(res["ok"], res)
+        self.assertGreaterEqual(time.time() - t0, 1.0)                    # it waited for the window to close
+        self.assertNotIn("--fork-session", self.argv())
+        self.assertIsNone(engine.busy(self.ws))                            # the busy marker is gone after the run
+        self.assertIsNone(engine.window_open(self.ws))
+
+    def test_a_window_left_idle_stops_holding_the_routines(self):
+        self.fake()
+        sid = "22222222-3333-4444-5555-666666666666"
+        engine.remember_session(self.ws, engine.SESSION, sid)
+        folder = engine.transcripts(self.ws)
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, sid + ".jsonl")
+        try:
+            with open(path, "w") as fh:
+                fh.write("{}\n")
+            old = time.time() - engine.WINDOW_IDLE - 60
+            os.utime(path, (old, old))                                      # untouched for a while
+            engine.mark(self.ws, "chat", who="Alex")
+            self.assertFalse(engine.wait_for_window(self.ws))              # goes ahead at once
+            res = engine.run(self.emp, "hi", job="brief")
+            self.assertTrue(res["ok"], res)
+            self.assertIn("--fork-session", self.argv())                   # on a copy: the owner's window keeps main
+            self.assertEqual(engine.main_session(self.ws), sid)
+        finally:
+            engine.unmark(self.ws, "chat")
+            os.remove(path)
+
+    def test_a_dead_window_is_forgotten(self):
+        p = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"], capture_output=True, text=True)
+        dead = int(p.stdout.strip())
+        os.makedirs(os.path.join(self.ws, "state"), exist_ok=True)
+        with open(os.path.join(self.ws, "state", "chat.json"), "w") as fh:
+            json.dump({"pid": dead, "since": "x"}, fh)
+        self.assertIsNone(engine.window_open(self.ws))
+        self.assertFalse(os.path.exists(os.path.join(self.ws, "state", "chat.json")))
+
+    def test_the_busy_marker_while_a_run_is_on(self):
+        self.fake(sleep=1.5)
+        seen = []
+        threading.Timer(0.6, lambda: seen.append(engine.busy(self.ws))).start()
+        res = engine.run(self.emp, "hi", job="brief")
+        self.assertTrue(res["ok"], res)
+        time.sleep(0.1)
+        self.assertEqual(seen[0]["job"], "brief")
+        self.assertEqual(seen[0]["pid"], os.getpid())
+        self.assertIsNone(engine.busy(self.ws))
+
+    def test_inbox_unread_and_seen(self):
+        team.feed("tess", "Tess", "Alex", "Standup: 3 things.", "job")
+        team.feed("tess", "Tess", "team", "For everyone.", "job")
+        team.feed("owner", "Alex", "tess", "Thanks", "panel")             # the owner's own words aren't unread
+        team.feed("tess", "Tess", "Omar", "Not for Alex.", "bus")
+        rows = team.unread("Alex")
+        self.assertEqual([r["body"] for r in rows], ["Standup: 3 things.", "For everyone."])
+        self.assertEqual(len(team.unread("alex", "tess")), 2)
+        team.mark_seen("Alex")
+        self.assertEqual(team.unread("Alex"), [])
+        team.feed("tess", "Tess", "Alex", "End of day: shipped.", "job")
+        self.assertEqual([r["body"] for r in team.unread("Alex")], ["End of day: shipped."])

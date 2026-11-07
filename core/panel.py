@@ -258,17 +258,24 @@ def demo_interview(step, name, role):
 
 
 def claude_session(emp_id):
-    """Readies the crew member's folder (engine.claude_session) and, on a Mac, opens a Claude app session there."""
+    """Opens the owner's window on the crew member's own running conversation: a terminal running `orbit chat
+    <handle>` (a Claude Code window on the same session its routines use, so everything it did and said is there,
+    and what the owner says there it remembers). Readies the folder first (engine.claude_session), so a Claude
+    window opened there by hand has the same locks, even though that one is a separate conversation."""
     if emp_id not in engine.registry().get("employees", {}):
         raise orders.OrderError("No such crew member")
     if DEMO:
-        raise orders.OrderError("Not in the demo: in your own Orbit this opens a Claude session as them.")
+        raise orders.OrderError("Not in the demo: in your own Orbit this opens their conversation in Claude.")
     try:
         s = engine.claude_session(emp_id)
     except RuntimeError as e:
         raise orders.OrderError(str(e))
-    opened = osinfo.KIND == "mac" and osinfo.open_url(s["link"])
-    return {"ok": True, "link": s["link"], "folder": s["folder"], "opened": bool(opened), "hello": s["hello"]}
+    emp = engine.employee(emp_id)
+    cmd = "%s chat %s" % (osinfo._sh(os.path.join(engine.KIT, "orbit")), emp_id)
+    b = engine.busy(emp["workspace"])
+    opened = osinfo.open_terminal(cmd, name="chat-" + emp_id)
+    return {"ok": True, "command": cmd, "folder": s["folder"], "opened": bool(opened), "link": s["link"],
+            "busy": team.LABELS.get(b.get("job"), b.get("job")) if b else None}
 
 
 def setup_state(emps):
@@ -381,7 +388,7 @@ def state():
                                        for i, o in reg.get("owners", {}).items()],
             "employees": emps, "feed": feed, "orders": ords,
             "pending": [{"id": i, **p} for i, p in pending.items()],
-            "needs": needs_you(emps, ords, pending, usage), "checklist": checklist(emps, feed),
+            "needs": needs_you(emps, ords, pending, usage), "checklist": checklist(emps, feed), "unread": len(team.unread(me)),
             "working": dict(team.DOING), "jobs": team.JOBS, "labels": team.LABELS, "setup": setup_state(emps),
             "live": {k: {**v, "steps": list(v.get("steps", []))} for k, v in list(team.LIVE.items())},
             "calls": calls.status(),
@@ -798,6 +805,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise orders.OrderError(str(ex) or "Claude didn't answer; try again")
             if path == "/api/claude_session":
                 return self._json(200, claude_session(str(f.get("employee") or "")))
+            if path == "/api/seen":                     # the owner is looking at the room: nothing is unread now
+                team.mark_seen(me)
+                return self._json(200, {"ok": True})
             if path == "/api/connect":
                 return self._json(200, connect(f, me))
             if path == "/api/pairing" and f.get("channel") in channels.NAMES:

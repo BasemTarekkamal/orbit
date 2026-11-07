@@ -100,6 +100,29 @@ def feed(from_id, from_name, to_id, body, channel, receipt=None):
     append(FEED, rec)
 
 
+def unread(name, emp_id=None):
+    """What the crew said to an owner that they haven't seen yet: routine reports, order results, answers in the
+    team room. `name` is the owner's name as crew members address it (the supervisor field)."""
+    st = jload(STATEF, {})
+    seen, seen_ids = st.get("seen:%s" % str(name).lower(), ""), set(st.get("seen_ids:%s" % str(name).lower(), []))
+    emps = engine.registry().get("employees", {})
+    mine = (str(name).lower(), "team", "all", "owner", "owners")
+    return [r for r in tail(FEED, 400)
+            if r.get("from_id") in emps and (not emp_id or r.get("from_id") == emp_id)
+            and str(r.get("to_id", "")).lower() in mine
+            and (r.get("ts", "") > seen or (r.get("ts", "") == seen and r.get("id") not in seen_ids))]
+
+
+def mark_seen(name):
+    """The owner has looked (the panel, `orbit inbox`, `orbit chat`): everything in the room so far is seen."""
+    rows = tail(FEED, 400)
+    latest = max((r.get("ts", "") for r in rows), default="")
+    st = jload(STATEF, {})
+    st["seen:%s" % str(name).lower()] = latest
+    st["seen_ids:%s" % str(name).lower()] = [r.get("id") for r in rows if r.get("ts", "") == latest]
+    jsave(STATEF, st)
+
+
 def order_log(by, kind, summary, status, result=""):
     append(ORDERS, {"id": uuid.uuid4().hex[:12], "ts": time.strftime("%Y-%m-%d %H:%M:%S"), "by": by,
                     "kind": kind, "summary": summary[:300], "status": status, "result": str(result)[:500]})
@@ -286,6 +309,8 @@ def run_async(emp_id, prompt, job, session_key, deliver_to, who="", on_done=None
                 return
             if routine:
                 DOING[emp_id] = "Waiting for a free slot for %s" % LABELS.get(job, job)
+                engine.wait_for_window(emp["workspace"], lambda w: DOING.__setitem__(   # the owner is talking to them
+                    emp_id, "Waiting: %s has my chat window open (%s is next)" % (emp.get("supervisor") or "the owner", LABELS.get(job, job))))
                 routine_slot().acquire()
             DOING[emp_id] = ("Talking with %s" % who) if job == "chat" and who else "Working on %s" % LABELS.get(job, job)
             LIVE[emp_id] = {"doing": DOING[emp_id], "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "steps": []}
@@ -352,7 +377,7 @@ def to_room(emp_id, name, to, channel):
             feed(emp_id, name, to, out, channel, receipt=LAST.get(emp_id))
             if channel == "job" and not any(owner_address(k) for k in engine.registry().get("owners", {})):
                 import osinfo
-                osinfo.notify("%s · Orbit" % name, out)
+                osinfo.notify("%s · Orbit" % name, out, more="orbit inbox")
     return post
 
 
