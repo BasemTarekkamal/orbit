@@ -112,6 +112,13 @@ def dismiss() -> None:
     _save(d)
 
 
+def restart() -> None:
+    """Restarts the service in the background, on the code now in the kit."""
+    subprocess.Popen([sys.executable, os.path.join(engine.KIT, "orbit"), "restart"], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                     env=dict(os.environ, STAFFROOM_HOME=engine.HOME))
+
+
 def apply() -> str:
     """Fast-forwards to the newest release, then restarts the service in the background (the panel goes down
     with it for a few seconds and comes back on the new version)."""
@@ -121,13 +128,19 @@ def apply() -> str:
     if not s["can_update"]:
         raise RuntimeError(s["why_not"])
     tag = "v" + s["latest"]
-    r = _git("fetch", "--quiet", "--tags", "origin", timeout=180)
+    r = _git("fetch", "--quiet", "--force", "--tags", "origin", timeout=180)
     if r.returncode != 0:
         raise RuntimeError("Couldn't reach GitHub: %s" % (r.stderr.strip()[-200:] or "fetch failed"))
+    kept = ""
     r = _git("merge", "--ff-only", "--quiet", tag)
-    if r.returncode != 0:
-        raise RuntimeError("Couldn't move to %s without touching your copy: %s" % (tag, r.stderr.strip()[-200:]))
-    subprocess.Popen([sys.executable, os.path.join(engine.KIT, "orbit"), "restart"], stdin=subprocess.DEVNULL,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
-                     env=dict(os.environ, STAFFROOM_HOME=engine.HOME))
-    return "Updated to %s. Orbit restarts now; the panel is back in a few seconds." % s["latest"]
+    if r.returncode != 0:                                 # the official history was rewritten: keep this copy, then move
+        if _git("status", "--porcelain", "--untracked-files=no").stdout.strip():
+            raise RuntimeError("Couldn't move to %s: this copy has changes of its own. %s" % (tag, r.stderr.strip()[-200:]))
+        kept = "before-" + tag
+        _git("branch", "--force", kept, "HEAD")
+        r = _git("reset", "--hard", "--quiet", tag)
+        if r.returncode != 0:
+            raise RuntimeError("Couldn't move to %s: %s" % (tag, r.stderr.strip()[-200:]))
+    restart()
+    return "Updated to %s. Orbit restarts now; the panel is back in a few seconds.%s" % (
+        s["latest"], " Your previous copy is kept on the branch %s." % kept if kept else "")

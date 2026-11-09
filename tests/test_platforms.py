@@ -537,6 +537,42 @@ class Updates(unittest.TestCase):
         update._save({"latest": "0.0.1", "checked": time.time()})
         self.assertFalse(update.status()["newer"])
 
+    def test_a_rewritten_history_still_updates_and_keeps_the_old_copy(self):
+        import update
+        root = tempfile.mkdtemp(prefix="orbit-update-test-")
+        up, kit = os.path.join(root, "up"), os.path.join(root, "kit")
+
+        def g(cwd, *a):
+            return subprocess.run(["git", "-C", cwd, "-c", "user.name=T", "-c", "user.email=t@example.com"] + list(a),
+                                  capture_output=True, text=True, check=True)
+
+        def put(version, text):
+            for name, body in (("VERSION", version), ("a.txt", text)):
+                with open(os.path.join(up, name), "w") as fh:
+                    fh.write(body + "\n")
+        os.makedirs(up)
+        g(up, "init", "-q", "-b", "main")
+        put("1.0.0", "Old sample name")
+        g(up, "add", "-A"); g(up, "commit", "-qm", "one"); g(up, "tag", "v1.0.0")
+        subprocess.run(["git", "clone", "-q", up, kit], check=True)
+        g(up, "checkout", "-q", "--orphan", "rewritten")                  # the official history is rewritten…
+        put("1.0.1", "New sample name")
+        g(up, "add", "-A"); g(up, "commit", "-qm", "one, rewritten"); g(up, "tag", "v1.0.1")
+        real = (engine.KIT, update.official_copy, update.restart)
+        engine.KIT, update.official_copy, update.restart = kit, (lambda: True), (lambda: None)
+        try:
+            update._save({"latest": "1.0.1", "checked": time.time()})
+            msg = update.apply()                                           # …and this copy still moves to it
+            self.assertIn("before-v1.0.1", msg)
+            with open(os.path.join(kit, "a.txt")) as fh:
+                self.assertEqual(fh.read().strip(), "New sample name")
+            self.assertEqual(update.current(), "1.0.1")
+            old = subprocess.run(["git", "-C", kit, "show", "before-v1.0.1:a.txt"], capture_output=True, text=True)
+            self.assertEqual(old.stdout.strip(), "Old sample name")         # the old copy is kept on a branch
+        finally:
+            engine.KIT, update.official_copy, update.restart = real
+            update._save({})
+
 
 class ContentKit(unittest.TestCase):
     """The content creator comes trained: the skill loads with the ability, and the kit is whole."""

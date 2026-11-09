@@ -95,7 +95,7 @@ def keep_awake_cmd(pid: int, battery: bool = False, seconds: int = 0):
 
 RUNTIME = os.path.join(os.path.expanduser(os.environ.get("STAFFROOM_HOME", "~/Staff")), ".runtime")
 NOTIFIER = os.path.join(RUNTIME, "Orbit.app")             # a tiny Mac app whose only job is to show notifications
-NOTIFIER_VERSION = "1"
+NOTIFIER_VERSION = "2"                                    # 2: re-signed after the Info.plist edits (1 was dropped by macOS)
 APPLET = """on run
 	set f to (POSIX path of (path to home folder)) & "%s"
 	try
@@ -116,7 +116,7 @@ def notifier() -> str:
     Editor is allowed; from an app of its own they show as "Orbit", after the owner says yes once. '' if it can't be built."""
     if KIND != "mac" or not which("osacompile"):
         return ""
-    stamp = os.path.join(NOTIFIER, "Contents", "orbit-notifier.version")
+    stamp = os.path.join(RUNTIME, "notifier.version")         # outside the app: a file inside would break its signature
     try:
         with open(stamp) as fh:
             if fh.read().strip() == NOTIFIER_VERSION and os.path.isdir(NOTIFIER):
@@ -137,6 +137,9 @@ def notifier() -> str:
             if r.returncode:
                 subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Add :%s %s %s" % (key, "bool" if val in ("true", "false") else "string", val), plist],
                                capture_output=True)
+        if which("codesign"):                             # editing Info.plist breaks osacompile's signature: sign it again
+            subprocess.run(["codesign", "--force", "--sign", "-", NOTIFIER], capture_output=True, timeout=60, check=True)
+            subprocess.run(["codesign", "--verify", NOTIFIER], capture_output=True, timeout=60, check=True)
         with open(stamp, "w") as fh:
             fh.write(NOTIFIER_VERSION)
         return NOTIFIER
