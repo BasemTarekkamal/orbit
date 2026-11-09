@@ -1075,7 +1075,7 @@ class Desk(unittest.TestCase):
 
 FAKE_CHROME = '''#!%s
 """A stand-in for Chrome in tests: serves the DevTools endpoints browser.py uses, on the port it was given."""
-import http.server, json, os, sys, uuid
+import http.server, json, os, socketserver, sys, uuid
 BID = "ws://127.0.0.1/devtools/browser/" + str(uuid.uuid4())
 args = dict(a.split("=", 1) for a in sys.argv[1:] if a.startswith("--") and "=" in a)
 prof, port = args["--user-data-dir"], int(args["--remote-debugging-port"])
@@ -1101,7 +1101,8 @@ class H(http.server.BaseHTTPRequestHandler):
         pass
 
 
-http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
+socketserver.TCPServer.allow_reuse_address = True       # not HTTPServer: its reverse DNS lookup can take 30 s
+socketserver.TCPServer(("127.0.0.1", port), H).serve_forever()
 ''' % sys.executable
 
 
@@ -1112,12 +1113,12 @@ class OwnBrowser(unittest.TestCase):
         fresh_team()
         import browser
         self.browser = browser
-        self.ready = browser.ready
+        self.ready, self.installed = browser.ready, browser.installed
         hire.hire("Tess", "Research", supervisor="Alex", picked=["web"])
         hire.hire("Omar", "Social", supervisor="Alex")
 
     def tearDown(self):
-        self.browser.ready = self.ready
+        self.browser.ready, self.browser.installed = self.ready, self.installed
         os.environ.pop("ORBIT_CHROME", None)
         for eid in ("tess", "omar"):
             try:
@@ -1138,6 +1139,7 @@ class OwnBrowser(unittest.TestCase):
         self.browser.ready = lambda: (False, "Node.js 20 or newer is missing")
         self.assertNotIn("orbit-browser", engine.mcp_servers(engine.employee("tess")))
         self.browser.ready = lambda: (True, "")
+        self.browser.installed = lambda: self.browser.PKG_VERSION
         cmd = engine.command(engine.employee("tess"), "sonnet")
         with open(cmd[cmd.index("--mcp-config") + 1]) as fh:
             srv = json.load(fh)["mcpServers"]["orbit-browser"]

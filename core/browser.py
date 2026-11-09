@@ -113,8 +113,14 @@ def _version(node_path: str) -> tuple:
     return (int(m.group(1)), int(m.group(2))) if m else ()
 
 
+_NODE = []
+
+
 def node():
-    """Node.js 20 or newer (the browser connector needs it): on PATH, Homebrew, or the newest nvm/volta one."""
+    """Node.js 20 or newer (the browser connector needs it): on PATH, Homebrew, or the newest nvm/volta one.
+    Found once per process (each check runs `node -v`)."""
+    if _NODE and os.access(_NODE[0], os.X_OK):
+        return _NODE[0]
     seen = []
     for p in [osinfo.which("node"), os.path.expanduser("~/.volta/bin/node")] + sorted(
             glob.glob(os.path.expanduser("~/.nvm/versions/node/v*/bin/node")),
@@ -122,6 +128,7 @@ def node():
         if p and p not in seen and os.access(p, os.X_OK):
             seen.append(p)
             if _version(p) >= (20, 0):
+                _NODE[:] = [p]
                 return p
     return None
 
@@ -387,8 +394,8 @@ def mcp_server(emp: dict) -> dict:
     """The browser connector for this crew member's runs and Claude sessions: {} if its own browser is off or can't
     run on this computer (see ready())."""
     import abilities
-    if "own_browser" not in abilities.effective(emp["id"]) or not ready()[0]:
-        return {}
+    if "own_browser" not in abilities.effective(emp["id"]) or installed() != PKG_VERSION or not ready()[0]:
+        return {}                                         # the cheap checks first: this runs before every run
     py = sys.executable if sys.executable and os.path.exists(sys.executable) else (osinfo.which("python3") or "python3")
     return {SERVER: {"type": "stdio", "command": py, "args": [os.path.join(engine.CORE, "browser_mcp.py"), emp["id"]],
                      "env": {"STAFFROOM_HOME": engine.HOME}}}
