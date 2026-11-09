@@ -15,6 +15,9 @@ import unittest
 import zipfile
 
 TMP = tempfile.mkdtemp(prefix="orbit-platforms-test-")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _cleanup  # noqa: E402
+_cleanup.on_exit(TMP)                      # nothing left behind: temp folders, transcripts
 os.environ["STAFFROOM_HOME"] = TMP
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(KIT, "core"))
@@ -539,7 +542,7 @@ class Updates(unittest.TestCase):
 
     def test_a_rewritten_history_still_updates_and_keeps_the_old_copy(self):
         import update
-        root = tempfile.mkdtemp(prefix="orbit-update-test-")
+        root = tempfile.mkdtemp(dir=TMP)
         up, kit = os.path.join(root, "up"), os.path.join(root, "kit")
 
         def g(cwd, *a):
