@@ -522,7 +522,9 @@ async function openClaude(emp, btn) {
     const r = await api('/api/claude_session', { employee: emp });
     S.claudeCmd = { ...(S.claudeCmd || {}), [emp]: r.command };
     const busy = r.busy ? ` ${esc(e.name)} is in the middle of ${esc(r.busy)}; the window opens when it's done.` : '';
-    if (r.opened) toast(`A terminal is opening on ${esc(e.name)}'s conversation.${busy}`);
+    if (r.opened && r.how === 'app' && r.new_chat) toast(`Claude is opening a new chat with ${esc(e.name)}. Press Enter once: they set up their routines there, so every report lands in that chat.`);
+    else if (r.opened && r.how === 'app') toast(`Opening your chat with ${esc(e.name)} in Claude.`);
+    else if (r.opened) toast(`A terminal is opening on ${esc(e.name)}'s conversation.${busy}`);
     else {
       try { await navigator.clipboard.writeText(r.command); } catch (_) { /* no clipboard */ }
       toast(`Run this in a terminal (copied): ${r.command}`);

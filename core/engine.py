@@ -726,15 +726,12 @@ def stats(emp: dict) -> dict:
 
 
 # ------------------------------------------------------------------ a Claude session in the employee's folder
-SESSION_HELLO = ("Hi %s. Introduce yourself to me in a few short lines: your job as you understand it, what you'll "
-                 "do first, and anything you need from me. Read your CLAUDE.md and notes first.")
-
-
 def claude_session(emp_id: str) -> dict:
     """Readies the employee's folder so a Claude app session opened there is that employee, with the same locks
     as its runs: the sandbox, the deny list and the guard (installed for this folder only), its abilities and
     its tools. Written to .claude/settings.local.json, which the harness's own runs don't read (they use
-    --setting-sources project), so runs and sessions never double up. → {"folder", "link", "hello"}"""
+    --setting-sources project), so runs and sessions never double up. → {"folder", "link", "hello", "chat"}: `link` opens a new Claude app chat there
+    whose first message sets up its routines (claudeapp); `chat` is the chat once it has (None before)."""
     import abilities
     emp = employee(emp_id)
     ws = emp["workspace"]
@@ -801,6 +798,8 @@ def claude_session(emp_id: str) -> dict:
     import grants                                          # the key the guard needs to apply an owner's Yes
     grants.key()
     import urllib.parse
-    hello = SESSION_HELLO % emp["name"]
+    import claudeapp
+    claudeapp.write_plan(emp_id)
+    hello = claudeapp.setup_message(emp_id)                # the chat sets up its routines, then says hello
     link = "claude://code/new?" + urllib.parse.urlencode({"folder": ws, "q": hello}, quote_via=urllib.parse.quote)
-    return {"folder": ws, "link": link, "hello": hello}
+    return {"folder": ws, "link": link, "hello": hello, "chat": claudeapp.chat_link(emp_id)}

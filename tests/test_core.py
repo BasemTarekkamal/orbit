@@ -909,3 +909,90 @@ class Window(unittest.TestCase):
         self.assertEqual(team.unread("Alex"), [])
         team.feed("tess", "Tess", "Alex", "End of day: shipped.", "job")
         self.assertEqual([r["body"] for r in team.unread("Alex")], ["End of day: shipped."])
+
+
+class ClaudeApp(unittest.TestCase):
+    """0.11: a crew member's thinking routines run as the Claude app's scheduled tasks and report in its chat."""
+
+    def setUp(self):
+        fresh_team()
+        hire.hire("Tess", "Research", supervisor="Alex", picked=["web", "standup", "eod", "review", "brief"])
+        self.ws = engine.employee("tess")["workspace"]
+
+    def test_cron_follows_the_owners_week(self):
+        import claudeapp
+        self.assertEqual(claudeapp.cron({"at": "09:00", "days": "work"}), "0 9 * * 1,2,3,4,5")
+        self.assertEqual(claudeapp.cron({"at": "15:30", "days": "last_workday"}), "30 15 * * 5")
+        self.assertEqual(claudeapp.cron({"at": "19:00", "days": "daily"}), "0 19 * * *")
+        self.assertEqual(claudeapp.cron({"at": "10:00", "days": "Fri"}), "0 10 * * 5")
+        reg = engine.registry()
+        reg["workdays"] = ["Sun", "Mon", "Tue", "Wed", "Thu"]
+        engine.save_registry(reg, "Sun–Thu")
+        self.assertEqual(claudeapp.cron({"at": "09:00", "days": "work"}), "0 9 * * 0,1,2,3,4")
+        self.assertEqual(claudeapp.cron({"at": "15:00", "days": "last_workday"}), "0 15 * * 4")
+        reg["workdays"] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        engine.save_registry(reg, "every day")
+        self.assertEqual(claudeapp.cron({"at": "17:00", "days": "work"}), "0 17 * * *")
+
+    def test_the_plan_has_the_thinking_routines_and_how_they_report(self):
+        import claudeapp
+        p = claudeapp.write_plan("tess")
+        jobs = [t["job"] for t in p["tasks"]]
+        self.assertEqual(sorted(jobs), ["eod", "review", "standup"])          # not the brief: it stays in the service
+        st = next(t for t in p["tasks"] if t["job"] == "standup")
+        self.assertEqual((st["task_id"], st["title"], st["cron"]), ("tess-standup", "Tess · Standup", "0 9 * * 1,2,3,4,5"))
+        self.assertIn("your chat with Alex is woken", st["prompt"])
+        self.assertIn("exactly SILENT", st["prompt"])
+        self.assertNotIn("{supervisor}", st["prompt"])
+        self.assertNotIn("Context: now", st["prompt"])                         # no stale clock in a stored prompt
+        with open(os.path.join(self.ws, "state", "claude_app_plan.json")) as fh:
+            self.assertEqual(json.load(fh)["version"], p["version"])
+        self.assertEqual(claudeapp.write_plan("tess")["version"], p["version"])  # same plan, same version
+
+    def test_routines_in_the_app_are_left_to_the_app(self):
+        import claudeapp
+        self.assertEqual((claudeapp.owned("tess"), claudeapp.chat_link("tess")), (set(), None))
+        p = claudeapp.write_plan("tess")
+        sid = "local_12345678-1234-1234-1234-123456789abc"
+        with open(os.path.join(self.ws, "state", "claude_app.json"), "w") as fh:
+            json.dump({"chat": sid, "routines": ["standup", "eod", "brief"], "plan": p["version"]}, fh)
+        self.assertEqual(claudeapp.owned("tess"), {"standup", "eod"})          # only thinking routines move
+        self.assertEqual(claudeapp.chat_link("tess"), "claude://claude.ai/epitaxy/" + sid)
+        self.assertFalse(claudeapp.stale("tess"))
+        reg = engine.registry()
+        reg["workdays"] = ["Sun", "Mon", "Tue", "Wed", "Thu"]
+        engine.save_registry(reg, "Sun–Thu")
+        claudeapp.write_plan("tess")
+        self.assertTrue(claudeapp.stale("tess"))                               # times changed: the chat updates its tasks
+        with open(os.path.join(self.ws, "state", "claude_app.json"), "w") as fh:
+            json.dump({"chat": "../../somewhere", "routines": ["standup"]}, fh)
+        self.assertEqual(claudeapp.owned("tess"), set())                       # not a chat id: ignored
+
+    def test_the_service_skips_what_the_app_runs(self):
+        import datetime as dt
+        import staffd
+        import awake
+        sid = "local_12345678-1234-1234-1234-123456789abc"
+        with open(os.path.join(self.ws, "state", "claude_app.json"), "w") as fh:
+            json.dump({"chat": sid, "routines": ["standup", "eod", "review"]}, fh)
+        started = []
+        real = (awake.settled, engine.online, staffd.run_async, staffd.dt)
+
+        class Now(dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return dt.datetime(2026, 11, 9, 9, 1)                         # Monday 09:01: brief and standup are due
+
+        class D:
+            datetime, timedelta = Now, dt.timedelta
+        awake.settled, engine.online = (lambda: True), (lambda *a, **k: True)
+        staffd.run_async = lambda k, prompt, job, *a, **kw: started.append(job)
+        staffd.dt = D
+        try:
+            with open(os.path.join(self.ws, "state", "schedule.json"), "w") as fh:
+                json.dump({"brief": "2026-11-08", "standup": "2026-11-08"}, fh)
+            staffd.tick_jobs()
+        finally:
+            awake.settled, engine.online, staffd.run_async, staffd.dt = real
+        self.assertIn("brief", started)
+        self.assertNotIn("standup", started)

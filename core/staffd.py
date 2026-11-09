@@ -334,7 +334,11 @@ def tick_jobs():
         st_f = os.path.join(emp["workspace"], "state", "schedule.json")
         st = jload(st_f, {})
         missed = []
+        import claudeapp
+        in_app = claudeapp.owned(k)                       # these run as the Claude app's tasks, in the owner's chat
         for job in abilities.jobs(k):
+            if job in in_app:
+                continue
             spec = team.job_spec(emp, job)
             due = team.last_due(spec, now) if spec else None
             if not due or st.get(job, "") >= due.strftime("%F") or st.get("wait:" + job, "") > stamp:
@@ -534,6 +538,8 @@ def refresh_sessions():
             import hire
             hire.upgrade_workspace(emp_id)
             engine.claude_session(emp_id)
+            import claudeapp
+            claudeapp.write_plan(emp_id)                  # the routines its Claude chat sets up (or updates)
         except Exception as ex:  # noqa: BLE001
             log("session refresh %s: %s" % (emp_id, ex))
 

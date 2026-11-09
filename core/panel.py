@@ -273,9 +273,18 @@ def claude_session(emp_id):
     emp = engine.employee(emp_id)
     cmd = "%s chat %s" % (osinfo._sh(os.path.join(engine.KIT, "orbit")), emp_id)
     b = engine.busy(emp["workspace"])
-    opened = osinfo.open_terminal(cmd, name="chat-" + emp_id)
-    return {"ok": True, "command": cmd, "folder": s["folder"], "opened": bool(opened), "link": s["link"],
-            "busy": team.LABELS.get(b.get("job"), b.get("job")) if b else None}
+    link = s.get("chat") or s["link"]                     # their chat in the Claude app, or a new one that sets itself up
+    opened, how = False, "app"
+    if osinfo.KIND == "mac" and claude_app_installed():
+        opened = osinfo.open_url(link)
+    if not opened:
+        how, opened = "terminal", osinfo.open_terminal(cmd, name="chat-" + emp_id)
+    return {"ok": True, "command": cmd, "folder": s["folder"], "opened": bool(opened), "link": link, "how": how,
+            "new_chat": not s.get("chat"), "busy": team.LABELS.get(b.get("job"), b.get("job")) if b else None}
+
+
+def claude_app_installed() -> bool:
+    return any(os.path.isdir(p) for p in ("/Applications/Claude.app", os.path.expanduser("~/Applications/Claude.app")))
 
 
 def setup_state(emps):

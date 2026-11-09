@@ -78,10 +78,12 @@ but few people have used it yet, so please tell us what breaks.
 its routines, its follow-ups and your messages are all turns of the same session. You reach it three ways,
 and everything it says reaches you on all of them:
 
-- **In Claude:** **Open in Claude** (or `orbit chat maya`) opens a Claude window on that conversation,
-  with all of Claude's power and the same job, memory and locks. You see what it did and said while you
-  were away, you reply, and it remembers. Its routines wait while you're in the window (after 20 idle
-  minutes they carry on).
+- **In the Claude app:** **Open in Claude** opens your chat with that crew member, in their own folder with
+  the same job, memory and locks. The first time, press Enter once: they set up their standup, midday
+  initiative, end of day and weekly review as the Claude app's own scheduled tasks. Each finished routine
+  wakes that chat and leaves the unread dot there, like any Claude chat you leave running: what they did,
+  where things stand, what they need from you. You answer in the same chat. No Claude app? `orbit chat maya`
+  opens their running conversation in a terminal instead.
 - **In the control panel:** the team room, each crew member's Chat tab, and a count of what you haven't
   seen. In a terminal: `orbit inbox`.
 - **On your phone:** Telegram, Slack or Discord (the panel connects it in about two minutes). Without a
