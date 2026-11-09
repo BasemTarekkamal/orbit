@@ -1,14 +1,17 @@
-"""The crew member's chat in the Claude app: where its routines report, like any Claude chat you leave running.
+"""The crew member's chat in the Claude app: where it works and reports, like any Claude chat you leave running.
 
 The owner talks to a crew member in one Claude app chat, opened in the crew member's own folder (so the same
-sandbox, guard and abilities apply). Its thinking routines (standup, initiative, end of day, weekly review) run
-as the Claude app's own scheduled tasks, created from that chat, so each finished run wakes the chat and leaves
-the unread dot there: what it did, where things stand, what it needs.
+sandbox, guard and abilities apply). A chat only acts when a message arrives, so its thinking routines (standup,
+initiative, end of day, weekly review) are the Claude app's own scheduled tasks used as alarms: at the routine's
+time the task's run sends one message into the chat ("your standup is due: do it now"), and the crew member does
+the routine right there. The owner sees the work and the report in that chat, with the unread dot.
+(The app's "notify on completion" doesn't wake a chat, so a run that did the work elsewhere never reached the owner;
+a message from one session to another does: tested 9 Nov 2026.)
 
 Orbit can't call the Claude app's tools itself, so it writes the plan and the chat sets it up:
-  * state/claude_app_plan.json   written by Orbit: one entry per routine (task id, title, cron, prompt)
+  * state/claude_app_plan.json   written by Orbit: one entry per routine (task id, title, cron, alarm prompt)
   * core/jobs/claude_app.md      the brief the chat follows to create or update the tasks from the plan
-  * state/claude_app.json        written by the chat once the tasks exist: {"chat", "link", "routines", "plan"}
+  * state/claude_app.json        written by the chat: {"chat", "link", "routines", "plan"}; the alarm reads "chat"
 While a routine is in state/claude_app.json the Claude app runs it, and staffd doesn't (no double runs). Follow-ups,
 reminders, the morning brief, scout, the self-test, the team bus and phone channels stay with Orbit's service.
 
@@ -29,14 +32,20 @@ import engine
 ROUTINES = ("standup", "initiative", "eod", "review")     # the thinking routines: the ones the owner reads
 DOW = {"Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6}   # cron's day numbers
 LINK = "claude://claude.ai/epitaxy/%s"
-FOOTER = """
-
----
-How this run reaches {supervisor}: you're running as a scheduled task in the Claude app, in your own folder, with your
-usual locks. When you finish, your chat with {supervisor} is woken with your final message and passes it on. So make
-your final message the report itself: what you did, where things stand, what you need from them. Before you start,
-read what your background runs (follow-ups, the morning brief, scout) reported since your last report: your lines
-in {feed} (the newest at the bottom). If nothing happened and nothing needs them, output exactly SILENT."""
+ALARM = """This run is an alarm for {name}'s {label}, nothing more. Don't do the work here, and change no files.
+1. Read state/claude_app.json in this folder: its "chat" is {name}'s chat with {supervisor}.
+2. Load SendMessage with one ToolSearch call (query "select:SendMessage") and send that chat the message between the
+   lines below, exactly as written. If SendMessage doesn't load, load mcp__ccd_session_mgmt__send_message the same way
+   and send it with session_id set to the chat.
+3. Reply with one line: sent, or why not.
+----------
+{message}
+----------"""
+MESSAGE = ("Your {label_lower} is due: the routine you set up in this chat at {supervisor}'s request. Do it now, here in "
+           "this chat, as {name} for {supervisor}: follow {brief}. First read what your background runs reported since "
+           "your last report here: your lines in {feed}, newest at the bottom. Your reply in this chat is what "
+           "{supervisor} reads: what you did, where things stand, what you need from them. If there is truly nothing, "
+           "say so in one line.")
 
 
 def _ws(emp_id: str) -> str:
@@ -67,15 +76,18 @@ def plan(emp_id: str) -> dict:
     on = [j for j in abilities.jobs(emp_id) if j in ROUTINES]
     feed = os.path.join(engine.HOME, "team", "feed.jsonl")
     tasks = []
+    sup = e.get("supervisor") or "the owner"
     for job in on:
         spec = team.job_spec(e, job)
         if not spec:
             continue
-        prompt = team.job_prompt(emp_id, e, job).split("\n\n---\nContext:")[0]     # the live context is per run
-        prompt = (engine.ORIENT.strip() + "\n\n" + prompt + FOOTER).replace("{supervisor}", e.get("supervisor") or "the owner")
-        tasks.append({"job": job, "task_id": "%s-%s" % (emp_id, job), "title": "%s · %s" % (e["name"], team.JOBS.get(job, job)),
-                      "description": "%s's %s, reported in their Claude chat" % (e["name"], team.JOBS.get(job, job).lower()),
-                      "cron": cron(spec), "prompt": prompt.replace("{feed}", feed)})
+        label = team.JOBS.get(job, job)
+        message = MESSAGE.format(label_lower=label.lower(), supervisor=sup, name=e["name"], feed=feed,
+                                 brief=os.path.join(engine.CORE, "jobs", job + ".md"))
+        tasks.append({"job": job, "task_id": "%s-%s" % (emp_id, job), "title": "%s · %s" % (e["name"], label),
+                      "description": "Wakes %s's Claude chat for the %s" % (e["name"], label.lower()),
+                      "cron": cron(spec), "message": message,
+                      "prompt": ALARM.format(name=e["name"], label=label.lower(), supervisor=sup, message=message)})
     version = hashlib.sha1(json.dumps(tasks, sort_keys=True).encode()).hexdigest()[:10]
     return {"employee": emp_id, "name": e["name"], "supervisor": e.get("supervisor", ""), "version": version,
             "brief": os.path.join(engine.CORE, "jobs", "claude_app.md"), "tasks": tasks}

@@ -80,9 +80,9 @@ and everything it says reaches you on all of them:
 
 - **In the Claude app:** **Open in Claude** opens your chat with that crew member, in their own folder with
   the same job, memory and locks. The first time, press Enter once: they set up their standup, midday
-  initiative, end of day and weekly review as the Claude app's own scheduled tasks. Each finished routine
-  wakes that chat and leaves the unread dot there, like any Claude chat you leave running: what they did,
-  where things stand, what they need from you. You answer in the same chat. No Claude app? `orbit chat maya`
+  initiative, end of day and weekly review as alarms (the Claude app's own scheduled tasks). At each
+  routine's time the alarm messages that chat, they do the work right there, and the report waits for you
+  with the unread dot, like any Claude chat you leave running. You answer in the same chat. No Claude app? `orbit chat maya`
   opens their running conversation in a terminal instead.
 - **In the control panel:** the team room, each crew member's Chat tab, and a count of what you haven't
   seen. In a terminal: `orbit inbox`.

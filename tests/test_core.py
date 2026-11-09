@@ -941,10 +941,13 @@ class ClaudeApp(unittest.TestCase):
         self.assertEqual(sorted(jobs), ["eod", "review", "standup"])          # not the brief: it stays in the service
         st = next(t for t in p["tasks"] if t["job"] == "standup")
         self.assertEqual((st["task_id"], st["title"], st["cron"]), ("tess-standup", "Tess · Standup", "0 9 * * 1,2,3,4,5"))
-        self.assertIn("your chat with Alex is woken", st["prompt"])
-        self.assertIn("exactly SILENT", st["prompt"])
-        self.assertNotIn("{supervisor}", st["prompt"])
-        self.assertNotIn("Context: now", st["prompt"])                         # no stale clock in a stored prompt
+        self.assertIn("alarm", st["prompt"])                                   # the run only wakes the chat…
+        self.assertIn("state/claude_app.json", st["prompt"])
+        self.assertIn("SendMessage", st["prompt"])
+        self.assertIn(st["message"], st["prompt"])
+        self.assertIn(os.path.join(engine.CORE, "jobs", "standup.md"), st["message"])   # …which does the standup itself
+        self.assertIn("for Alex", st["message"])
+        self.assertNotIn("{", st["prompt"])
         with open(os.path.join(self.ws, "state", "claude_app_plan.json")) as fh:
             self.assertEqual(json.load(fh)["version"], p["version"])
         self.assertEqual(claudeapp.write_plan("tess")["version"], p["version"])  # same plan, same version
