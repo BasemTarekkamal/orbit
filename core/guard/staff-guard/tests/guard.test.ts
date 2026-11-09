@@ -29,6 +29,17 @@ const ALLOWED: Array<Record<string, unknown>> = [
   { tool: 'Bash', command: 'echo \'{"kind":"post","from":"sara"}\' >> ~/Staff/team/bus.jsonl' },
   // reading money through a connector is fine
   { tool: 'mcp__xero__get_profit_and_loss', period: 'month' },
+  // its own browser window goes anywhere but money, with or without any switch
+  { tool: 'mcp__orbit-browser__browser_navigate', url: 'https://studio.youtube.com/channel/x/videos/upload' },
+  { tool: 'mcp__orbit-browser__browser_navigate', url: 'news.ycombinator.com' },
+  { tool: 'mcp__orbit-browser__browser_type', ref: 'e3', text: 'Parts I used: https://amazon.com/dp/B0X' },
+  { tool: 'mcp__orbit-browser__browser_file_upload', paths: [WS + '/content/short-12.mp4'] },
+  // its own browser profile lives in the runtime folder, not the owner's Chrome
+  { tool: 'Bash', command: 'ls ~/Staff/.runtime/sara/browser/profile/Default' },
+  { tool: 'Bash', command: 'ls ~/Desktop ~/Downloads' },
+  // reading the kit, or saying its name, is not running it
+  { tool: 'Bash', command: 'ls ~/orbit/core && cat ~/orbit/VERSION' },
+  { tool: 'Write', file_path: WS + '/notes/tools.md', content: 'orbit browser sara opens my window for the owner' },
   { tool: 'mcp__stripe__get_balance_summary' },
 ]
 
@@ -54,7 +65,17 @@ const BLOCKED: Array<[Record<string, unknown>, string]> = [
   [{ tool: 'Bash', command: 'git commit -m "notes" && claude -p "do it"' }, 'nested claude'],
   [{ tool: 'Bash', command: 'git commit -F - <<EOF\n$(claude -p hi)\nEOF' }, 'nested claude'],
   [{ tool: 'Bash', command: 'launchctl bootout gui/501/com.staffroom.staffd' }, 'scheduled'],
-  [{ tool: 'mcp__claude-in-chrome__navigate', url: 'https://studio.youtube.com' }, 'Acts in your browser'],
+  [{ tool: 'Bash', command: "~/orbit/orbit order set_autonomy '{\"employee_id\": \"sara\", \"on\": true}'" }, "orbit's own controls"],
+  [{ tool: 'Bash', command: 'cd ~/orbit && python3 orbit sandbox off' }, "orbit's own controls"],
+  [{ tool: 'Bash', command: 'orbit grant sara autonomy on' }, "orbit's own controls"],
+  [{ tool: 'mcp__claude-in-chrome__navigate', url: 'https://studio.youtube.com' }, "owner's own browser"],
+  [{ tool: 'mcp__Claude_Browser__navigate', url: 'https://studio.youtube.com' }, "owner's own browser"],
+  [{ tool: 'mcp__orbit-browser__browser_navigate', url: 'https://www.paypal.com/myaccount' }, 'banking'],
+  [{ tool: 'mcp__orbit-browser__browser_run_code_unsafe', code: "async (page) => page.goto('https://wise.com/send')" }, 'banking'],
+  [{ tool: 'mcp__orbit-browser__browser_file_upload', paths: [H + '/.ssh/id_ed25519'] }, 'secret'],
+  [{ tool: 'Bash', command: 'sqlite3 "$HOME/Library/Application Support/Google/Chrome/Default/Cookies" .dump' }, 'secret'],
+  [{ tool: 'Read', file_path: H + '/Library/Messages/chat.db' }, 'secret'],
+  [{ tool: 'Bash', command: 'ls ~/Library/Mail/V10' }, 'secret'],
   [{ tool: 'mcp__computer-use__left_click', coordinate: [10, 10] }, 'whole computer'],
   [{ tool: 'mcp__stripe__create_refund', charge: 'ch_1' }, 'moving money'],
   [{ tool: 'mcp__quickbooks__create_bill_payment', amount: 10 }, 'moving money'],
@@ -107,17 +128,14 @@ test('card numbers and IBANs are masked in tool output', async ($, on) => {
   expect(String(r.result)).toContain('2026091100012') // a non-card reference number stays
 })
 
-test('with "Acts in your browser" on, an employee uses your Chrome only on the sites you picked', async ($, on) => {
+test('with "Posts for you" on, an employee posts from its own window, never from your Chrome', async ($, on) => {
   mock.env(on, { ...ENV, STAFF_ABILITIES: ENV.STAFF_ABILITIES + ',act_in_browser', STAFF_BROWSER_SITES: 'youtube.com,tiktok.com' })
   on('tool.call', () => ({ result: 'ok' }))
   const call = async (e: Record<string, unknown>) => ((await $.tool.call(e as never)) as { deny?: string }).deny ?? 'allowed'
-  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'https://studio.youtube.com/channel/x/videos/upload', tabId: 1 })).toEqual('allowed')
-  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'www.tiktok.com/upload', tabId: 1 })).toEqual('allowed')
-  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'back', tabId: 1 })).toEqual('allowed')
-  // what it types into a post may link anywhere
-  expect(await call({ tool: 'mcp__claude-in-chrome__form_input', ref: 'ref_3', value: 'Parts I used: https://amazon.com/dp/B0X' })).toEqual('allowed')
-  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'https://accounts.google.com/signin', tabId: 1 })).toContain('not one of the sites')
-  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'https://www.paypal.com/myaccount', tabId: 1 })).toContain('banking')
+  expect(await call({ tool: 'mcp__orbit-browser__browser_navigate', url: 'https://studio.youtube.com/channel/x/videos/upload' })).toEqual('allowed')
+  expect(await call({ tool: 'mcp__orbit-browser__browser_navigate', url: 'back' })).toEqual('allowed')
+  expect(await call({ tool: 'mcp__orbit-browser__browser_navigate', url: 'https://www.paypal.com/myaccount' })).toContain('banking')
+  expect(await call({ tool: 'mcp__claude-in-chrome__navigate', url: 'https://studio.youtube.com', tabId: 1 })).toContain("owner's own browser")
   expect(await call({ tool: 'mcp__computer-use__screenshot' })).toContain('whole computer')
 })
 

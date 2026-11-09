@@ -7,16 +7,17 @@
 
 Every run is the unmodified `claude` CLI, signed in with the owner's own Claude account (or their own
 API key), headless in the employee's folder, and gets whatever the employee's profile says:
-  * the OS sandbox: shell commands reach only approved hosts and can't read secrets or colleagues'
-    folders. The toolbelt gateways (staff-fetch, staff-browse, staff-apify, staff-watch) run outside
-    it because they enforce their own limits (public web only, GET only, budget);
-  * the staff guard (a Claude Code mod): blocks outside contact, payment sites, secrets, editing the
-    harness; masks card numbers and IBANs; records plan usage;
+  * no OS sandbox (since 0.13): the crew works on this computer like a person at it would, each in its own
+    browser window (browser.py). A team that wants the old sandbox back sets "sandbox": true in staff.json:
+    then shell commands reach only approved hosts and can't read secrets or colleagues' folders, and the
+    toolbelt gateways (staff-fetch, staff-browse, staff-apify, staff-watch) run outside it;
+  * the staff guard (a Claude Code mod): blocks money, payment sites, secrets, the owner's own browser and
+    mail, messaging anyone but the owners, editing the harness; masks card numbers and IBANs; records plan usage;
   * abilities: tools, gateway commands and skills switched on or off per employee;
   * model routing: the employee's model, or the fallback when plan usage is high;
   * a cost/reliability log in <workspace>/state/runs.jsonl.
 Python 3.9 compatible (the Mac's system python). The same on Windows (inside WSL2) and Linux, where the
-sandbox is bubblewrap instead of macOS Seatbelt; osinfo.py holds the few differences.
+opt-in sandbox is bubblewrap instead of macOS Seatbelt; osinfo.py holds the few differences.
 """
 from __future__ import annotations
 
@@ -277,9 +278,17 @@ def autonomous(emp: dict) -> bool:
     return "full_autonomy" in abilities.effective(emp["id"])
 
 
+def sandboxed() -> bool:
+    """The team's choice (staff.json "sandbox": true). Off by default since 0.13: the sandbox stopped the crew
+    from working freely (its own browser window, tools installed anywhere, programs it starts)."""
+    return registry().get("sandbox") is True
+
+
 def settings_json(emp: dict, unsandboxed: list) -> str:
-    """The run's sandbox: its folder, no secrets, no colleagues. Network: the approved sites only, or (Full
-    autonomy) any site, with the filesystem limits unchanged."""
+    """The run's settings. With the team's sandbox on: its folder, no secrets, no colleagues; network: the approved
+    sites only, or (Full autonomy) any site, with the filesystem limits unchanged. Off (the default): no sandbox."""
+    if not sandboxed():
+        return json.dumps({"enabledPlugins": {}, "sandbox": {"enabled": False}})
     others = [p for p in glob.glob(os.path.join(HOME, "employees", "*"))
               if os.path.realpath(p) != os.path.realpath(emp["workspace"])]
     domains = BASE_DOMAINS + registry().get("network_domains", []) + emp.get("network_domains", [])
@@ -329,8 +338,7 @@ def command(emp: dict, model: str, interactive: bool = False) -> list:
     allow, block = abilities.tools(emp["id"])
     gateways = abilities.commands(emp["id"])
     bundle = skills_plugin(emp, abilities.skills(emp["id"]))
-    import connectors                                      # the MCP servers the owner granted this crew member
-    servers = connectors.mcp_config(emp)["mcpServers"]
+    servers = mcp_servers(emp)
     mcp = []
     if servers:
         path = os.path.join(HOME, ".runtime", emp["id"], "mcp.json")
@@ -350,9 +358,16 @@ def command(emp: dict, model: str, interactive: bool = False) -> list:
            "--disallowedTools", *(BASE_DENIED + block + emp.get("extra_denied", []))]
     for extra in emp.get("add_dirs", []):
         cmd += ["--add-dir", os.path.expanduser(extra)]
-    if "act_in_browser" in abilities.effective(emp["id"]):   # the owner's own Chrome, through Claude in Chrome
-        cmd.append("--chrome")
-    return cmd
+    return cmd                                             # no --chrome: the owner's own Chrome is never theirs
+
+
+def mcp_servers(emp: dict) -> dict:
+    """The MCP servers a crew member works with: the connectors its owner granted, and its own browser window."""
+    import browser
+    import connectors
+    servers = dict(connectors.mcp_config(emp)["mcpServers"])
+    servers.update(browser.mcp_server(emp))
+    return servers
 
 
 NETWORK = re.compile(r"ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|network|reach the API", re.I)
@@ -728,8 +743,8 @@ def stats(emp: dict) -> dict:
 # ------------------------------------------------------------------ a Claude session in the employee's folder
 def claude_session(emp_id: str) -> dict:
     """Readies the employee's folder so a Claude app session opened there is that employee, with the same locks
-    as its runs: the sandbox, the deny list and the guard (installed for this folder only), its abilities and
-    its tools. Written to .claude/settings.local.json, which the harness's own runs don't read (they use
+    as its runs: the deny list, the guard (installed for this folder only), the team's sandbox if it has one, its
+    abilities, its own browser and its tools. Written to .claude/settings.local.json, which the harness's own runs don't read (they use
     --setting-sources project), so runs and sessions never double up. → {"folder", "link", "hello", "chat"}: `link` opens a new Claude app chat there
     whose first message sets up its routines (claudeapp); `chat` is the chat once it has (None before)."""
     import abilities
@@ -749,9 +764,8 @@ def claude_session(emp_id: str) -> dict:
             local = json.load(fh)
     except (OSError, ValueError):
         local = {}
-    import connectors
-    servers = connectors.mcp_config(emp)["mcpServers"]
-    mcp_path = os.path.join(ws, ".mcp.json")              # the granted connectors, pre-approved below
+    servers = mcp_servers(emp)
+    mcp_path = os.path.join(ws, ".mcp.json")              # the granted connectors and its own browser, pre-approved below
     if servers:
         with open(mcp_path, "w", encoding="utf-8") as fh:
             json.dump({"mcpServers": servers}, fh, indent=2)
@@ -759,7 +773,7 @@ def claude_session(emp_id: str) -> dict:
         os.remove(mcp_path)
     perms = {"allow": [t for t in BASE_ALLOWED if t not in block] + allow + emp.get("extra_tools", []) +
              ["mcp__%s" % n for n in servers], "deny": deny}
-    if autonomous(emp):                                    # the owner's choice: no stops; the sandbox is the boundary
+    if autonomous(emp):                                    # the owner's choice: no stops; the guard is the boundary
         perms["defaultMode"] = "bypassPermissions"
         perms["allow"] += [t for t in ("WebSearch", "WebFetch", "Task", "NotebookEdit") if t not in perms["allow"]]
     local["enabledMcpjsonServers"] = sorted(servers)

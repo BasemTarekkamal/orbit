@@ -154,6 +154,13 @@ class Engine(unittest.TestCase):
         emp = engine.employee("tess")
         cmd = engine.command(emp, "sonnet")
         s = json.loads(cmd[cmd.index("--settings") + 1])
+        self.assertEqual(s["sandbox"], {"enabled": False})               # no sandbox unless the team turns it on
+        self.assertNotIn("--chrome", cmd)                                 # the owner's own Chrome is never theirs
+        reg = engine.registry()
+        reg["sandbox"] = True
+        engine.save_registry(reg)
+        cmd = engine.command(emp, "sonnet")
+        s = json.loads(cmd[cmd.index("--settings") + 1])
         sb = s["sandbox"]
         self.assertTrue(sb["enabled"] and not sb["allowUnsandboxedCommands"] and sb["failIfUnavailable"])
         self.assertTrue(sb["network"]["strictAllowlist"])
@@ -1064,3 +1071,181 @@ class Desk(unittest.TestCase):
         self.assertIn("handle sara", out)
         with self.assertRaises(ValueError):
             self.desk.hire({"card": {}})
+
+
+FAKE_CHROME = '''#!%s
+"""A stand-in for Chrome in tests: serves the DevTools endpoints browser.py uses, on the port it was given."""
+import http.server, json, os, sys, uuid
+BID = "ws://127.0.0.1/devtools/browser/" + str(uuid.uuid4())
+args = dict(a.split("=", 1) for a in sys.argv[1:] if a.startswith("--") and "=" in a)
+prof, port = args["--user-data-dir"], int(args["--remote-debugging-port"])
+
+
+class H(http.server.BaseHTTPRequestHandler):
+    def reply(self, d):
+        b = json.dumps(d).encode()
+        self.send_response(200)
+        self.send_header("content-length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def do_GET(self):
+        self.reply({"Browser": "FakeChrome/1", "webSocketDebuggerUrl": BID} if self.path.startswith("/json/version") else {})
+
+    def do_PUT(self):
+        with open(os.path.join(prof, "opened.txt"), "a") as fh:
+            fh.write(self.path + "\\n")
+        self.reply({"id": "tab1"})
+
+    def log_message(self, *a):
+        pass
+
+
+http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
+''' % sys.executable
+
+
+class OwnBrowser(unittest.TestCase):
+    """Each crew member browses in a Chrome window of its own; the owner's Chrome is never theirs."""
+
+    def setUp(self):
+        fresh_team()
+        import browser
+        self.browser = browser
+        self.ready = browser.ready
+        hire.hire("Tess", "Research", supervisor="Alex", picked=["web"])
+        hire.hire("Omar", "Social", supervisor="Alex")
+
+    def tearDown(self):
+        self.browser.ready = self.ready
+        os.environ.pop("ORBIT_CHROME", None)
+        for eid in ("tess", "omar"):
+            try:
+                self.browser.close(eid)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def test_everyone_has_one_and_it_cant_be_ticked_off(self):
+        self.assertIn("own_browser", abilities.effective("tess"))
+        hire.set_abilities("tess", ["web"])
+        self.assertIn("own_browser", abilities.effective("tess"))
+        allow, block = abilities.tools("tess")
+        self.assertIn("mcp__orbit-browser", allow)
+        self.assertNotIn("mcp__claude-in-chrome", allow + block)
+        self.assertNotIn("--chrome", engine.command(engine.employee("tess"), "sonnet"))
+
+    def test_it_reaches_their_runs_and_chats_when_this_computer_can_run_it(self):
+        self.browser.ready = lambda: (False, "Node.js 20 or newer is missing")
+        self.assertNotIn("orbit-browser", engine.mcp_servers(engine.employee("tess")))
+        self.browser.ready = lambda: (True, "")
+        cmd = engine.command(engine.employee("tess"), "sonnet")
+        with open(cmd[cmd.index("--mcp-config") + 1]) as fh:
+            srv = json.load(fh)["mcpServers"]["orbit-browser"]
+        self.assertTrue(srv["args"][0].endswith("browser_mcp.py") and srv["args"][1] == "tess")
+        self.assertEqual(srv["env"]["STAFFROOM_HOME"], engine.HOME)
+        ws = engine.employee("tess")["workspace"]
+        os.makedirs(os.path.join(ws, ".claude"), exist_ok=True)
+        with open(os.path.join(ws, ".claude", "settings.local.json"), "w") as fh:
+            json.dump({"enabledPlugins": {"staff-guard@orbit": True}}, fh)
+        with open(os.path.join(engine.GUARD, ".claude-plugin", "plugin.json")) as fh, \
+                open(os.path.join(ws, ".claude", "orbit-guard.version"), "w") as out:
+            out.write(json.load(fh)["version"])
+        engine.claude_session("tess")
+        with open(os.path.join(ws, ".mcp.json")) as fh:
+            self.assertIn("orbit-browser", json.load(fh)["mcpServers"])
+        with open(os.path.join(ws, ".claude", "settings.local.json")) as fh:
+            d = json.load(fh)
+        self.assertIn("orbit-browser", d["enabledMcpjsonServers"])
+        self.assertIn("mcp__orbit-browser", d["permissions"]["allow"])
+
+    def test_each_has_its_own_port_and_keeps_it(self):
+        import socket
+        a, b = self.browser.port("tess"), self.browser.port("omar")
+        self.assertNotEqual(a, b)
+        self.assertIn(a, self.browser.PORTS)
+        self.assertEqual(self.browser.port("tess"), a)
+        with socket.socket() as s:                              # something else took it while its Chrome was closed
+            s.bind(("127.0.0.1", a))
+            s.listen(1)
+            c = self.browser.port("tess")
+            self.assertNotIn(c, (a, b))
+
+    def test_its_chrome_starts_once_opens_tabs_and_closes_by_its_pid(self):
+        fake = os.path.join(TMP, "fake-chrome")
+        with open(fake, "w") as fh:
+            fh.write(FAKE_CHROME)
+        os.chmod(fake, 0o755)
+        os.environ["ORBIT_CHROME"] = fake
+        p = self.browser.ensure("tess")
+        self.assertTrue(self.browser.running("tess"))
+        pid = self.browser._state("tess")["pid"]
+        self.assertEqual(self.browser.ensure("tess"), p)          # the same Chrome, not a second one
+        self.assertEqual(self.browser._state("tess")["pid"], pid)
+        with open(os.path.join(self.browser.profile("tess"), "Local State")) as fh:
+            self.assertEqual(json.load(fh)["profile"]["info_cache"]["Default"]["name"], "Tess (Orbit)")
+        self.browser.open_tab("tess", "studio.youtube.com")
+        with open(os.path.join(self.browser.profile("tess"), "opened.txt")) as fh:
+            self.assertIn("https://studio.youtube.com", fh.read())
+        self.assertTrue(self.browser.close("tess"))
+        self.assertFalse(self.browser.running("tess"))
+        self.assertFalse(self.browser.close("tess"))
+        self.browser.set_private("tess", True, "Alex")             # private: a fresh profile every start
+        self.browser.ensure("tess")
+        self.assertFalse(os.path.exists(os.path.join(self.browser.profile("tess"), "opened.txt")))
+
+    def test_the_connector_opens_chrome_only_for_a_tool_call(self):
+        sys.path.insert(0, os.path.join(KIT, "core"))
+        import browser_mcp
+        msgs = [json.dumps(m).encode() + b"\n" for m in (
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "browser_navigate"}})]
+        sent, wrote, ensured = [], [], []
+        browser_mcp.relay(iter(msgs), lambda l: sent.append(l) or True, lambda: ensured.append(1), wrote.append, "tess")
+        self.assertEqual((sent, ensured, wrote), (msgs, [1], []))
+
+        def broken():
+            raise self.browser.BrowserError("there's no Chrome on this computer")
+        sent, wrote = [], []
+        browser_mcp.relay(iter(msgs), lambda l: sent.append(l) or True, broken, wrote.append, "tess")
+        self.assertEqual(sent, msgs[:2])                            # the call isn't passed on...
+        r = json.loads(wrote[0])                                    # ...it's answered with the reason
+        self.assertEqual((r["id"], r["result"]["isError"]), (3, True))
+        self.assertIn("orbit browser tess", r["result"]["content"][0]["text"])
+
+    def test_an_old_grant_is_rewritten_in_todays_words(self):
+        hire.set_browser("omar", ["youtube.com"], "none", "Alex")
+        path = os.path.join(engine.employee("omar")["workspace"], "CLAUDE.md")
+        with open(path) as fh:
+            md = fh.read()
+        old = md[:md.index("\n## Granted by your owner: posting for them\n")] + (
+            "\n## Granted by your owner: acting in their browser\n- Use the Claude in Chrome tools, in the owner's own Chrome.\n")
+        with open(path, "w") as fh:
+            fh.write(old)
+        self.assertTrue(hire.refresh_browser_md("omar"))
+        with open(path) as fh:
+            md = fh.read()
+        self.assertNotIn("Claude in Chrome", md)
+        self.assertEqual(md.count("Granted by your owner: posting for them"), 1)
+        self.assertFalse(hire.refresh_browser_md("omar"))          # already current: nothing to write
+
+    def test_the_owner_turns_the_sandbox_on_and_off(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("orbit_cli_sb", os.path.join(KIT, "orbit"))
+        spec = importlib.util.spec_from_loader("orbit_cli_sb", loader)
+        cli = importlib.util.module_from_spec(spec)
+        loader.exec_module(cli)
+        real = engine.claude_session
+        engine.claude_session = lambda eid: None                    # the Claude chats are tested elsewhere
+        try:
+            cli.say = lambda *a: None
+            cli.sandbox_cmd("on")
+            self.assertTrue(engine.sandboxed())
+            s = json.loads(engine.settings_json(engine.employee("tess"), []))
+            self.assertTrue(s["sandbox"]["enabled"])
+            cli.sandbox_cmd("off")
+            self.assertFalse(engine.sandboxed())
+            self.assertNotIn("sandbox", engine.registry())
+        finally:
+            engine.claude_session = real

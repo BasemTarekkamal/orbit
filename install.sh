@@ -16,9 +16,9 @@ if [ -z "$MAC" ] && [ "$(uname)" != "Linux" ]; then
   echo "Orbit runs on a Mac, on Windows (inside WSL: see the README) or on Linux."; exit 1
 fi
 if [ -z "$MAC" ]; then
-  # Windows (WSL) and Linux: the sandbox needs bubblewrap and socat; pip and git come from the system too.
+  # Windows (WSL) and Linux: pip and git come from the system (setup-linux.sh also adds the optional sandbox's helpers).
   MISSING=""
-  for b in python3 git bwrap socat; do command -v "$b" >/dev/null 2>&1 || MISSING="$MISSING $b"; done
+  for b in python3 git; do command -v "$b" >/dev/null 2>&1 || MISSING="$MISSING $b"; done
   python3 -m pip --version >/dev/null 2>&1 || MISSING="$MISSING pip"
   if [ -n "$MISSING" ]; then
     echo "First, a few system packages (missing:$MISSING). Run this once; it asks for your Linux password:"
@@ -28,8 +28,7 @@ if [ -z "$MAC" ]; then
     echo "then run this again."; exit 1
   fi
   if uname -r | grep -q -- '-Microsoft$'; then         # WSL 1's kernel name; WSL 2's says microsoft-standard
-    echo "This is WSL 1, which can't keep your crew in a sandbox. In PowerShell run:  wsl --set-version ${WSL_DISTRO_NAME:-Ubuntu} 2"
-    exit 1
+    echo "Note: this is WSL 1. Orbit works, but WSL 2 is faster. In PowerShell:  wsl --set-version ${WSL_DISTRO_NAME:-Ubuntu} 2"
   fi
 elif ! command -v python3 >/dev/null 2>&1; then
   echo "Python 3 is missing. Run: xcode-select --install   then run this again."; exit 1
@@ -58,8 +57,14 @@ if python3 -c 'import ssl,sys; sys.exit(0 if "LibreSSL" in ssl.OPENSSL_VERSION e
   python3 -m pip install --user --quiet "urllib3<2"
 fi
 
-echo "2/4  The headless browser employees research with (Chromium, about 150 MB)…"
+echo "2/4  The headless browser employees research with (Chromium, about 150 MB), and each one's own browser window…"
 python3 -m playwright install chromium
+# Each crew member's own browser window: Chrome (or that Chromium), driven through a free connector that needs Node.js 20+
+if "$KIT/orbit" browser --install >/dev/null 2>&1; then
+  echo "     Each crew member gets a browser window of its own."
+else
+  echo "     Their own browser windows need Node.js 20 or newer (free, nodejs.org). Then: orbit browser --install"
+fi
 
 echo "3/4  Voice notes and call recordings, transcribed on this computer (optional)…"
 if [ -z "$MAC" ]; then

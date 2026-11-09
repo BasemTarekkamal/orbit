@@ -206,10 +206,14 @@ class Service(unittest.TestCase):
         osinfo.KIND = "linux"
         real = osinfo.which
         osinfo.which = lambda n: None if n in ("bwrap", "socat", "tesseract") else real(n)
+        reg = engine.registry()
         try:
+            self.assertFalse(any("sandbox" in r[1] for r in self.cli.platform_checks()))   # off: nothing to install
+            engine.save_registry({**reg, "sandbox": True})
             rows = self.cli.platform_checks()
         finally:
             osinfo.which = real
+            engine.save_registry(reg)
         sandbox = next(r for r in rows if "sandbox" in r[1])
         self.assertFalse(sandbox[0])
         self.assertTrue(sandbox[2])                           # must be fixed before setup goes on
@@ -381,8 +385,7 @@ class ClaudeSession(unittest.TestCase):
         s = engine.claude_session(eid)
         with open(os.path.join(ws, ".claude", "settings.local.json")) as fh:
             d = json.load(fh)
-        self.assertTrue(d["sandbox"]["enabled"])
-        self.assertTrue(d["sandbox"]["failIfUnavailable"])
+        self.assertFalse(d["sandbox"]["enabled"])                                 # off unless the team turns it on
         self.assertIn("Bash(git push *)", d["permissions"]["deny"])
         self.assertFalse(any(r.startswith("Write(") for r in d["permissions"]["deny"]))
         self.assertEqual(d["env"]["STAFF_EMPLOYEE"], eid)
@@ -392,7 +395,7 @@ class ClaudeSession(unittest.TestCase):
 
 
 class BrowserGrant(unittest.TestCase):
-    """'Acts in your browser': only the panel switch grants it; the registry, CLAUDE.md and sessions follow."""
+    """'Posts for you': only the panel switch grants it; the registry, CLAUDE.md and sessions follow."""
 
     def setUp(self):
         import hire
@@ -418,9 +421,12 @@ class BrowserGrant(unittest.TestCase):
         self.assertIn("act_in_browser", abilities.effective(self.eid))
         env = engine.clean_env(engine.employee(self.eid))
         self.assertEqual(env["STAFF_BROWSER_SITES"], "youtube.com,etsy.com")
-        self.assertIn("--chrome", engine.command(engine.employee(self.eid), "sonnet"))
+        self.assertNotIn("--chrome", engine.command(engine.employee(self.eid), "sonnet"))   # its own window, never yours
         with open(os.path.join(TMP, "employees", self.eid, "CLAUDE.md"), encoding="utf-8") as fh:
-            self.assertEqual(fh.read().count("Granted by your owner"), 1)
+            md = fh.read()
+        self.assertEqual(md.count("Granted by your owner"), 1)
+        self.assertIn("your own browser window", md)
+        self.assertIn("orbit browser %s" % self.eid, md)
         self.hire.set_browser(self.eid, ["youtube.com"], "each", "Alex")   # again: replaced, not repeated
         with open(os.path.join(TMP, "employees", self.eid, "CLAUDE.md"), encoding="utf-8") as fh:
             md = fh.read()
@@ -438,7 +444,7 @@ class BrowserGrant(unittest.TestCase):
 
 
 class FullAutonomy(unittest.TestCase):
-    """The owner's switch: no permission stops and an open network for the run; the sandbox stays."""
+    """The owner's switch: no permission stops; with the team's sandbox on, an open network inside it."""
 
     def setUp(self):
         import hire
@@ -453,15 +459,25 @@ class FullAutonomy(unittest.TestCase):
         cmd = engine.command(emp, "sonnet")
         return cmd, json.loads(cmd[cmd.index("--settings") + 1])
 
+    def sandbox(self, on):
+        reg = engine.registry()
+        reg["sandbox"] = on
+        engine.save_registry(reg)
+
     def test_off_by_default_and_never_by_ticks(self):
         cmd, st = self.run_settings()
         self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "dontAsk")
+        self.assertFalse(st["sandbox"]["enabled"])
+        self.sandbox(True)
+        cmd, st = self.run_settings()
         self.assertTrue(st["sandbox"]["network"]["strictAllowlist"])
 
     def test_on_then_off(self):
         self.hire.set_autonomy(self.eid, True, "Alex")
         cmd, st = self.run_settings()
         self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "bypassPermissions")
+        self.sandbox(True)
+        cmd, st = self.run_settings()
         self.assertFalse(st["sandbox"]["network"]["strictAllowlist"])
         self.assertTrue(st["sandbox"]["enabled"])                       # the boundary stays
         self.assertIn(engine.SECRETS, st["sandbox"]["filesystem"]["denyRead"])

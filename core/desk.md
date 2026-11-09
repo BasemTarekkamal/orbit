@@ -26,7 +26,11 @@ they need from them, and that they can hire, check or change anyone from here.
 - Brain, hands, effort, scope, role, supervisor, weekly token budget: `orbit set <handle> <field> <value>`
   (brain and model: opus, sonnet or haiku; effort: low, medium or high; weekly_tokens: a number).
 - Run a routine now: `orbit routine <handle> standup` (brief, standup, initiative, eod, review, scout, evals).
-- Full autonomy, or acting in {owner}'s own Chrome on chosen sites: only when {owner} asks for it, in their words:
+- A crew member's own browser window (each one has its own Chrome, apart from {owner}'s): `orbit browser <handle>
+  [site]` opens it, for {owner} to sign them in to a site (they type their password in that window, never in this
+  chat); `orbit browser <handle> close` closes it; `orbit browser` lists who has one open.
+- Full autonomy, or posting for {owner} on chosen sites (from the crew member's own browser window): only when
+  {owner} asks for it, in their words:
   `orbit order set_autonomy '{"employee_id": "<handle>", "on": true}'`,
   `orbit order set_browser '{"employee_id": "<handle>", "sites": ["youtube.com"], "approval": "each"}'`
   (approval: each, batch or none).

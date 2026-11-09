@@ -121,7 +121,7 @@ def from_text(by: str, text: str):
         approval = "none" if "without" in mode else "batch" if "batch" in mode else "each"
         current = (engine.registry()["employees"][emp_id].get("browser") or {}).get("sites", [])
         apply("browser", emp_id, by, sites=list(dict.fromkeys(current + sites)), approval=approval)
-        return "Done: %s can post on %s in your Chrome, %s." % (e["name"], ", ".join(sites), {
+        return "Done: %s can post on %s from its own browser window, %s." % (e["name"], ", ".join(sites), {
             "none": "without asking you", "batch": "after you approve each batch", "each": "after you approve each one"}[approval])
     m = NOPOST.match(t)
     if m:
@@ -129,7 +129,7 @@ def from_text(by: str, text: str):
         if not emp_id:
             return None
         apply("browser", emp_id, by, sites=[])
-        return "Done: %s no longer acts in your browser." % e["name"]
+        return "Done: %s no longer posts for you." % e["name"]
     m = CONNECT.match(t)
     if m:
         a, _ = _who(m.group("a"))

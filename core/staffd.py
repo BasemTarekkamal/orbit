@@ -536,6 +536,12 @@ def refresh_sessions():
         desk.ensure()                                     # Orbit's own chat: its instructions follow the kit
     except Exception as ex:  # noqa: BLE001
         log("desk refresh: %s" % ex)
+    try:
+        import browser                                    # each crew member's own browser window: its connector, once
+        if browser.chrome() and browser.node() and browser.installed() != browser.PKG_VERSION:
+            log("browser connector: installed %s" % browser.install())
+    except Exception as ex:  # noqa: BLE001
+        log("browser connector: %s" % ex)
     for emp_id, e in engine.registry().get("employees", {}).items():
         if e.get("status") == "retired":
             continue

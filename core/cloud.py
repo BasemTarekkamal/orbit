@@ -16,7 +16,7 @@ the end of day) that fires into that session.
     cloud.status("sara")            # {"on", "next_shift", "session", "last_shift", "error"}
     cloud.tick()                    # from the service, every minute
 
-The cloud can't reach the owner's signed-in Chrome or this computer's files, so it prepares and never publishes.
+The cloud can't reach the crew member's signed-in browser window or this computer's files, so it prepares and never publishes.
 Runs count against the owner's Claude plan, like any other. Harness-owned: no crew member can change any of this.
 """
 from __future__ import annotations

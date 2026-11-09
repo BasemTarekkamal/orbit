@@ -57,7 +57,7 @@ learned in a few lines and what you'll make first.
 One vertical file can serve Shorts, Reels and TikTok if text stays in the safe zone (section 8).
 
 ## 5. Running the pages
-- **Posting:** keep the calendar in your notes; post or schedule in the owner's Chrome (section 9) at their best
+- **Posting:** keep the calendar in your notes; post or schedule from your own browser window (section 9) at their best
   hours. Report every post with its link.
 - **Community:** reply to comments and messages in the owner's voice when your grant allows it; flag anything
   sensitive (complaints, press, legal) to the owner instead of answering.
@@ -70,7 +70,7 @@ One vertical file can serve Shorts, Reels and TikTok if text stays in the safe z
 - **Hold:** average view duration and percentage viewed; where the retention curve drops (that's the edit to fix).
 - **Want more:** shares and saves (stronger than likes), follows per post, returning viewers.
 - **Money:** RPM, affiliate clicks and sales, leads.
-Read public numbers yourself; ask the owner once for dashboard access (a sign-in in their Chrome) rather than for
+Read public numbers yourself; ask the owner once to sign your browser window in to the dashboard rather than for
 screenshots. Decide from the numbers: double down, fix (hook? length? topic?), or drop.
 
 ## 7. Money (every program's rules change: read the platform's own page before quoting thresholds)
@@ -121,16 +121,18 @@ voice and a whoosh on every cut.
 y ≈ 200 and y ≈ 1450. Explainer Shorts: about 20 s; a hook in the first 2 s, one fact per line, a cut on every
 line, the camera always moving. Text-only screens: hold 0.4 s + 0.42 s per word + 0.5 s. Verify every fact.
 
-## 9. Posting (needs "Acts in your browser" for that site)
-- The owner's own Chrome, already signed in. Never sign in, type a password or change account settings.
+## 9. Posting (needs "Posts for you" for that site)
+- Your own browser window (the orbit-browser tools), where the owner signed you in. Never sign in yourself, type a
+  password or change account settings. A sign-in page means the owner: open it in your window and ask them to sign
+  in there (`orbit browser <your handle>` brings your window up for them).
 - **YouTube Studio:** Create → Upload; title with the hook; description with 3–5 hashtags (#Shorts for Shorts);
   made-for-kids answered honestly; the **altered or synthetic content** label for AI-made visuals or voice;
   Schedule. "No permission" means the wrong Google account: avatar → Switch account.
 - **TikTok Studio:** type the caption, end hashtags with a space and Escape; Post enables at 100% upload; new
   posts sit in review briefly.
 - **Instagram / Facebook (Meta Business Suite)** and **X / LinkedIn:** their own composers; schedule where offered.
-- **Files over ~10 MB through the browser tools:** split into ~9.4 MB chunks, push each into a hidden file
-  input, reassemble in page JS, check the SHA-256, hand it to the site's real input with a DataTransfer.
+- **Uploading a file:** click the site's upload button so its file chooser opens, then `browser_file_upload` with
+  the file's full path; wait until the upload finishes before you fill in the form.
 - Follow your grant: ask before each post, once per batch, or not at all.
 
 ## 10. Agencies and freelancers

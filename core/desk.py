@@ -113,7 +113,7 @@ def guide() -> str:
                  "budget": "regular", "model": "sonnet", "interview": [{"q": "…", "a": "…"}]},
         "autonomy": True, "browser": {"sites": [], "approval": "each"}}, indent=1, ensure_ascii=False),
         "", "`job` is the id of the job they started from (optional). `browser.sites` are the sites they may post "
-        "on in the owner's Chrome, and `approval` is each, batch or none: only what the owner said."]
+        "on for the owner, from their own browser window, and `approval` is each, batch or none: only what the owner said."]
     return "\n".join(lines)
 
 
@@ -165,6 +165,7 @@ def hire(payload: dict) -> str:
     if handle and sites:
         approval = browser.get("approval") if browser.get("approval") in ("each", "batch", "none") else "each"
         order("set_browser", {"employee_id": handle, "sites": sites, "approval": approval})
-        notes.append("may act in your Chrome on %s (%s)" % (", ".join(sites), {"each": "asks each time", "batch": "asks once per batch", "none": "doesn't ask"}[approval]))
-    return "Hired %s (handle %s). %s%sTheir first task has started. Next: `orbit open %s` opens their own chat." % (
-        name, handle or "?", "; ".join(notes), ". " if notes else "", handle or "<handle>")
+        notes.append("may post for you on %s from its own browser window (%s)" % (", ".join(sites), {"each": "asks each time", "batch": "asks once per batch", "none": "doesn't ask"}[approval]))
+    return "Hired %s (handle %s). %s%sTheir first task has started. Next: `orbit open %s` opens their own chat%s." % (
+        name, handle or "?", "; ".join(notes), ". " if notes else "", handle or "<handle>",
+        ", and `orbit browser %s` opens their browser window for you to sign them in" % (handle or "<handle>") if sites else "")

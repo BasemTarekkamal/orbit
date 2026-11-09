@@ -24,7 +24,7 @@
       "group": "Basics",
       "locked": true,
       "default": true,
-      "description": "OS sandbox plus the guard: no money, no logins, no outside messages, no secrets. Can't be switched off."
+      "description": "The guard: no money, no passwords or sign-ins, no messages to anyone but you, no reading your secrets, mail or your own browser, no tampering with Orbit. Can't be switched off."
     },
     {
       "id": "telegram",
@@ -165,23 +165,32 @@
       "can": "Read scans and photos of documents (OCR)"
     },
     {
+      "id": "own_browser",
+      "name": "Its own browser",
+      "group": "Acting for you",
+      "locked": true,
+      "default": true,
+      "tools": [
+        "mcp__orbit-browser"
+      ],
+      "description": "A Chrome window of its own, apart from yours and from the rest of the crew: it browses, clicks, scrolls and fills in pages there, keeps its tabs, and stays signed in wherever you sign it in (orbit browser <handle>). It never uses your own Chrome.",
+      "can": "Browse in its own Chrome window, signed in where you sign it in"
+    },
+    {
       "id": "full_autonomy",
       "name": "Full autonomy",
       "group": "Acting for you",
       "consent": true,
-      "description": "Does the whole job without asking: reaches any website, downloads and installs the tools it needs into its own folder, studies videos, and (with \"Acts in your browser\" set to Don't ask me) posts for you. The sandbox keeps it in its own folder and away from your secrets and the rest of the crew. It never touches money or types passwords.",
+      "description": "Does the whole job without asking: reaches any website, downloads and installs the tools it needs, studies videos, and (with \"Posts for you\" set to Don't ask me) posts for you. It works on this computer in its own browser window; the guard keeps it away from your secrets, your own browser and money, and it never types passwords.",
       "can": "Do the whole job on its own, finding and installing whatever tools it needs"
     },
     {
       "id": "act_in_browser",
-      "name": "Acts in your browser",
+      "name": "Posts for you",
       "group": "Acting for you",
       "consent": true,
-      "description": "Uses your own Chrome, where you're already signed in, to post, upload or fill in forms on the sites you pick. It shows you each one first and does it after you approve. It never signs in, types a password, changes account settings or touches money.",
-      "can": "Post, upload and fill in forms for you in your own Chrome, on the sites you pick, after you approve",
-      "tools": [
-        "mcp__claude-in-chrome"
-      ]
+      "description": "Posts, uploads and fills in forms for you on the sites you pick, from its own browser window, where you sign it in once. It shows you each one first and does it after you approve, unless you choose otherwise. It never signs in, types a password, changes account settings or touches money.",
+      "can": "Post, upload and fill in forms for you on the sites you pick, from its own browser window, after you approve"
     },
     {
       "id": "content",
@@ -208,7 +217,9 @@
       "name": "Extra computing",
       "group": "Building",
       "default": true,
-      "commands": ["staff-compute"],
+      "commands": [
+        "staff-compute"
+      ],
       "description": "Only if you connect it in Settings: runs a heavy job on your own private GitHub repository, on your free GitHub Actions minutes, when this computer and the cloud can't. Nothing happens until you connect one.",
       "can": "Run heavy jobs on your own GitHub, if you connect it"
     },

@@ -7,8 +7,9 @@ goes through orders.py and is logged in team/orders.jsonl.
 
 Security: listens on 127.0.0.1 only; a secret token (in ~/Staff/.secrets/panel_token, which employees
 can't read) is exchanged once for an HttpOnly SameSite=Strict cookie; the Host header must be this Mac
-(no DNS rebinding) and every write must carry our own Origin (no cross-site posts). Employees' shells
-can't reach localhost (sandbox) and the toolbelt gateways refuse local addresses.
+(no DNS rebinding) and every write must carry our own Origin (no cross-site posts). Employees can reach
+localhost (there's no sandbox by default) but not the token: the guard keeps them out of ~/Staff/.secrets, and the
+toolbelt gateways refuse local addresses.
 """
 from __future__ import annotations
 
@@ -287,6 +288,21 @@ def desk_session():
         raise orders.OrderError("Not in the demo: in your own Orbit this opens Orbit's chat in Claude.")
     import desk
     r = desk.open_chat()
+    return {"ok": True, **r}
+
+
+def browser_window(f):
+    """Opens a crew member's own browser window (its own Chrome, apart from the owner's), for the owner to sign it in."""
+    if DEMO:
+        raise orders.OrderError("Not in the demo: in your own Orbit this opens their own browser window.")
+    import browser
+    emp = str(f.get("employee") or "")
+    if emp not in engine.registry().get("employees", {}):
+        raise orders.OrderError("No such crew member")
+    try:
+        r = browser.open_tab(emp, str(f.get("url") or ""))
+    except browser.BrowserError as ex:
+        raise orders.OrderError("Their browser couldn't open: %s" % ex)
     return {"ok": True, **r}
 
 
@@ -819,6 +835,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, claude_session(str(f.get("employee") or "")))
             if path == "/api/desk":
                 return self._json(200, desk_session())
+            if path == "/api/browser":
+                return self._json(200, browser_window(f))
             if path == "/api/seen":                     # the owner is looking at the room: nothing is unread now
                 team.mark_seen(me)
                 return self._json(200, {"ok": True})

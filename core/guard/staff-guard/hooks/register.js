@@ -7,15 +7,17 @@
 // It enforces the owners' hard rules in code instead of instructions:
 //   1. No outside contact: no curl/wget/ssh/mail/etc, no raw Telegram API, no GitHub CLI, no git push.
 //   2. No banking, payment or crypto sites.
-//   3. No secrets: the kit's .secrets, Claude's credentials, keychains, ssh/cloud keys.
+//   3. No secrets: the kit's .secrets, Claude's credentials, keychains, ssh/cloud keys, and the owner's own
+//      browsers' profiles (cookies, saved sign-ins), Mail and Messages.
 //   4. No tampering: the kit, the team registry, the harness's own records, settings, launchd jobs,
 //      this guard, nested `claude` runs. Without "Builds its own tools", no new code that opens
 //      network connections or runs programs.
 //   5. Card numbers and IBANs are masked in anything a tool returns, before the model sees it.
 //   6. No other mod may load next to this one (the kit's skills bundle excepted).
-//   7. The owner's browser (Claude in Chrome, Claude's own browser) only with "Acts in your browser", which
-//      the owner switches on in the panel, and only on the sites they picked; never a bank or payment site.
+//   7. The owner's own browser (Claude in Chrome, Claude's browser pane) is never a crew member's: each one has
+//      its own Chrome window (the orbit-browser tools), free to go anywhere but a bank or payment site.
 //      Controlling the whole computer is never allowed.
+// There is no OS sandbox by default (since Orbit 0.13): this guard is the boundary.
 // Paths come from the environment the engine sets: HOME, STAFFROOM_HOME, STAFFROOM_KIT, STAFF_ABILITIES,
 // STAFF_BROWSER_SITES (from the team registry, which employees can't edit).
 
@@ -26,6 +28,12 @@ const SECRET_FRAGMENTS = [
   '/.ssh/', '/.aws/', '/.gnupg/', '/.config/gh/', '/.config/rclone', '/.netrc',
   '/library/keychains', '.claude/.credentials', '.claude/channels/', '.claude.json', 'secrets.env',
   '/.local/share/keyrings',
+  // the owner's own browsers, mail and messages: their sign-ins and private conversations
+  '/library/application support/google/chrome', '/library/application support/chromium',
+  '/library/application support/microsoft edge', '/library/application support/bravesoftware',
+  '/library/application support/arc/', '/library/application support/firefox', '/library/safari',
+  '/library/cookies', '/library/mail', '/library/messages', '/.config/google-chrome', '/.config/chromium',
+  '/.config/microsoft-edge', '/.config/bravesoftware', '/.mozilla/',
 ]
 // Fragments of paths an employee may read but never change
 const HARNESS_FRAGMENTS = ['profile.json', '.claude/settings', 'library/launchagents', '.config/systemd/',
@@ -34,8 +42,8 @@ const HARNESS_FRAGMENTS = ['profile.json', '.claude/settings', 'library/launchag
 const TEAM_FILES = ['feed.jsonl', 'orders.jsonl', 'staffd_state.json', 'pending_owners.json', 'offsets.json',
   'directory.md', 'about.md', 'chatlog.jsonl', 'staffd.log', 'staffd_alive']
 
-// With Full autonomy (the owner's switch) the ones marked `job` are allowed: they're how work gets done, and the
-// sandbox still keeps the employee in its folder. The rest protect the owner's computer and identity.
+// With Full autonomy (the owner's switch) the ones marked `job` are allowed: they're how work gets done. The rest
+// protect the owner's computer and identity.
 const BLOCKED_COMMANDS = [
   [/\b(curl|wget|nc|ncat|netcat|telnet|ssh|scp|sftp|ftp|rsync|mail|sendmail|mutt)\b/i, 'network or messaging command', 'job'],
   [/\bosascript\b/i, 'controlling other apps (osascript)'],
@@ -43,13 +51,14 @@ const BLOCKED_COMMANDS = [
   [/\bgit\s+(push|remote)\b/i, 'git push/remote', 'job'],
   [/(^|[\s;&|(`$])gh(\s|$)|api\.github\.com/i, 'GitHub CLI/API', 'job'],
   [/(^|[\s;&|(`$\/])claude(-code)?(\s|$)|@anthropic-ai\/claude-code/i, 'nested claude run or plugin install'],
+  [/(^|[;&|(`]|\$\()\s*(\S*\/)?orbit(\s|$)|\bpython3?\s+(\S*\/)?orbit(\s|$)/im, "Orbit's own controls (they're your owner's)"],
   [/\bchflags\b|\bxattr\b/i, 'changing file protection flags'],
   [/\blaunchctl\b|\bcrontab\b|\bsystemctl\b|\bschtasks(\.exe)?\b/i, 'changing scheduled jobs'],
   [/\b(powershell|pwsh|cmd|wsl|explorer|wscript|cscript|rundll32|reg)\.exe\b/i, 'running Windows programs'],
   [/\bsecurity\s+(find|dump|export|add|delete)/i, 'keychain access'],
   [/\bsudo\b/i, 'sudo'],
-  [/\bopen\s+(-a\s+\S+\s+)?https?:/i, 'opening a browser'],
-  [/\b(xdg-open|wslview)\b/i, 'opening a browser'],
+  [/\bopen\s+(-a\s+\S+\s+)?https?:/i, "opening your owner's browser (use your own browser tools)"],
+  [/\b(xdg-open|wslview)\b/i, "opening your owner's browser (use your own browser tools)"],
 ]
 // A commit message is data, not a command: "scout: Claude Code video…" or "why curl failed" mustn't read as a
 // nested claude run or a network call. Only a message that can't run anything is set aside: one with $(…) or
@@ -69,7 +78,8 @@ function withoutCommitMessages(cmd) {
 const MONEY_HOSTS = /(^|\.)(paypal|stripe|wise|revolut|venmo|cash\.app|zelle|payoneer|skrill|westernunion|moneygram|remitly|klarna|afterpay|alipay|wechatpay|paytm|phonepe|razorpay|mpesa|instapay|fawry|paymob|valu|binance|coinbase|kraken|bybit|okx|kucoin|crypto\.com|metamask|blockchain\.com|chase|bankofamerica|wellsfargo|citi|hsbc|barclays|santander|lloydsbank|natwest|monzo|starlingbank|n26|bnpparibas|societegenerale|deutsche-bank|ing|rabobank|ubs|emiratesnbd|alrajhibank|qnb|cibeg|banquemisr|nbe)\.[a-z.]+$/i
 const WRITE_WORDS = /(>|\btee\b|\bsed\s+-i|\bperl\s+-[a-z]*i|\bmv\b|\bcp\b|\brm\b|\bln\b|\bchmod\b|\btouch\b|\btruncate\b|\binstall\b|\bunlink\b|open\(|write)/i
 const MONEY_ACTION = /(refund|payout|transfer|send_?money|pay_?(invoice|bill)|create_?(payment|charge|bill_?payment|transfer|payout)|capture_?payment|charge_?(card|customer))/i
-const BROWSER_TOOL = /^mcp__(claude-in-chrome|Claude_Browser|remote-devices__Claude_Browser)__/i
+const OWNER_BROWSER = /^mcp__(claude-in-chrome|Claude_Browser|remote-devices__Claude_Browser)__/i
+const OWN_BROWSER = /^mcp__orbit-browser__/i
 const DESKTOP_TOOL = /^mcp__(computer-use|remote-devices__computer)/i
 const NETWORK_CODE = /urllib|requests\.|http\.client|httpx|aiohttp|socket\.|fetch\(|smtplib|subprocess|os\.system|os\.popen|child_process|playwright|selenium/
 
@@ -112,7 +122,7 @@ async function context($) {
     ...base, name, sites,
     buildTools: abilities.includes('build_tools') || abilities.includes('full_autonomy'),
     autonomy: abilities.includes('full_autonomy'),
-    browser: abilities.includes('act_in_browser') && sites.length > 0,
+    posts: abilities.includes('act_in_browser') && sites.length > 0,
   }
 }
 
@@ -154,18 +164,14 @@ export function verdict(e, c) {
   if (urls.some((u) => MONEY_HOSTS.test(hostOf(u)))) return 'banking, payment and crypto sites are off-limits'
   if (DESKTOP_TOOL.test(tool)) return 'controlling the whole computer'
   // Connectors to financial services are read-only: nothing that pays, refunds or moves money
-  if (/^mcp__/.test(tool) && !BROWSER_TOOL.test(tool) && MONEY_ACTION.test(tool.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, ''))) return 'moving money through a connector (read-only on money)'
-  if (BROWSER_TOOL.test(tool)) {
-    if (!c.browser) return 'using your browser needs "Acts in your browser", which your owner switches on in the panel (Manage)'
-    // Where it goes, not what it types: a post may carry links to anywhere, a navigation may not.
+  if (OWNER_BROWSER.test(tool)) return "your owner's own browser is theirs: use your own browser window (the orbit-browser tools)"
+  if (/^mcp__/.test(tool) && !OWN_BROWSER.test(tool) && MONEY_ACTION.test(tool.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, ''))) return 'moving money through a connector (read-only on money)'
+  if (OWN_BROWSER.test(tool)) {
+    // Its own window goes anywhere but money. Where it goes, not what it types: a post may carry links to anywhere.
     const seen = [e.url, e.href].filter((u) => u && !/^(back|forward)$/i.test(String(u)))
       .map((u) => (/^[a-z][a-z0-9+.-]*:/i.test(String(u)) ? String(u) : 'https://' + u))
-      .concat(/javascript|script|eval/i.test(tool) ? (text.match(/https?:\/\/[^\s'"<>)]+/gi) || []) : [])
-    for (const u of seen) {
-      const h = hostOf(u)
-      if (MONEY_HOSTS.test(h)) return 'banking, payment and crypto sites are off-limits'
-      if (!c.sites.some((s) => h === s || h.endsWith('.' + s))) return h + ' is not one of the sites your owner allowed (' + c.sites.join(', ') + ')'
-    }
+      .concat(/javascript|script|eval|code/i.test(tool) ? (text.match(/https?:\/\/[^\s'"<>)`]+/gi) || []) : [])
+    if (seen.some((u) => MONEY_HOSTS.test(hostOf(u)))) return 'banking, payment and crypto sites are off-limits'
   }
   if (tool === 'Bash') {
     const run = withoutCommitMessages(text)
@@ -264,8 +270,8 @@ const YES = 'Yes, allow it'
 const ACCESS_SPEC = {
   name: ACCESS_TOOL, isDeferred: false,
   description: 'Ask your owner for more access, with a Yes/No button in their Claude window. Use it instead of saying ' +
-    "you can't: kind full_autonomy (do the whole job without asking, any website, install tools), browser (act in " +
-    'their Chrome on these sites; approval each, batch or none), connect (work with a colleague) or connector (an app ' +
+    "you can't: kind full_autonomy (do the whole job without asking, any website, install tools), browser (post for " +
+    'them on these sites from your own browser window; approval each, batch or none), connect (work with a colleague) or connector (an app ' +
     'like Notion, Gmail, HubSpot or Canva: find one with staff-connectors). Say why in one line.',
   inputSchema: { type: 'object', required: ['kind', 'why'], properties: {
     kind: { type: 'string', enum: ['full_autonomy', 'browser', 'connect', 'connector'] },
@@ -291,7 +297,7 @@ async function requestAccess($, e) {
     if (!sites.length) return { result: 'Say which sites (like youtube.com).' }
     if (sites.some((h) => MONEY_HOSTS.test(h))) return { result: 'Banking and payment sites stay off-limits; ask your owner to do that part.' }
     const mode = ['each', 'batch', 'none'].includes(e.approval) ? e.approval : 'each'
-    q = 'Let ' + who + ' act in your Chrome on ' + sites.join(', ') + (mode === 'none' ? ' without asking you' : mode === 'batch' ? ' (you approve each batch)' : ' (you approve each one)') + '? ' + why
+    q = 'Let ' + who + ' post for you on ' + sites.join(', ') + ' from its own browser window' + (mode === 'none' ? ' without asking you' : mode === 'batch' ? ' (you approve each batch)' : ' (you approve each one)') + '? ' + why
     args = ['browser', sites.join(','), mode]
   } else if (e.kind === 'connect') {
     const col = String(e.colleague || '').toLowerCase().replace(/[^a-z0-9-]/g, '')
@@ -358,18 +364,18 @@ async function askedInSession($, e, next, c) {
 // follows the owner's new choice without being restarted.
 let seen = null
 function switchNote(c) {
-  const now = { autonomy: c.autonomy, browser: c.browser ? c.sites.join(', ') : '' }
+  const now = { autonomy: c.autonomy, browser: c.posts ? c.sites.join(', ') : '' }
   if (!seen) { seen = now; return '' }
   if (now.autonomy === seen.autonomy && now.browser === seen.browser) return ''
   const parts = []
-  if (now.autonomy !== seen.autonomy) parts.push(now.autonomy ? 'Full autonomy is ON: do the whole job without asking, any website, install what you need in your folder' : 'Full autonomy is OFF: check in before anything new or public')
-  if (now.browser !== seen.browser) parts.push(now.browser ? 'you may act in their Chrome on ' + now.browser + ' (see "Granted by your owner" in CLAUDE.md for whether to ask first)' : 'acting in their browser is OFF')
+  if (now.autonomy !== seen.autonomy) parts.push(now.autonomy ? 'Full autonomy is ON: do the whole job without asking, any website, install what you need' : 'Full autonomy is OFF: check in before anything new or public')
+  if (now.browser !== seen.browser) parts.push(now.browser ? 'you may post for them on ' + now.browser + ' from your own browser window (see "Granted by your owner" in CLAUDE.md for whether to ask first)' : 'posting for them is OFF')
   seen = now
   return 'Orbit: your owner just changed your switches. ' + parts.join('; ') + '. This applies from now on, in this chat.'
 }
 
 export function register(on) {
-  // With Full autonomy, nothing waits for a permission prompt: the sandbox and this guard are the boundary.
+  // With Full autonomy, nothing waits for a permission prompt: this guard is the boundary.
   // Deny rules and questions put to the owner are untouched (a hook can't dismiss a question dialog).
   on('tool.check', async ($, e, next) => {
     const r = await next(e)

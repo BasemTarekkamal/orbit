@@ -51,7 +51,7 @@ page itself. `tables` keeps columns but can break RTL words: take the words from
   shows you the image. Use it to confirm a quote, read a stamp, signature or chart, or when OCR
   fails.
 - OCR output marks pages; cite "p. 4 (scanned, OCR)" and double-check every number you quote.
-- If OCR fails inside your sandbox ("couldn't build the OCR helper" or a Vision error), use the
+- If OCR fails ("couldn't build the OCR helper" or a Vision error), use the
   Read tool on the file, or ask your owner to run the same staff-docs command once from Terminal.
 
 ## Tables and numbers

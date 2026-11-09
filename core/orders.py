@@ -137,7 +137,7 @@ def execute(by, kind, p):
             label = " (super agent)" if preset == "super" else " (default)" if preset == "default" else ""
             summary = "Abilities for %s%s" % (e["name"], label)
             res = ", ".join(diff) if diff else "No change"
-        elif kind == "set_browser":                       # the owner's consent: act in their Chrome on these sites
+        elif kind == "set_browser":                       # the owner's consent: post for them on these sites, from its own window
             e = _emp(eid, want_active=False)
             sites = [str(x) for x in p.get("sites") or []][:20] if isinstance(p.get("sites"), list) else []
             b = hire.set_browser(eid, sites, str(p.get("approval") or "each"), by)
@@ -145,7 +145,7 @@ def execute(by, kind, p):
                 engine.claude_session(eid)                # their Claude sessions pick it up too
             except Exception as ex:  # noqa: BLE001
                 team.log("claude_session after set_browser: %r" % ex)
-            summary = "Acts in your browser for %s" % e["name"]
+            summary = "Posts for you: %s" % e["name"]
             res = ("On for %s, %s" % (", ".join(b["sites"]), {"none": "without asking you", "batch": "after you approve each batch"}
                                      .get(b.get("approval"), "after you approve each one"))) if b else "Off"
             team.feed("staff", "Orbit", eid, "%s: %s. %s" % (summary, res, "Open them in Claude again to use it there." if b else ""), "panel")

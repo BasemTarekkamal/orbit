@@ -111,7 +111,7 @@ as `@sara`. Messages up to 2,000 characters; longer answers arrive in parts.
 - It never messages anyone but approved owners and the team chat you registered. A stranger's message
   is logged for you, never answered.
 - Tokens stay in `~/Staff/.secrets`, readable by you and the service, never by employees: that folder
-  is on the sandbox's deny list, and the guard blocks reading it.
+  is on the guard's list of secrets (and on the sandbox's deny list, for a team that keeps it on).
 - Employees can't use the raw chat APIs: the guard blocks `api.telegram.org`, `slack.com/api`,
-  `discord.com/api` and the like, and the sandbox can't reach them. Everything an employee says goes
+  `discord.com/api` and the like. Everything an employee says goes
   through the service, which delivers only to the addresses above.

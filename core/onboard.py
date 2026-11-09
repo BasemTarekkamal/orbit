@@ -56,7 +56,7 @@ CARD_SCHEMA = {
 
 POLICY = """Orbit's rules, which every card must respect:
 - Crew members run on the owner's own Claude plan. Budgets are tokens a week: light (about 1M), regular (about 3M), heavy (about 8M).
-- Crew members work with full autonomy by default (the owner can choose "checks in with me"). Acting as the owner in their own Chrome (posting, publishing, replying as them) is the owner's choice per site: ask before each one, once per batch, or not at all. Offer all three when it matters.
+- Crew members work with full autonomy by default (the owner can choose "checks in with me"). Acting as the owner (posting, publishing, replying as them, from the crew member's own browser window, where the owner signs it in) is the owner's choice per site: ask before each one, once per batch, or not at all. Offer all three when it matters.
 - Money: read-only. A crew member may sign in to read statements, invoices and balances; it never pays, transfers or buys anything.
 - Never ask for passwords, codes or tokens in a question. Access is given by the owner signing in once, in the crew member's own browser on this computer, or in the panel's settings.
 - Never invent facts about the owner's business."""

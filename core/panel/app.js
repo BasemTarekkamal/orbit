@@ -485,8 +485,8 @@ function cardHtml(sel, ob, name, from) {
         <p class="meta">Starts with: ${esc(c.first_task || '')}</p></section>
       ${asks ? `<section class="wide"><h3>Access ${esc(name)} will ask you for</h3><ul class="asks">${asks}</ul>
         <p class="meta">Nothing here is granted yet: ${esc(name)} asks when it's needed, and anything public waits for your Approve. Money is read only, always.</p></section>` : ''}
-      <section class="wide grant"><h3>${icon('key')} Let ${esc(name || 'them')} act in your Chrome <span class="meta">optional</span></h3>
-        <p class="meta">Pick the sites where ${esc(name || 'they')} may post, upload or fill in forms for you, in your own Chrome where you're signed in. They show you each one first and do it after you approve. Never sign-ins, passwords or money.</p>
+      <section class="wide grant"><h3>${icon('key')} Let ${esc(name || 'them')} post for you <span class="meta">optional</span></h3>
+        <p class="meta">Pick the sites where ${esc(name || 'they')} may post, upload or fill in forms for you, from their own browser window: you sign them in there once. They show you each one first and do it after you approve. Never passwords or money.</p>
         ${sitePicker('ob', ed.browser || [])}
         <div class="seg" role="group" aria-label="Approval"><button type="button" class="${(ed.approval || 'each') === 'each' ? 'on' : ''}" data-act="ob-approval" data-v="each">Ask me for each one</button><button type="button" class="${ed.approval === 'batch' ? 'on' : ''}" data-act="ob-approval" data-v="batch">Once per batch</button><button type="button" class="${ed.approval === 'none' ? 'on' : ''}" data-act="ob-approval" data-v="none">Don't ask me</button></div></section>
       ${S.data.employees.length ? `<section class="wide"><h3>${icon('users')} Works with</h3>
@@ -495,7 +495,7 @@ function cardHtml(sel, ob, name, from) {
       ${(ob.conn || []).length ? `<section class="wide"><h3>${icon('grid')} Connectors</h3><div class="chips">${ob.conn.map((x) => `<button type="button" class="chip ${(ed.connectors || []).includes(x.id) ? 'on' : ''}" data-act="ob-conn" data-id="${x.id}" aria-pressed="${(ed.connectors || []).includes(x.id)}" title="${esc(x.what)}">${esc(x.name)}</button>`).join('')}</div>
         <p class="meta">Apps ${esc(name || 'they')} can work in. The first time, you sign in to each in a Claude session with them. More in Manage, any time.</p></section>` : ''}
       <section class="wide grant"><h3>${icon('claude')} How independent?</h3>
-        <div class="seg budget" role="group" aria-label="Independence"><button type="button" class="${ed.autonomy ? '' : 'on'}" data-act="ob-autonomy" data-v=""><b>Checks in with me</b><span>Asks before anything new or public</span></button><button type="button" class="${ed.autonomy ? 'on' : ''}" data-act="ob-autonomy" data-v="1"><b>Full autonomy</b><span>Does the whole job, finds its own tools; the sandbox keeps it in its folder</span></button></div></section>
+        <div class="seg budget" role="group" aria-label="Independence"><button type="button" class="${ed.autonomy ? '' : 'on'}" data-act="ob-autonomy" data-v=""><b>Checks in with me</b><span>Asks before anything new or public</span></button><button type="button" class="${ed.autonomy ? 'on' : ''}" data-act="ob-autonomy" data-v="1"><b>Full autonomy</b><span>Does the whole job, finds its own tools, in its own browser window</span></button></div></section>
       <p class="meta card-cloud">${icon('claude')} If this ${MAC()} is closed or offline, they keep working in Anthropic's cloud, on your Claude plan. Turn it off any time in their Manage tab.</p>
       <section><h3>Tools</h3>${access}</section>
       <section><h3>Routines</h3><div class="chips">${routines}</div><p class="meta">Reports land in the team room and on your phone.</p></section>
@@ -555,7 +555,7 @@ function syncLaunch(r) {             // the welcome after a hire: shown once, th
 }
 function launchHtml(e) {
   const st = S.data.setup || {};
-  const steps = [['Card and memory set up', 'Their job, plan and your answers are in their notes'], ['Safety locks on', 'Sandbox and guard, in every run and every Claude session'],
+  const steps = [['Card and memory set up', 'Their job, plan and your answers are in their notes'], ['Safety locks on', 'The guard, in every run and every Claude session'],
     ['First task started', 'Watch it below; it takes a minute or two'], [`${esc(e.name)} is ready in Claude`, 'A session in their folder, with everything above']];
   return `<div class="launch" role="dialog" aria-modal="true" aria-label="${esc(e.name)} joined your crew"><div class="launch-card">
     <div class="launch-orbit" aria-hidden="true"><span class="ring r1"></span><span class="ring r2"></span><span class="sat s1"></span><span class="sat s2"></span>${avatar(e.id, e.name, 'xl')}</div>
@@ -698,7 +698,7 @@ function tlItem(f) {
 
 // ---- team
 // A crew member's health at a glance: this week's runs and failures, and tokens against their weekly budget
-// "Acts in your browser": the owner's consent, per crew member, per site. Enforced by the guard, not by asking.
+// "Posts for you": the owner's consent, per crew member, per site, from the crew member's own browser window.
 function sitePicker(prefix, sites) {
   const on = new Set(sites);
   const extra = [...on].filter((d) => !SITES.some(([, x]) => x === d));
@@ -733,26 +733,27 @@ function cloudSection(e) {
   const state = c.on ? `<span class="badge accent">On</span>` : `<span class="badge">Off</span>`;
   const when = c.on && c.next_shift ? `<p class="meta">While this ${MAC()} is on, ${esc(e.name)} works here. If it's closed or offline, the next cloud shift starts ${esc(c.next_shift)}.${c.last_shift ? ` Last cloud shift: ${esc(c.last_shift)}.` : ''}${c.session ? ` <a class="link" href="${esc(c.session)}" target="_blank" rel="noopener">Open their cloud desk</a>` : ''}</p>` : '';
   return `<section class="grant"><h2>${icon('claude')} Cloud shift</h2>
-    <p class="desc">${esc(e.name)} works on this ${MAC()} first. When it's closed or offline, they carry on in Anthropic's cloud, on your own Claude plan: research, plans, scripts and code, with a report to your phone. When this ${MAC()} is back, they bring that work home. The cloud has no access to your Chrome or your accounts, so anything that needs them waits for this ${MAC()}. ${state}</p>
+    <p class="desc">${esc(e.name)} works on this ${MAC()} first. When it's closed or offline, they carry on in Anthropic's cloud, on your own Claude plan: research, plans, scripts and code, with a report to your phone. When this ${MAC()} is back, they bring that work home. The cloud has no access to their browser window or your accounts, so anything that needs them waits for this ${MAC()}. ${state}</p>
     ${when}${c.error ? `<p class="meta warn-text">${esc(c.error)}</p>` : ''}${c.why_not ? `<p class="meta warn-text">${esc(c.why_not)}</p>` : ''}
     <div class="save-bar"><button type="button" class="btn ${c.on ? '' : 'btn-primary'}" data-act="order" data-kind="set_cloud" data-emp="${e.id}" data-on="${c.on ? '' : '1'}" ${c.why_not ? 'disabled' : ''}>${c.on ? 'Turn off' : 'Turn on the cloud shift'}</button></div></section>`;
 }
 function autonomySection(e) {
   const on = (e.abilities || []).includes('full_autonomy');
   return `<section class="grant"><h2>${icon('claude')} Full autonomy</h2>
-    <p class="desc">${esc(e.name)} does the whole job without asking: reaches any website, downloads and installs the tools it needs into its own folder, studies videos, and finishes the work. It asks you only for decisions and things only you know. The sandbox keeps it inside its own folder, away from your secrets and the rest of the crew. It never touches money or types passwords. ${on ? '<span class="badge accent">On</span>' : '<span class="badge">Off</span>'}</p>
+    <p class="desc">${esc(e.name)} does the whole job without asking: reaches any website in its own browser window, downloads and installs the tools it needs, studies videos, and finishes the work. It asks you only for decisions and things only you know. The guard keeps it away from your secrets, your own browser and money, and it never types passwords. ${on ? '<span class="badge accent">On</span>' : '<span class="badge">Off</span>'}</p>
     <div class="save-bar"><button type="button" class="btn ${on ? '' : 'btn-primary'}" data-act="order" data-kind="set_autonomy" data-emp="${e.id}" data-on="${on ? '' : '1'}">${on ? 'Turn off' : 'Turn on full autonomy'}</button></div></section>`;
 }
 function browserSection(e) {
   const b = e.browser || {};
   const st = S.browserEdit && S.browserEdit.id === e.id ? S.browserEdit : (S.browserEdit = { id: e.id, sites: [...(b.sites || [])], approval: b.approval || 'each' });
   const dirty = JSON.stringify(st.sites) !== JSON.stringify(b.sites || []) || st.approval !== (b.approval || 'each');
-  return `<section class="grant"><h2>${icon('key')} Acts in your browser</h2>
-    <p class="desc">${esc(e.name)} uses <b>your own Chrome</b>, where you're already signed in, to post, upload and fill in forms on the sites you pick. They show you each one first and do it after you say “approved”. They never sign in, type a password, change account settings or touch money. ${b.sites && b.sites.length ? `<span class="badge accent">On · ${esc(b.sites.join(', '))}</span>` : '<span class="badge">Off</span>'}</p>
+  return `<section class="grant"><h2>${icon('key')} Posts for you</h2>
+    <p class="desc">${esc(e.name)} has <b>a browser window of its own</b>, apart from yours. On the sites you pick, it posts, uploads and fills in forms for you there. They show you each one first and do it after you say “approved”, unless you choose otherwise. They never sign in themselves, type a password, change account settings or touch money. ${b.sites && b.sites.length ? `<span class="badge accent">On · ${esc(b.sites.join(', '))}</span>` : '<span class="badge">Off</span>'}</p>
     <div>${sitePicker('br', st.sites)}
       <div class="seg mt" role="group" aria-label="Approval"><button type="button" class="${st.approval === 'each' ? 'on' : ''}" data-act="br-approval" data-v="each">Ask me for each one</button><button type="button" class="${st.approval === 'batch' ? 'on' : ''}" data-act="br-approval" data-v="batch">Once per batch</button><button type="button" class="${st.approval === 'none' ? 'on' : ''}" data-act="br-approval" data-v="none">Don't ask me</button></div>
       <div class="save-bar"><button type="button" class="btn btn-primary" data-act="br-save" data-emp="${e.id}" ${dirty ? '' : 'disabled'}>${!dirty ? (st.sites.length ? 'Allowed' : 'Off') : st.sites.length ? 'Allow on ' + plural(st.sites.length, 'site') : 'Turn off'}</button>
-      <span class="meta">Needs the Claude in Chrome extension in your Chrome. Works in their Claude sessions now; from your phone when Chrome is connected to Claude Code.</span></div></div></section>`;
+      <button type="button" class="btn btn-sm btn-ghost" data-act="open-browser" data-emp="${e.id}">Open ${esc(e.name)}'s browser</button>
+      <span class="meta">Sign them in to these sites there once; they stay signed in. Your own Chrome is never theirs.</span></div></div></section>`;
 }
 function healthHtml(e) {
   const cap = e.weekly_tokens || 0, used = e.tokens_7d || 0, pct = cap ? Math.min(100, Math.round(used / cap * 100)) : 0;
@@ -1250,6 +1251,10 @@ document.addEventListener('click', async (ev) => {
       if (r.opened) toast(r.new ? 'Orbit\'s chat is opening in Claude. Press Enter there once: it sets itself up.' : 'Opening Orbit\'s chat in Claude.');
       else { window.location.href = r.link; }
     }).catch((e) => toast(e.message, 'err'));
+  }
+  else if (act === 'open-browser') {
+    api('/api/browser', { employee: b.dataset.emp }).then(() => toast('Their browser window is open: sign them in there, then close it or leave it.'))
+      .catch((e) => toast(e.message, 'err'));
   }
   else if (act === 'connector') {
     b.disabled = true;
