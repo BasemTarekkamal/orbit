@@ -51,6 +51,20 @@ const BLOCKED_COMMANDS = [
   [/\bopen\s+(-a\s+\S+\s+)?https?:/i, 'opening a browser'],
   [/\b(xdg-open|wslview)\b/i, 'opening a browser'],
 ]
+// A commit message is data, not a command: "scout: Claude Code video…" or "why curl failed" mustn't read as a
+// nested claude run or a network call. Only a message that can't run anything is set aside: one with $(…) or
+// backticks inside double quotes, or in a heredoc with an unquoted delimiter, stays and is checked.
+function withoutCommitMessages(cmd) {
+  const inert = (s) => !/\$\(|`/.test(s)
+  let out = String(cmd), prev
+  do {
+    prev = out
+    out = out.replace(/(\bgit\b[^;&|\n]*?\bcommit\b[^;&|\n]*?(?:-[a-zA-Z]*m|--message)(?:=|\s+))("(?:[^"\\]|\\.)+"|'[^']+')/,
+      (m, head, msg) => (msg[0] === "'" || inert(msg) ? head + '""' : m))
+  } while (out !== prev)
+  return out.replace(/(\bgit\b[^;&|\n]*?\bcommit\b[^\n]*?<<-?\s*)(['"]?)(\w+)\2([^\n]*\n)([\s\S]*?\n)\3(?=\n|$)/g,
+    (m, head, q, tag, rest, body) => (q || inert(body) ? head + q + tag + q + rest + tag : m))
+}
 // Banking, payment and crypto hosts: never reached, whatever the reason
 const MONEY_HOSTS = /(^|\.)(paypal|stripe|wise|revolut|venmo|cash\.app|zelle|payoneer|skrill|westernunion|moneygram|remitly|klarna|afterpay|alipay|wechatpay|paytm|phonepe|razorpay|mpesa|instapay|fawry|paymob|valu|binance|coinbase|kraken|bybit|okx|kucoin|crypto\.com|metamask|blockchain\.com|chase|bankofamerica|wellsfargo|citi|hsbc|barclays|santander|lloydsbank|natwest|monzo|starlingbank|n26|bnpparibas|societegenerale|deutsche-bank|ing|rabobank|ubs|emiratesnbd|alrajhibank|qnb|cibeg|banquemisr|nbe)\.[a-z.]+$/i
 const WRITE_WORDS = /(>|\btee\b|\bsed\s+-i|\bperl\s+-[a-z]*i|\bmv\b|\bcp\b|\brm\b|\bln\b|\bchmod\b|\btouch\b|\btruncate\b|\binstall\b|\bunlink\b|open\(|write)/i
@@ -154,7 +168,8 @@ export function verdict(e, c) {
     }
   }
   if (tool === 'Bash') {
-    for (const [re, why, job] of BLOCKED_COMMANDS) if (re.test(text) && !(job && c.autonomy)) return why + ' is blocked'
+    const run = withoutCommitMessages(text)
+    for (const [re, why, job] of BLOCKED_COMMANDS) if (re.test(run) && !(job && c.autonomy)) return why + ' is blocked'
     const harness = touches(text, c.harness, c.home)
     // Error-output plumbing (2>&1, 2>/dev/null) writes nothing anywhere; reading the kit with it is fine.
     const writes = text.replace(/\d*>&\d|&?\d*>\s*\/dev\/null/g, '')

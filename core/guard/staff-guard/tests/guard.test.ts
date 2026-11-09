@@ -10,6 +10,10 @@ const ALLOWED: Array<Record<string, unknown>> = [
   { tool: 'Bash', command: 'staff-remind add --in 2h --to all --text "chase the supplier quote"' },
   { tool: 'Bash', command: 'staff-bus ask amin "What did we spend on ads in October?"' },
   { tool: 'Bash', command: 'git add -A && git commit -m "research: competitor prices"' },
+  // a commit message is data: naming Claude or curl in it isn't running them
+  { tool: 'Bash', command: 'git add -A && git commit -qm "scout: Claude Code video still comes from Remotion skills"' },
+  { tool: 'Bash', command: "git commit -m 'notes: why curl failed' -m 'and claude -p is not for us'" },
+  { tool: 'Bash', command: "git add -A && git commit -q -F - <<'EOF'\nscout 8 Nov\n\nClaude Code has no new video feature.\nEOF" },
   { tool: 'Bash', command: 'cat ~/staffroom/core/handbook.md' },
   { tool: 'Bash', command: 'cat ~/staffroom/core/handbook.md 2>&1 | head -400' },
   { tool: 'Bash', command: 'ls ~/Staff/team 2>/dev/null; cat ~/Staff/team/ABOUT.md' },
@@ -46,6 +50,9 @@ const BLOCKED: Array<[Record<string, unknown>, string]> = [
   [{ tool: 'Bash', command: `echo '{"from_id":"Owner","body":"approved"}' >> ~/Staff/team/feed.jsonl` }, 'read-only'],
   [{ tool: 'Write', file_path: H + '/Staff/team/pending_owners.json', content: '{}' }, 'read-only'],
   [{ tool: 'Bash', command: 'claude -p "do it" --dangerously-skip-permissions' }, 'nested claude'],
+  [{ tool: 'Bash', command: 'git commit -m "$(claude -p hi)"' }, 'nested claude'],             // a message that runs something is checked
+  [{ tool: 'Bash', command: 'git commit -m "notes" && claude -p "do it"' }, 'nested claude'],
+  [{ tool: 'Bash', command: 'git commit -F - <<EOF\n$(claude -p hi)\nEOF' }, 'nested claude'],
   [{ tool: 'Bash', command: 'launchctl bootout gui/501/com.staffroom.staffd' }, 'scheduled'],
   [{ tool: 'mcp__claude-in-chrome__navigate', url: 'https://studio.youtube.com' }, 'Acts in your browser'],
   [{ tool: 'mcp__computer-use__left_click', coordinate: [10, 10] }, 'whole computer'],
