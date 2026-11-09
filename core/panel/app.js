@@ -275,6 +275,7 @@ function renderSide(r) {
       <a href="/settings" class="${on('settings') || on('connect')}">${icon('sliders')}Settings</a>
     </nav>
     <a class="btn btn-primary hire" href="/hire">${icon('plus')}Add crew</a>
+    ${d.demo ? '' : `<button type="button" class="btn hire" data-act="open-desk" title="One Claude chat for your whole crew: hire, check and change anyone by talking">${icon('claude')}Orbit in Claude</button>`}
     <h3>Crew</h3>
     <nav class="nav emps">${emps || '<span class="faint small pad">None yet</span>'}</nav>
     <div class="spacer"></div>
@@ -1244,6 +1245,12 @@ document.addEventListener('click', async (ev) => {
   else if (act === 'ob-routine' && S.ob) { S.ob.edit.routines[b.dataset.k] = !S.ob.edit.routines[b.dataset.k]; keepCard(); render(true); }
   else if (act === 'ob-budget' && S.ob) { S.ob.edit.budget = b.dataset.k; keepCard(); render(true); }
   else if (act === 'open-claude') { openClaude(b.dataset.emp, b); }
+  else if (act === 'open-desk') {
+    api('/api/desk', {}).then((r) => {
+      if (r.opened) toast(r.new ? 'Orbit\'s chat is opening in Claude. Press Enter there once: it sets itself up.' : 'Opening Orbit\'s chat in Claude.');
+      else { window.location.href = r.link; }
+    }).catch((e) => toast(e.message, 'err'));
+  }
   else if (act === 'connector') {
     b.disabled = true;
     await order({ kind: 'connector', employee_id: b.dataset.emp, ref: b.dataset.ref, name: b.dataset.name, off: !!b.dataset.off });

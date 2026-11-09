@@ -531,6 +531,11 @@ def supervise():
 def refresh_sessions():
     """After a start (so after every update): each crew member's folder gets the kit's current guard, settings
     and switches, so a Claude session opened there (from the panel, the app or a phone) is never a version behind."""
+    try:
+        import desk
+        desk.ensure()                                     # Orbit's own chat: its instructions follow the kit
+    except Exception as ex:  # noqa: BLE001
+        log("desk refresh: %s" % ex)
     for emp_id, e in engine.registry().get("employees", {}).items():
         if e.get("status") == "retired":
             continue

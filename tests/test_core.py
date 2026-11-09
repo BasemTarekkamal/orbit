@@ -1002,3 +1002,65 @@ class ClaudeApp(unittest.TestCase):
             awake.settled, engine.online, staffd.run_async, staffd.dt = real
         self.assertIn("brief", started)
         self.assertNotIn("standup", started)
+
+
+class Desk(unittest.TestCase):
+    """0.12: Orbit's own chat in the Claude app: hire, check and change the crew by talking."""
+
+    def setUp(self):
+        fresh_team()
+        import desk
+        self.desk = desk
+        self.sent = []
+        self.real_order = desk.order
+        desk.order = lambda kind, payload: (self.sent.append((kind, payload)) or
+                                            ("Hire Sara (Market researcher): Hired: handle /sara" if kind == "hire" else "ok"))
+
+    def tearDown(self):
+        self.desk.order = self.real_order
+
+    def test_the_desk_folder_and_its_locks(self):
+        d = self.desk.ensure()
+        self.assertEqual(d, os.path.join(TMP, "desk"))
+        self.assertNotIn(d, [os.path.join(TMP, "employees", x) for x in os.listdir(os.path.join(TMP, "employees"))]
+                         if os.path.isdir(os.path.join(TMP, "employees")) else [])
+        with open(os.path.join(d, "CLAUDE.md")) as fh:
+            text = fh.read()
+        self.assertIn(os.path.join(engine.KIT, "orbit"), text)
+        self.assertIn("Alex", text)
+        self.assertNotIn("{orbit}", text)
+        with open(os.path.join(d, ".claude", "settings.local.json")) as fh:
+            perms = json.load(fh)["permissions"]
+        self.assertIn("Read(/%s/**)" % os.path.realpath(engine.SECRETS), perms["deny"])
+        self.assertIn("Edit(/%s)" % os.path.realpath(engine.REGISTRY), perms["deny"])
+        self.assertFalse(os.path.exists(os.path.join(TMP, "CLAUDE.md")))      # not above the crew's folders
+        url, new = self.desk.link()
+        self.assertTrue(new and url.startswith("claude://code/new?folder="))
+        with open(self.desk.STATE, "w") as fh:
+            json.dump({"chat": "local_12345678-1234-1234-1234-123456789abc"}, fh)
+        self.assertEqual(self.desk.link(), ("claude://claude.ai/epitaxy/local_12345678-1234-1234-1234-123456789abc", False))
+
+    def test_the_guide_is_the_panels_interview(self):
+        import onboard
+        g = self.desk.guide()
+        for part in (onboard.ASK_GUIDE, onboard.CARD_GUIDE, onboard.POLICY, "- jobs: ", "- web: ", "orbit hire --card"):
+            self.assertIn(part, g)
+
+    def test_hire_from_a_card_goes_through_the_service(self):
+        out = self.desk.hire({"name": "Sara", "role": "Market researcher", "job": "researcher",
+                              "card": {"role": "Market researcher", "scope": "Prices in Cairo", "first_task": "Three rivals",
+                                       "routines": {"standup": True, "eod": True, "brief": False}, "abilities": ["web", "bogus"],
+                                       "budget": "huge", "model": "opus", "access": [{"kind": "sign_in", "what": "x", "why": "y"},
+                                                                                    {"kind": "pay", "what": "no", "why": "no"}]},
+                              "browser": {"sites": ["YouTube.com"], "approval": "sometimes"}})
+        kinds = [k for k, _ in self.sent]
+        self.assertEqual(kinds, ["hire", "set_autonomy", "set_browser"])
+        h = self.sent[0][1]
+        self.assertEqual((h["name"], h["supervisor"], h["model"]), ("Sara", "Alex", "opus"))
+        self.assertEqual(h["abilities"], ["telegram", "team_room", "web", "standup", "eod"])   # unknown ability dropped
+        self.assertEqual((h["card"]["budget"], h["card"]["weekly_tokens"]), ("regular", 3_000_000))
+        self.assertEqual([a["kind"] for a in h["card"]["access"]], ["sign_in"])
+        self.assertEqual(self.sent[2][1], {"employee_id": "sara", "sites": ["youtube.com"], "approval": "each"})
+        self.assertIn("handle sara", out)
+        with self.assertRaises(ValueError):
+            self.desk.hire({"card": {}})

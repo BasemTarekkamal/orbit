@@ -74,6 +74,11 @@ in a sandbox there, the same one Claude Code uses on Linux.
 Windows and Linux support is new (November 2026). It's tested automatically on Ubuntu and on WSL,
 but few people have used it yet, so please tell us what breaks.
 
+**Orbit in the Claude app.** If you live in Claude rather than a browser tab, `orbit desk` (or the panel's
+**Orbit in Claude**) opens Orbit's own chat: hire by talking, through the same interview as the panel; ask who's
+doing what and what they need from you; pause, change or open anyone. Each crew member then has their own chat
+too, and their routines report there with the unread dot.
+
 **Talking to your crew, and hearing from them.** Each crew member has **one running conversation**:
 its routines, its follow-ups and your messages are all turns of the same session. You reach it three ways,
 and everything it says reaches you on all of them:
@@ -275,7 +280,11 @@ orbit hire --name … --role … [--scope …] [--super] [--brain opus|sonnet|ha
 orbit list | pause <h> | resume <h> | retire <h>
 orbit abilities <h> [--default | --super | --on a,b --off c]
 orbit skills [<h>] [--share NAME | --remove NAME | --export NAME DIR]
-orbit chat <h>                   their conversation in a Claude window, right here
+orbit desk                       Orbit's own chat in the Claude app: hire, check and change your crew by talking
+orbit open <h>                   their own chat in the Claude app
+orbit set <h> <field> <value>    brain, model, effort, scope, role, supervisor, weekly_tokens
+orbit routine <h> <job>          run one of their routines now
+orbit chat <h>                   their conversation in a terminal, right here
 orbit inbox [<h>] [--all]        what they said that you haven't seen
 orbit run <h> "message"          one message, one answer, in the terminal
 orbit secret telegram|slack|discord|apify|anthropic

@@ -145,3 +145,14 @@ def setup_message(emp_id: str) -> str:
             "%s and do what it says. Then introduce yourself in a few lines: your job as you understand it, what "
             "you'll do first, and anything you need from me." % (e["name"], os.path.join(engine.CORE, "jobs", "claude_app.md")))
 
+
+def open_chat(emp_id: str) -> dict:
+    """Opens the crew member's chat in the Claude app: theirs once it exists, else a new chat in their folder whose
+    first message sets up their routines (the owner presses Enter). → {"opened", "link", "new_chat", "folder", "hello"}"""
+    import osinfo
+    s = engine.claude_session(emp_id)                     # their folder's locks, refreshed first
+    link = s.get("chat") or s["link"]
+    app = any(os.path.isdir(p) for p in ("/Applications/Claude.app", os.path.expanduser("~/Applications/Claude.app")))
+    opened = bool(osinfo.KIND == "mac" and app and osinfo.open_url(link))
+    return {"opened": opened, "link": link, "new_chat": not s.get("chat"), "folder": s["folder"], "hello": s["hello"]}
+

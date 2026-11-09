@@ -85,15 +85,17 @@ Tell them, in your own words, short:
   2. **On their phone** (recommended): Telegram, Slack or Discord, through a bot of their own. The panel's
      "Connect your phone" walks them through it in about two minutes. Then they message the crew from
      anywhere, send voice notes and files, and get the routine reports there.
-  3. **In Claude itself:** each crew member's page has **Open in Claude**, a Claude session in their own
-     folder, with the same job, memory and safety locks (it opens on its own right after a hire; the first
-     time, Claude asks them to confirm the folder). And in any Claude session in the `orbit` folder, "ask
-     Sara: …" works too: you pass it on with `~/orbit/orbit run <handle> "<message>"` (handles:
-     `~/orbit/orbit list`) and show the answer as it came.
+  3. **In the Claude app** (best if they live in Claude, not in a browser tab): **Orbit's own chat**, opened
+     with `~/orbit/orbit desk` or the panel's "Orbit in Claude" button. There they hire by talking (the same
+     interview), ask who's doing what, read what the crew said, and change anyone. And each crew member has
+     **their own chat** (`~/orbit/orbit open <handle>`, or **Open in Claude** on their page): press Enter once
+     the first time, and their standup, initiative, end of day and weekly review happen in that chat, with
+     the unread dot, like any Claude chat left running.
 - What to expect: an answer in a minute or two (deep research takes longer), each with "How I did it".
   On their own, crew members only send the routines ticked in Manage (like a morning brief) and things
   that need the owner. They never post, buy, or message anyone but the owners.
-Then offer to stay while they connect their phone. That's the whole setup.
+Then run `~/orbit/orbit desk` so Orbit's chat is waiting for them in the Claude app (they press Enter once), and
+offer to stay while they connect their phone. That's the whole setup.
 
 ## Extras, only when they ask
 - **Voice notes and live calls** (transcribed on this computer):

@@ -7,11 +7,16 @@
   orbit status                     is it running, who works here
   orbit panel                      open the control panel in your browser
   orbit hire --name Sara --role "Market researcher" --scope "…" [--super] [--brain opus] [--model sonnet]
+  orbit hire --guide | --card <file.json>   the hiring interview's rules, or hire from the card it produced
+  orbit set <handle> brain|model|effort|scope|role|supervisor|weekly_tokens <value>
+  orbit routine <handle> <standup|eod|…>   run one of their routines now
   orbit list
   orbit pause | resume | retire <handle>
   orbit abilities <handle> [--default | --super | --on a,b --off c]
   orbit skills [<handle>] [--share NAME | --remove NAME | --export NAME DIR]   what they learned
-  orbit chat <handle>              open their conversation in a Claude window, right here (what they did, said, and you)
+  orbit desk                       Orbit's own chat in the Claude app: hire, check and change your crew by talking
+  orbit open <handle>              their own chat in the Claude app (the first time, press Enter once there)
+  orbit chat <handle>              their running conversation in a terminal, right here (no Claude app needed)
   orbit inbox [<handle>] [--all]   what your crew said that you haven't seen (reports, results, answers)
   orbit run <handle> "<message>"   one message, one answer, in the terminal
   orbit secret telegram | slack | discord | apify | anthropic    save a token (typed hidden, stored only on this computer)
@@ -697,7 +702,9 @@ def main():
     d.add_argument("--get-voice-model", action="store_true")
     d.add_argument("--get-whisper", action="store_true")
     h = sub.add_parser("hire")
-    h.add_argument("--name", required=True); h.add_argument("--role", required=True); h.add_argument("--scope", default="")
+    h.add_argument("--name"); h.add_argument("--role"); h.add_argument("--scope", default="")
+    h.add_argument("--guide", action="store_true", help="print the hiring interview's rules, jobs, abilities and card format")
+    h.add_argument("--card", metavar="FILE", help="hire from a card the interview produced (JSON)")
     h.add_argument("--supervisor", default=""); h.add_argument("--handle"); h.add_argument("--super", action="store_true")
     h.add_argument("--model", choices=["opus", "sonnet", "haiku"], help="the hands: production runs (default sonnet)")
     h.add_argument("--brain", choices=["opus", "sonnet", "haiku"], help="the brain: standup, reviews, chats (default opus)")
@@ -708,6 +715,15 @@ def main():
     a.add_argument("--on", default=""); a.add_argument("--off", default="")
     r = sub.add_parser("run")
     r.add_argument("handle"); r.add_argument("message")
+    sub.add_parser("desk").add_argument("--show", action="store_true", help="print the link instead of opening it")
+    o = sub.add_parser("open")
+    o.add_argument("handle"); o.add_argument("--show", action="store_true", help="print the link instead of opening it")
+    st = sub.add_parser("set")
+    st.add_argument("handle"); st.add_argument("field"); st.add_argument("value", nargs="?", default="")
+    rt = sub.add_parser("routine")
+    rt.add_argument("handle"); rt.add_argument("job")
+    od = sub.add_parser("order")                         # any panel order, for Orbit's chat: orbit order <kind> '<json>'
+    od.add_argument("kind"); od.add_argument("payload", nargs="?", default="{}")
     c = sub.add_parser("chat")
     c.add_argument("handle"); c.add_argument("--show", action="store_true", help="print the command instead of opening the window")
     i = sub.add_parser("inbox")
@@ -823,6 +839,35 @@ def main():
             say(("✓ " if ok else ("✗ " if must else "· ")) + msg)
             bad += (not ok and must)
         sys.exit(1 if bad else 0)
+    if args.cmd == "desk":
+        import desk
+        if args.show:
+            say(desk.link()[0])
+            return
+        r = desk.open_chat()
+        if not r["opened"]:
+            say(r["link"])
+        say(("Orbit's chat is opening in the Claude app." + (" Press Enter there once: it sets itself up." if r["new"] else ""))
+            if r["opened"] else "Open that link on this computer's Claude app (needs the Claude desktop app).")
+        return
+    if args.cmd in ("set", "routine", "order"):
+        import desk
+        try:
+            if args.cmd == "set":
+                say(desk.order("set_field", {"employee_id": args.handle, "field": args.field, "value": args.value}))
+            elif args.cmd == "routine":
+                say(desk.order("run_job", {"employee_id": args.handle, "job": args.job}))
+            else:
+                try:
+                    payload = json.loads(args.payload)
+                except ValueError:
+                    sys.exit("The order's details must be JSON, like '{\"employee_id\": \"sara\"}'")
+                if not isinstance(payload, dict):
+                    sys.exit("The order's details must be a JSON object")
+                say(desk.order(args.kind, payload))
+        except RuntimeError as e:
+            sys.exit(str(e))
+        return
     if args.cmd == "panel":
         u = panel_url()
         say(u)
@@ -848,6 +893,35 @@ def main():
             if e.get("status") == "retired":
                 continue
             say("/%-12s %-10s %-28s %s · %d abilities" % (k, e["name"], e["role"][:28], e.get("status", "active"), len(abilities.effective(k))))
+        return
+    if args.cmd == "hire" and (args.guide or args.card):
+        import desk
+        if args.guide:
+            say(desk.guide())
+            return
+        try:
+            with open(args.card, encoding="utf-8") as fh:
+                payload = json.load(fh)
+            say(desk.hire(payload))
+        except (OSError, ValueError, RuntimeError) as e:
+            sys.exit("Not hired: %s" % e)
+        return
+    if args.cmd == "hire" and not (args.name and args.role):
+        sys.exit("orbit hire --name … --role … (or --guide / --card <file>)")
+    if args.cmd == "open":
+        import claudeapp
+        try:
+            if args.show:
+                s = engine.claude_session(args.handle)
+                say(s.get("chat") or s["link"])
+                return
+            r = claudeapp.open_chat(args.handle)
+        except (KeyError, RuntimeError) as e:
+            sys.exit("Couldn't open their chat: %s" % e)
+        if not r["opened"]:
+            say(r["link"])
+        say(("Their chat is opening in the Claude app." + (" Press Enter there once: they set up their routines in it." if r["new_chat"] else ""))
+            if r["opened"] else "Open that link in the Claude app on this computer, or talk here: orbit chat %s" % args.handle)
         return
     try:
         if args.cmd == "hire":

@@ -96,8 +96,7 @@ def _ask(system, prompt, schema, timeout=150):
     return out
 
 
-def questions(role, scope, name=""):
-    system = ("You are Orbit's hiring interviewer. An owner is hiring an AI crew member that runs on their own "
+ASK_GUIDE = ("You are Orbit's hiring interviewer. An owner is hiring an AI crew member that runs on their own "
               "Claude plan on their computer. Ask the few questions this specific job needs so the crew member can "
               "do it the way the owner thinks. Prefer choices the owner can tap; use text only for names, links "
               "and specifics. Cover what the card doesn't know yet: their accounts, channels or sites; goals and "
@@ -106,7 +105,19 @@ def questions(role, scope, name=""):
               "always ask for 1-3 links to work they love and want something like, and links to their own channels "
               "or pages: a reference beats any description. Short "
               "questions, short options, the owner's language (from the About text). No question about money "
-              "transfers, passwords or tokens.\n\n" + POLICY)
+              "transfers, passwords or tokens.")
+CARD_GUIDE = ("You are Orbit's hiring interviewer. From the owner's answers, write the new crew member's card: "
+              "their job title, the scope in 2 to 4 sentences in the owner's words and language, concrete "
+              "responsibilities, the first real task they can do today with free web tools, a short plan for their "
+              "first days, which routines to switch on (brief = a morning brief, standup = the daily plan and numbers, initiative = the midday thing nobody asked for, eod = score the day and get tomorrow "
+              "ready, review = the weekly strategy review; switch on standup, eod and review for any job with goals), which abilities to tick (ids from the list only), the access to ask the owner for (only "
+              "what this job needs; for posting use post_with_approval, for bank or payment portals "
+              "finance_read_only, for accounts to read use sign_in), a weekly token budget and a model (haiku for "
+              "simple routine work, sonnet for most jobs, opus only for hard analysis).")
+
+
+def questions(role, scope, name=""):
+    system = ASK_GUIDE + "\n\n" + POLICY
     out = _ask(system, _context(name, role, scope), QUESTIONS_SCHEMA)
     qs = []
     for i, q in enumerate(out.get("questions") or []):
@@ -121,21 +132,26 @@ def questions(role, scope, name=""):
 def compose(role, scope, name, answers):
     catalog = "\n".join("- %s: %s" % (a["id"], a.get("description", a.get("name", ""))) for a in abilities.catalog())
     qa = "\n".join("Q: %s\nA: %s" % (str(x.get("q", ""))[:300], str(x.get("a", ""))[:1500]) for x in answers or [])
-    system = ("You are Orbit's hiring interviewer. From the owner's answers, write the new crew member's card: "
-              "their job title, the scope in 2 to 4 sentences in the owner's words and language, concrete "
-              "responsibilities, the first real task they can do today with free web tools, a short plan for their "
-              "first days, which routines to switch on (brief = a morning brief, standup = the daily plan and numbers, initiative = the midday thing nobody asked for, eod = score the day and get tomorrow "
-              "ready, review = the weekly strategy review; switch on standup, eod and review for any job with goals), which abilities to tick (ids from the list only), the access to ask the owner for (only "
-              "what this job needs; for posting use post_with_approval, for bank or payment portals "
-              "finance_read_only, for accounts to read use sign_in), a weekly token budget and a model (haiku for "
-              "simple routine work, sonnet for most jobs, opus only for hard analysis).\n\n" + POLICY +
-              "\n\nAbilities (id: what it does):\n" + catalog)
+    system = CARD_GUIDE + "\n\n" + POLICY + "\n\nAbilities (id: what it does):\n" + catalog
     out = _ask(system, _context(name, role, scope) + "\n\nThe interview:\n" + (qa or "(no answers)"), CARD_SCHEMA)
+    tokens = out.pop("_tokens", 0)
+    out = normalize(out)
+    out["tokens"] = tokens
+    return out
+
+
+def normalize(card: dict) -> dict:
+    """A card from the interview (the panel's, or one the Orbit chat wrote) cut down to what Orbit accepts."""
+    out = dict(card or {})
     known = {a["id"] for a in abilities.catalog()}
     out["abilities"] = [a for a in out.get("abilities") or [] if a in known]
     out["routines"] = {k: bool((out.get("routines") or {}).get(k)) for k in ROUTINES}
-    out["access"] = [a for a in out.get("access") or [] if a.get("kind") in ACCESS_KINDS][:6]
+    out["access"] = [a for a in out.get("access") or [] if isinstance(a, dict) and a.get("kind") in ACCESS_KINDS][:6]
     out["budget"] = out.get("budget") if out.get("budget") in BUDGETS else "regular"
     out["weekly_tokens"] = BUDGETS[out["budget"]]
-    out["tokens"] = out.pop("_tokens", 0)
+    out["model"] = out.get("model") if out.get("model") in ("haiku", "sonnet", "opus") else "sonnet"
+    for k in ("responsibilities", "plan"):
+        out[k] = [str(x)[:300] for x in out.get(k) or [] if str(x).strip()][:6]
+    for k in ("role", "scope", "first_task"):
+        out[k] = str(out.get(k) or "").strip()[:2000]
     return out

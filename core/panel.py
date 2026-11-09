@@ -266,25 +266,28 @@ def claude_session(emp_id):
         raise orders.OrderError("No such crew member")
     if DEMO:
         raise orders.OrderError("Not in the demo: in your own Orbit this opens their conversation in Claude.")
+    import claudeapp
     try:
-        s = engine.claude_session(emp_id)
+        s = claudeapp.open_chat(emp_id)                   # their chat in the Claude app, or a new one that sets itself up
     except RuntimeError as e:
         raise orders.OrderError(str(e))
     emp = engine.employee(emp_id)
     cmd = "%s chat %s" % (osinfo._sh(os.path.join(engine.KIT, "orbit")), emp_id)
     b = engine.busy(emp["workspace"])
-    link = s.get("chat") or s["link"]                     # their chat in the Claude app, or a new one that sets itself up
-    opened, how = False, "app"
-    if osinfo.KIND == "mac" and claude_app_installed():
-        opened = osinfo.open_url(link)
+    opened, how = s["opened"], "app"
     if not opened:
         how, opened = "terminal", osinfo.open_terminal(cmd, name="chat-" + emp_id)
-    return {"ok": True, "command": cmd, "folder": s["folder"], "opened": bool(opened), "link": link, "how": how,
-            "new_chat": not s.get("chat"), "busy": team.LABELS.get(b.get("job"), b.get("job")) if b else None}
+    return {"ok": True, "command": cmd, "folder": s["folder"], "opened": bool(opened), "link": s["link"], "how": how,
+            "new_chat": s["new_chat"], "busy": team.LABELS.get(b.get("job"), b.get("job")) if b else None}
 
 
-def claude_app_installed() -> bool:
-    return any(os.path.isdir(p) for p in ("/Applications/Claude.app", os.path.expanduser("~/Applications/Claude.app")))
+def desk_session():
+    """Opens Orbit's own chat in the Claude app (the front desk), or a new one that sets itself up."""
+    if DEMO:
+        raise orders.OrderError("Not in the demo: in your own Orbit this opens Orbit's chat in Claude.")
+    import desk
+    r = desk.open_chat()
+    return {"ok": True, **r}
 
 
 def setup_state(emps):
@@ -814,6 +817,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise orders.OrderError(str(ex) or "Claude didn't answer; try again")
             if path == "/api/claude_session":
                 return self._json(200, claude_session(str(f.get("employee") or "")))
+            if path == "/api/desk":
+                return self._json(200, desk_session())
             if path == "/api/seen":                     # the owner is looking at the room: nothing is unread now
                 team.mark_seen(me)
                 return self._json(200, {"ok": True})
