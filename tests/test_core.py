@@ -90,6 +90,27 @@ class Hiring(unittest.TestCase):
         with open(os.path.join(TMP, "team", "DIRECTORY.md")) as fh:
             self.assertIn("sara-ali", fh.read())
 
+    def test_card_objective_normalizes_and_is_written_at_hire(self):
+        import datetime as dt
+        import onboard
+        import record
+        today = dt.date.today()
+        base = {"role": "Researcher", "scope": "x", "responsibilities": ["a", "b"], "first_task": "t", "plan": ["Day 1: x"]}
+        self.assertNotIn("objective", onboard.normalize(base))                              # old cards and roles: the block is just absent
+        self.assertNotIn("objective", onboard.normalize({**base, "objective": {"title": "Goal", "key_results": []}}))
+        card = onboard.normalize({**base, "objective": {"title": " Hold  the cafés ", "due": "soon", "key_results": [
+            {"name": "Cafés kept", "unit": "", "target": 12.0}, {"name": "No target", "target": "x"}, {"name": "Share", "unit": "%", "target": 90, "current": 50}]}})
+        o = card["objective"]
+        self.assertEqual(o["title"], "Hold the cafés")
+        self.assertEqual(o["due"], (today + dt.timedelta(days=30)).isoformat())             # an unusable date means about 30 days out
+        self.assertEqual([(k["name"], k["target"], k["current"]) for k in o["key_results"]], [("Cafés kept", 12, 0), ("Share", 90, 0)])
+        h = hire.hire("Olga", "Researcher", supervisor="Alex", card=card)
+        saved = record.objectives(engine.employee(h)["workspace"])
+        self.assertEqual(len(saved), 1)
+        self.assertEqual((saved[0]["title"], saved[0]["created"], len(saved[0]["key_results"])), ("Hold the cafés", today.isoformat(), 2))
+        h2 = hire.hire("Pia", "Researcher", supervisor="Alex", card=onboard.normalize(base))
+        self.assertEqual(record.objectives(engine.employee(h2)["workspace"]), [])
+
     def test_hire_refuses_bad_input(self):
         with self.assertRaises(hire.HireError):
             hire.hire("Sara", "Role", supervisor="Stranger")

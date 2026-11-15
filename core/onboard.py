@@ -12,6 +12,7 @@ read-only, never moved.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 import subprocess
@@ -52,7 +53,13 @@ CARD_SCHEMA = {
             "properties": {"kind": {"type": "string", "enum": ACCESS_KINDS}, "what": {"type": "string"},
                            "why": {"type": "string"}, "site": {"type": "string"}}}},
         "budget": {"type": "string", "enum": list(BUDGETS)},
-        "model": {"type": "string", "enum": ["haiku", "sonnet", "opus"]}}}
+        "model": {"type": "string", "enum": ["haiku", "sonnet", "opus"]},
+        "objective": {"type": "object", "required": ["title", "due", "key_results"],
+                      "description": "The goal for the first 30 days: a title, a due date (YYYY-MM-DD) and 2 or 3 measurable key results",
+                      "properties": {"title": {"type": "string"}, "due": {"type": "string"},
+                                     "key_results": {"type": "array", "minItems": 2, "maxItems": 3, "items": {
+                                         "type": "object", "required": ["name", "unit", "target"],
+                                         "properties": {"name": {"type": "string"}, "unit": {"type": "string"}, "target": {"type": "number"}}}}}}}}
 
 POLICY = """Orbit's rules, which every card must respect:
 - Crew members run on the owner's own Claude plan. Budgets are tokens a week: light (about 1M), regular (about 3M), heavy (about 8M).
@@ -113,7 +120,10 @@ CARD_GUIDE = ("You are Orbit's hiring interviewer. From the owner's answers, wri
               "ready, review = the weekly strategy review; switch on standup, eod and review for any job with goals), which abilities to tick (ids from the list only), the access to ask the owner for (only "
               "what this job needs; for posting use post_with_approval, for bank or payment portals "
               "finance_read_only, for accounts to read use sign_in), a weekly token budget and a model (haiku for "
-              "simple routine work, sonnet for most jobs, opus only for hard analysis).")
+              "simple routine work, sonnet for most jobs, opus only for hard analysis). Also propose their objective for the "
+              "first 30 days: a short title in the owner's words, a due date about 30 days from today (YYYY-MM-DD), and 2 or 3 "
+              "key results, each measurable (a name, a unit such as % or kg or posts, a target number) and realistic "
+              "for 30 days; they start at 0. Take the numbers from the interview; never invent targets the owner did not hint at.")
 
 
 def questions(role, scope, name=""):
@@ -154,4 +164,33 @@ def normalize(card: dict) -> dict:
         out[k] = [str(x)[:300] for x in out.get(k) or [] if str(x).strip()][:6]
     for k in ("role", "scope", "first_task"):
         out[k] = str(out.get(k) or "").strip()[:2000]
+    obj = _objective(out.get("objective"))
+    if obj:
+        out["objective"] = obj
+    else:
+        out.pop("objective", None)                           # old cards and old roles have none: the block is just absent
     return out
+
+
+def _objective(o) -> dict:
+    """{"title", "due", "key_results": [{"name", "unit", "target", "current"}]}, or {} when the card has no usable one."""
+    if not isinstance(o, dict):
+        return {}
+    title = " ".join(str(o.get("title") or "").split())[:200]
+    krs = []
+    for k in (o.get("key_results") or [])[:3]:
+        try:
+            target = float(k.get("target"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        name = " ".join(str(k.get("name") or "").split())[:120]
+        if name and target > 0:
+            krs.append({"name": name, "unit": str(k.get("unit") or "").strip()[:20],
+                        "target": int(target) if target == int(target) else target, "current": 0})
+    if not title or not krs:
+        return {}
+    try:
+        due = dt.datetime.strptime(str(o.get("due") or ""), "%Y-%m-%d").date().isoformat()
+    except ValueError:
+        due = (dt.date.today() + dt.timedelta(days=30)).isoformat()
+    return {"title": title, "due": due, "key_results": krs}

@@ -875,7 +875,6 @@ a.crew-card:hover { background: var(--bg-2); border-color: var(--line-2); }
 .stepbar li.on { color: var(--ink); font-weight: 700; }
 .stepbar li.on .sn { border-color: var(--ink); }
 .stepprog { height: 3px; margin-bottom: 26px; }
-.step-body { max-width: 860px; }
 .jgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 20px; }
 .jtile { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 10px; text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); cursor: pointer; align-content: start; }
 .jtile:hover { background: var(--bg-2); border-color: var(--line-2); }
@@ -947,3 +946,7 @@ a.crew-card:hover { background: var(--bg-2); border-color: var(--line-2); }
 .step-form section + section { margin-top: 0; }
 .manage { grid-template-columns: minmax(0, 1fr); }
 .manage .seg, .manage .save-bar, .manage .row-form { flex-wrap: wrap; max-width: 100%; }
+.kr-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.kr-list li { display: flex; justify-content: space-between; gap: 12px; }
+.kr-edit { display: grid; grid-template-columns: minmax(0, 1fr) 90px 80px; gap: 8px; }
+.hire-col { max-width: 860px; margin: 0 auto; }

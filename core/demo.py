@@ -215,11 +215,11 @@ def seed_records(ws, today):
     month = today.strftime("%Y-%m")
     write(os.path.join(ws["lina"], "notes", "forecast-november.md"), "# November forecast (draft)\n\nRoast plan: twice a week, 60 kg a batch week one; 5 kg bag test with two cafés. (demo data)")
     objectives = {
-        "sara": [{"id": "o-cafes", "created": (today - dt.timedelta(days=12)).isoformat(), "title": "Hold our café accounts through the price war", "due": (today + dt.timedelta(days=20)).isoformat(),
+        "sara": [{"id": "o-cafes", "created": (today - dt.timedelta(days=40)).isoformat(), "title": "Hold our café accounts through the price war", "due": (today + dt.timedelta(days=20)).isoformat(),
                   "key_results": [{"name": "Cafés kept", "unit": "", "target": 12, "current": 11},
                                   {"name": "Price checks a week", "unit": "", "target": 5, "current": 4},
                                   {"name": "Competitor changes flagged within a day", "unit": "%", "target": 90, "current": 72}]}],
-        "omar": [{"id": "o-watch", "created": (today - dt.timedelta(days=20)).isoformat(), "title": "Never miss a competitor move", "due": (today + dt.timedelta(days=34)).isoformat(),
+        "omar": [{"id": "o-watch", "created": (today - dt.timedelta(days=28)).isoformat(), "title": "Never miss a competitor move", "due": (today + dt.timedelta(days=34)).isoformat(),
                   "key_results": [{"name": "Pages watched", "unit": "", "target": 6, "current": 4},
                                   {"name": "Changes reported the same day", "unit": "%", "target": 95, "current": 90}]}],
         "lina": [{"id": "o-mornings", "created": (today - dt.timedelta(days=26)).isoformat(), "title": "Give Alex his mornings back", "due": (today + dt.timedelta(days=14)).isoformat(),
@@ -260,6 +260,50 @@ def seed_records(ws, today):
             json.dump(objectives[k], fh, indent=1)
         jsonl(os.path.join(ws[k], "state", "results.jsonl"), results[k])
         jsonl(os.path.join(ws[k], "state", "asks.jsonl"), asks[k])
+    seed_history(ws, today)
+
+
+def seed_history(ws, today):
+    """About eight weeks of believable history behind this week: results, asks and runs ramping up gently, with a few failed runs
+    in older weeks. Results, asks and failures are 15+ days old (runs from 8 days back), so Home's week numbers do not move."""
+    rnd = random.Random(11)                                # its own dice: the rest of the seed keeps its numbers
+    TS = "%Y-%m-%dT%H:%M:%S"
+    at = lambda days: (dt.datetime.now() - dt.timedelta(days=days)).replace(hour=rnd.randint(8, 17), minute=rnd.randint(0, 59), second=rnd.randint(0, 59)).strftime(TS)  # noqa: E731
+    pools = {"sara": [("Price check, 1 kg bags", "report"), ("Competitor digest", "report"), ("TikTok comment scan", "report"), ("Subscription evidence note", "report"), ("Price tracker update", "file")],
+             "omar": [("Watcher log", "file"), ("Kettle & Co page change", "report"), ("Bluebird banner change", "other"), ("Harbor Roast pricing change", "report")],
+             "lina": [("Minutes: team call", "report"), ("Forecast draft", "file"), ("Supplier follow-up draft", "file"), ("Café announcement draft", "post")]}
+    per_week = {"sara": [1, 1, 1, 1, 2, 2], "omar": [1, 1, 1, 1, 1, 1], "lina": [0, 0, 1, 1, 1, 1]}        # oldest week first
+    asks_at = {"sara": {0: "blocked", 2: "blocked", 4: "approval"}, "omar": {1: "blocked", 3: "blocked", 5: "decision"}, "lina": {2: "decision", 4: "blocked"}}
+    failed = {("omar", 22), ("sara", 31), ("lina", 44), ("omar", 38), ("sara", 17)}
+    for k in ("sara", "omar", "lina"):
+        res, ask, runs = [], [], []
+        for j, n in enumerate(per_week[k]):                  # j = 0 is the oldest of the six weeks, 15..21+ days back for the newest
+            monday = today - dt.timedelta(days=today.weekday() + 7 * (7 - j))        # week j of the Metrics chart, oldest first
+            wk = lambda: (today - (monday + dt.timedelta(days=rnd.randint(0, 4)))).days  # noqa: E731
+            for i in range(n):
+                title, kind = pools[k][(j + i) % len(pools[k])]
+                res.append({"id": "r-%s%d%d" % (k[0], j, i), "ts": at(wk()), "title": title, "kind": kind, "where": "", "objective": ""})
+            if j in asks_at[k]:
+                d = wk()
+                ask.append({"id": "a-%s%d" % (k[0], j), "ts": at(d), "title": "%s: which way?" % title, "why": "", "kind": asks_at[k][j], "options": [],
+                            "status": "answered", "answer": "Go ahead", "answered_ts": at(d)})
+        for days in range(56, 7, -1):
+            keep = 0.35 + 0.65 * (1 - days / 56.0)            # fewer runs further back: the crew was new
+            for job in ("brief", "chat", "bus"):
+                if rnd.random() > keep or (job == "bus" and rnd.random() < 0.5):
+                    continue
+                bad = (k, days) in failed and job == "chat"
+                runs.append({"ts": at(days), "employee": k, "job": job, "ok": not bad, "secs": rnd.randint(18, 140), "model": "sonnet", "turns": rnd.randint(3, 11),
+                             "cost_usd": round(rnd.uniform(0.02, 0.3), 3), "error": "timed out after 30 min" if bad else None})
+            if (k, days) in failed and not any(r["ts"] and r["job"] == "chat" and not r["ok"] and r["ts"][:10] == (dt.date.today() - dt.timedelta(days=days)).isoformat() for r in runs):
+                runs.append({"ts": at(days), "employee": k, "job": "chat", "ok": False, "secs": 1800, "model": "sonnet", "turns": 0, "cost_usd": 0.0, "error": "timed out after 30 min"})
+        for name, extra in (("results.jsonl", res), ("asks.jsonl", ask), ("runs.jsonl", runs)):
+            path = os.path.join(ws[k], "state", name)
+            rows = []
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as fh:
+                    rows = [json.loads(x) for x in fh if x.strip()]
+            jsonl(path, sorted(rows + extra, key=lambda r: r["ts"]))
 
 
 def seed(home):
@@ -286,7 +330,7 @@ Owner: Alex. (This is the demo's invented business.)
         hire.hire(name, role, scope, supervisor=OWNER, emp_id=k, picked=picked, model=model)
     reg = engine.registry()
     for i, (k, *_) in enumerate(PEOPLE):
-        reg["employees"][k]["hired"] = (dt.date.today() - dt.timedelta(days=24 - 3 * i)).isoformat()
+        reg["employees"][k]["hired"] = (dt.date.today() - dt.timedelta(days=62 - 7 * i)).isoformat()
     engine.save_registry(reg, "demo: hire dates")
     hire.directory(reg)
 
@@ -485,9 +529,9 @@ My view: the 5 kg bag is the cheapest test we have of wholesale demand.
          "answer": "Noted and written down as a skill (monday-competitor-digest): three bullets per competitor, a link and a date on each, under 150 words. From next Monday."},
     ])
     jsonl(os.path.join(home, "team", "orders.jsonl"), [
-        {"id": "%012x" % random.getrandbits(48), "ts": when(24, "10:00"), "by": OWNER, "kind": "hire", "summary": "Hire Sara (Market researcher)", "status": "done", "result": "Hired: handle /sara"},
-        {"id": "%012x" % random.getrandbits(48), "ts": when(21, "10:00"), "by": OWNER, "kind": "hire", "summary": "Hire Omar (Competitor watcher)", "status": "done", "result": "Hired: handle /omar"},
-        {"id": "%012x" % random.getrandbits(48), "ts": when(18, "10:00"), "by": OWNER, "kind": "hire", "summary": "Hire Lina (Personal assistant)", "status": "done", "result": "Hired: handle /lina"},
+        {"id": "%012x" % random.getrandbits(48), "ts": when(62, "10:00"), "by": OWNER, "kind": "hire", "summary": "Hire Sara (Market researcher)", "status": "done", "result": "Hired: handle /sara"},
+        {"id": "%012x" % random.getrandbits(48), "ts": when(55, "10:00"), "by": OWNER, "kind": "hire", "summary": "Hire Omar (Competitor watcher)", "status": "done", "result": "Hired: handle /omar"},
+        {"id": "%012x" % random.getrandbits(48), "ts": when(48, "10:00"), "by": OWNER, "kind": "hire", "summary": "Hire Lina (Personal assistant)", "status": "done", "result": "Hired: handle /lina"},
         {"id": "%012x" % random.getrandbits(48), "ts": when(6, "12:15"), "by": OWNER, "kind": "set_abilities", "summary": "Abilities for Omar", "status": "done", "result": "−Voice notes, −Photos and files"},
         {"id": "%012x" % random.getrandbits(48), "ts": when(0, "09:05"), "by": OWNER, "kind": "message", "summary": "Message to Sara", "status": "done", "result": "Passed to Sara"},
     ])

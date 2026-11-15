@@ -268,7 +268,10 @@ def demo_interview(step, name, role):
             "responsibilities": ["Watch the competitors you named", "Report what changed, with a link", "Keep notes"],
             "first_task": "Check the three main competitors' prices today.", "plan": ["Day 1: prices", "Day 2: social posts"],
             "routines": {"brief": True, "standup": False, "eod": False}, "abilities": ["web", "fetch", "browser", "brief"],
-            "access": [], "budget": "light", "weekly_tokens": 1000000, "model": "haiku", "interview": []}
+            "access": [], "budget": "light", "weekly_tokens": 1000000, "model": "haiku", "interview": [],
+            "objective": {"title": "Know every competitor move within a day", "due": (dt.date.today() + dt.timedelta(days=30)).isoformat(),
+                          "key_results": [{"name": "Competitors watched", "unit": "", "target": 3, "current": 0},
+                                          {"name": "Changes reported the same day", "unit": "%", "target": 90, "current": 0}]}}
 
 
 def claude_session(emp_id):

@@ -508,6 +508,11 @@ function keepCard() {
   const f = $('.idcard, .cardstep'); if (!f || !S.ob || !S.ob.edit) return;
   if (f.elements.role) S.ob.edit.role = f.elements.role.value;
   if (f.elements.scope) S.ob.edit.scope = f.elements.scope.value;
+  const o = S.ob.edit.objective;
+  if (o && f.elements.obj_title) {
+    o.title = f.elements.obj_title.value; o.due = f.elements.obj_due.value || o.due;
+    o.key_results.forEach((k, i) => { k.name = f.elements['kr_name_' + i].value; k.unit = f.elements['kr_unit_' + i].value; k.target = Number(f.elements['kr_target_' + i].value) || k.target; });
+  }
 }
 async function openClaude(emp, btn, quiet) {            // → true when their chat opened (or its command was handed over)
   const label = btn ? btn.innerHTML : '';
@@ -1431,6 +1436,11 @@ function cardStep(sel, ob, name) {
   const routinesEdit = `<div class="chips">${routineList.map(([k, l]) => `<button type="button" class="chip ${ed.routines[k] ? 'on' : ''}" data-act="ob-routine" data-k="${k}" aria-pressed="${!!ed.routines[k]}">${l}</button>`).join('')}</div>`;
   const sites = (ed.browser || []).map((d) => (SITES.find(([, x]) => x === d) || [d])[0]);
   const onoff = (on) => `<span class="onoff-state">${on ? icon('check') : ''}${on ? 'On' : 'Off'}</span>`;
+  const ob_ = ed.objective;
+  const objView = ob_ ? `<p><b>${esc(ob_.title)}</b> <span class="meta">${esc(dueLabel(ob_.due))}</span></p><ul class="kr-list">${ob_.key_results.map((k) => `<li><span>${esc(k.name)}</span><span class="num meta">${fmtKR(k)}</span></li>`).join('')}</ul>` : '';
+  const objEdit = ob_ ? `<div class="cs-edit"><div class="field"><label for="obj-t">Objective</label><input id="obj-t" class="input" name="obj_title" maxlength="200" value="${esc(ob_.title)}"></div>
+    <div class="field"><label for="obj-d">Due</label><input id="obj-d" class="input" type="date" name="obj_due" value="${esc(ob_.due)}"></div>
+    ${ob_.key_results.map((k, i) => `<div class="kr-edit"><input class="input" name="kr_name_${i}" maxlength="120" value="${esc(k.name)}" aria-label="Key result ${i + 1}"><input class="input" name="kr_target_${i}" inputmode="decimal" value="${esc(k.target)}" aria-label="Target"><input class="input" name="kr_unit_${i}" maxlength="20" value="${esc(k.unit)}" placeholder="unit" aria-label="Unit"></div>`).join('')}</div>` : '';
   const long = String(ed.scope || '').length > 150;
   const asks = (c.access || []).map((a) => { const [ic, label] = ACCESS_KIND[a.kind] || ACCESS_KIND.other; return `<li>${icon(ic)}<span><b>${esc(a.what)}</b> <span class="meta">${esc(label)}</span></span></li>`; }).join('');
   const dayOf = (p) => { const m = String(p).match(/^\s*((?:Day|Week)\s*\d+)\s*[:\-–]\s*(.*)$/i); return m ? `<li><b>${esc(m[1])}</b><span>${esc(m[2])}</span></li>` : `<li><b>Then</b><span>${esc(p)}</span></li>`; };
@@ -1441,6 +1451,7 @@ function cardStep(sel, ob, name) {
       : `<p class="cs-scope${ob.more ? '' : ' clamp2'}">${esc(ed.scope)}</p>${long ? `<button type="button" class="linkbtn" data-act="ob-more">${ob.more ? 'Less' : 'More'}</button>` : ''}`)}
     ${(c.responsibilities || []).length ? blk('', 'Responsibilities', `<ul class="ticks">${c.responsibilities.map((r) => `<li>${icon('check')}${esc(r)}</li>`).join('')}</ul>`, false) : ''}
     ${c.first_task ? `<section class="first-task"><span class="meta">First task</span><p>${esc(c.first_task)}</p></section>` : ''}
+    ${ed.objective ? blk('objective', 'Objective', E.objective ? objEdit : objView) : ''}
     ${(c.plan || []).length ? blk('', 'First days', `<ol class="mini-tl">${c.plan.map(dayOf).join('')}</ol>`, false) : ''}
     ${blk('tools', 'What they can do', E.tools ? toolsEdit : `<div class="chips">${chipRow(ids, 'hire') || '<span class="quiet">Nothing switched on.</span>'}</div>`)}
     ${blk('routines', 'Routines', E.routines ? routinesEdit : `<p class="meta">${routinesOn.length ? 'Works on a schedule: ' + esc(routinesOn.join(', ')) : 'No routines.'}</p>`)}
@@ -1461,6 +1472,7 @@ function reviewStep(sel, ob, name) {
   return `<form class="cardstep step-form" data-form="hire" data-from="hire">
     <header class="cs-head"><span class="avatar xl hue-${hue(name || 'x')}" aria-hidden="true">${esc((name || '?').charAt(0).toUpperCase())}</span><div class="cs-who"><h2>${esc(name || 'New crew member')}</h2><p class="muted">${esc(ed.role)}</p></div></header>
     ${ob.card.first_task ? `<section class="first-task"><span class="meta">First task</span><p>${esc(ob.card.first_task)}</p></section>` : ''}
+    ${ed.objective ? `<section class="cs-block"><div class="onoff"><span>Objective</span><b class="one">${esc(ed.objective.title)}</b><span class="meta">${esc(dueLabel(ed.objective.due))}</span></div></section>` : ''}
     <section class="cs-block"><div class="onoff"><span>Works without asking</span><span class="onoff-state">${ed.autonomy ? icon('check') + 'On' : 'Off'}</span></div>
       <div class="onoff"><span>May post for you on</span><b class="one">${sites.length ? esc(sites.join(', ')) : 'Nowhere'}</b></div></section>
     <div class="step-nav"><button type="button" class="btn btn-ghost" data-act="ob-unreview">Back</button><button class="btn btn-primary btn-lg" type="submit" data-hire-label>${icon('plus')}Launch ${esc(name || 'them')}</button></div></form>`;
@@ -1483,7 +1495,7 @@ PAGES.hire = (r) => {
   else if (n === 2) body = questionStep(sel, ob, name);
   else if (n === 3) body = cardStep(sel, ob, name);
   else body = reviewStep(sel, ob, name);
-  return `<header class="page-head"><div><h1>${n === 1 ? 'Hire someone' : esc(name || 'New crew member')}</h1></div></header>${stepBar(n)}<div class="step-body">${body}</div>`;
+  return `<div class="hire-col"><header class="page-head"><div><h1>${n === 1 ? 'Hire someone' : esc(name || 'New crew member')}</h1></div></header>${stepBar(n)}<div class="step-body">${body}</div></div>`;
 };
 
 // ---- settings
@@ -1864,10 +1876,11 @@ document.addEventListener('submit', async (ev) => {
         ob.edit = { role: c.role || h.role, scope: c.scope || h.scope, routines: { ...(c.routines || {}) }, budget: c.budget || 'regular', model: c.model || 'sonnet',
           access: ACCESS.filter(([k, , a]) => k !== 'brief' && a.some((x) => ids.has(x))).map(([k]) => k),
           browser: SITES.filter(([l]) => (c.access || []).some((a) => a.kind === 'post_with_approval' && new RegExp('\\b' + l + '\\b', 'i').test(`${a.site || ''} ${a.what || ''}`))).map(([, d]) => d),
-          approval: 'each', autonomy: true };   // the promise is an employee who gets on with it; owners can pick "checks in"
+          objective: c.objective ? JSON.parse(JSON.stringify(c.objective)) : null, approval: 'each', autonomy: true };   // the promise is an employee who gets on with it; owners can pick "checks in"
       } catch (e) { ob.stage = 'questions'; toast(e.message); }
       render(true).then(() => { const x = $('.idcard, .interview'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     } else if (kind === 'hire') {
+      if (f.dataset.from === 'hire' && S.ob && !S.ob.review) { keepCard(); S.ob.review = true; render(true); return; }   // Enter in a field means Next, never Launch
       const h = S.vals.hire || {}, ob = S.ob || {}, ed = ob.edit || {}, c = ob.card || {};
       const picked = new Set(ed.access || []);
       const routines = Object.entries(ed.routines || {}).filter(([, on]) => on).map(([k]) => k);
@@ -1875,7 +1888,7 @@ document.addEventListener('submit', async (ev) => {
       const body = { kind: 'hire', template: tpl, name: h.name, role: fd.get('role') || ed.role || h.role, scope: fd.get('scope') || ed.scope || h.scope,
         supervisor: S.data.me, model: ed.model || 'sonnet',
         abilities: ALWAYS.concat(...ACCESS.filter(([k]) => picked.has(k) && k !== 'brief').map(([, , ids]) => ids), routines),
-        card: { ...c, weekly_tokens: { light: 1e6, regular: 3e6, heavy: 8e6 }[ed.budget] || 3e6 } };
+        card: { ...c, objective: ed.objective || undefined, weekly_tokens: { light: 1e6, regular: 3e6, heavy: 8e6 }[ed.budget] || 3e6 } };
       const btn = f.querySelector('[data-hire-label]'); if (btn) { btn.disabled = true; btn.textContent = 'Launching…'; }
       const r = await api('/api/order', body);
       const id = (r.message.match(/\/([a-z0-9-]+)$/) || [])[1];

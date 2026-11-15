@@ -110,7 +110,9 @@ def guide() -> str:
                  "responsibilities": ["…", "…"], "first_task": "a real task for today", "plan": ["Day 1: …", "Day 2: …"],
                  "routines": {k: k in ("standup", "eod", "review") for k in onboard.ROUTINES},
                  "abilities": ["web", "fetch"], "access": [{"kind": "sign_in", "what": "…", "why": "…"}],
-                 "budget": "regular", "model": "sonnet", "interview": [{"q": "…", "a": "…"}]},
+                 "budget": "regular", "model": "sonnet",
+                 "objective": {"title": "the 30-day goal, in the owner's words", "due": "YYYY-MM-DD",
+                               "key_results": [{"name": "…", "unit": "%", "target": 90}]}, "interview": [{"q": "…", "a": "…"}]},
         "autonomy": True, "browser": {"sites": [], "approval": "each"}}, indent=1, ensure_ascii=False),
         "", "`job` is the id of the job they started from (optional). `browser.sites` are the sites they may post "
         "on for the owner, from their own browser window, and `approval` is each, batch or none: only what the owner said."]

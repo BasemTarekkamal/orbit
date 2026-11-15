@@ -14,6 +14,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 
 import abilities
 import engine
@@ -53,6 +54,23 @@ def directory(reg=None):
     os.makedirs(os.path.join(engine.HOME, "team"), exist_ok=True)
     with open(os.path.join(engine.HOME, "team", "DIRECTORY.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
+
+
+def write_objective(ws: str, obj) -> None:
+    """The card's objective becomes the new member's state/objectives.json (through record, created today). Hiring is the one
+    place cards are stored, so the panel's hire and the Orbit chat's both land here."""
+    import onboard
+    obj = onboard._objective(obj)
+    if not obj:
+        return
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
+    import record
+    try:
+        record.set_objective(ws, "o-1", obj["title"], obj.get("due") or (dt.date.today() + dt.timedelta(days=30)).isoformat())
+        for k in obj.get("key_results") or []:
+            record.set_kr(ws, "o-1", k["name"], k.get("unit", ""), k["target"], k.get("current") or 0)
+    except (ValueError, KeyError, TypeError):
+        pass                                              # a bad objective never blocks a hire
 
 
 def card_md(card: dict) -> str:
@@ -122,6 +140,7 @@ def hire(name: str, role: str, scope: str = "", supervisor: str = "", emp_id: st
             entry["weekly_tokens"] = int(card["weekly_tokens"])
         with open(os.path.join(ws, "CLAUDE.md"), "a", encoding="utf-8") as fh:
             fh.write(card_md(keep))
+        write_objective(ws, card.get("objective"))
     reg.setdefault("employees", {})[emp_id] = entry
     engine.save_registry(reg, "hire: %s (%s), supervisor %s" % (name, role, sup))
     directory(reg)
