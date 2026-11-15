@@ -813,6 +813,7 @@ class RecordTests(unittest.TestCase):
         o = self.record.objectives(self.ws)
         self.assertEqual(len(o), 1)
         self.assertEqual((o[0]["title"], o[0]["due"]), ("Hold our cafés", "2027-01-15"))
+        self.assertRegex(o[0]["created"], r"^\d{4}-\d\d-\d\d$")                                                       # the start day is kept for "behind" maths
         self.assertEqual([(k["name"], k["current"], k["target"]) for k in o[0]["key_results"]], [("Cafés kept", 11, 12), ("Revenue", 212, 500)])
         self.assertAlmostEqual(self.record.progress(o[0]["key_results"][1]), 0.424)
         self.assertEqual(self.record.progress({"target": 10, "current": 30}), 1.0)                  # capped

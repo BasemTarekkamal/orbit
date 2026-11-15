@@ -458,6 +458,74 @@ def week_numbers(emps, usage):
     return cur, before
 
 
+def week_start(day):
+    """The Monday of the ISO week a date falls in."""
+    return day - dt.timedelta(days=day.weekday())
+
+
+def metrics(today=None, weeks=8):
+    """Per ISO week for the last `weeks` weeks (oldest first), crew-wide and per member: results shipped, asks (by kind),
+    blocked asks, runs, failed runs, API-equivalent cost and tokens. Read from each member's results.jsonl, asks.jsonl
+    and runs.jsonl; the page fetches it once when opened, not on every poll."""
+    today = today or dt.date.today()
+    first = week_start(today) - dt.timedelta(weeks=weeks - 1)
+    starts = [first + dt.timedelta(weeks=i) for i in range(weeks)]
+    keys = ("shipped", "needed_you", "asks_decision", "asks_approval", "blocked", "runs", "failed_runs", "cost_usd", "tokens")
+
+    def empty():
+        return {k: [0] * weeks for k in keys}
+
+    def slot(ts):
+        try:
+            d = dt.datetime.strptime(str(ts)[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return None
+        i = (week_start(d) - first).days // 7
+        return i if 0 <= i < weeks and d <= today else None
+
+    crew, members = empty(), []
+    for k, m in engine.registry().get("employees", {}).items():
+        if m.get("status") == "retired":
+            continue
+        ws, mine = engine.employee(k)["workspace"], empty()
+        for r in record.results(ws, None):
+            i = slot(r.get("ts"))
+            if i is not None:
+                mine["shipped"][i] += 1
+        for a in record.asks(ws):
+            i = slot(a.get("ts"))
+            if i is not None:
+                mine["needed_you"][i] += 1
+                if a.get("kind") == "blocked":
+                    mine["blocked"][i] += 1
+                elif a.get("kind") in ("decision", "approval"):
+                    mine["asks_" + a["kind"]][i] += 1
+        try:
+            with open(os.path.join(ws, "state", "runs.jsonl"), encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        r = json.loads(line)
+                    except ValueError:
+                        continue
+                    i = slot(r.get("ts")) if isinstance(r, dict) else None
+                    if i is None:
+                        continue
+                    mine["runs"][i] += 1
+                    mine["failed_runs"][i] += 0 if r.get("ok") else 1
+                    mine["cost_usd"][i] += float(r.get("cost_usd") or 0)
+                    mine["tokens"][i] += engine.tokens_of(r)
+        except OSError:
+            pass
+        mine["cost_usd"] = [round(x, 3) for x in mine["cost_usd"]]
+        for key in keys:
+            for i in range(weeks):
+                crew[key][i] += mine[key][i]
+        members.append({"id": k, "name": m["name"], **mine})
+    crew["cost_usd"] = [round(x, 3) for x in crew["cost_usd"]]
+    return {"weeks": [d.isoformat() for d in starts], "crew": crew, "members": members, "usage": engine.usage(),
+            "api_equivalent_usd": round(sum(crew["cost_usd"]), 2)}
+
+
 def state():
     reg = engine.registry()
     emps = members()
@@ -830,6 +898,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"granted": [dict(c, id=n) for n, c in mine.items()],
                                     "suggested": connectors.suggest(emp) if emp else connectors.for_job(role, text) if (role or text) else [],
                                     "results": connectors.search(words) if words else []})
+        if path == "/api/metrics":
+            return self._json(200, metrics())
         if path == "/api/settings":
             return self._json(200, settings_view())
         if path == "/api/pairing":

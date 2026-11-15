@@ -215,15 +215,15 @@ def seed_records(ws, today):
     month = today.strftime("%Y-%m")
     write(os.path.join(ws["lina"], "notes", "forecast-november.md"), "# November forecast (draft)\n\nRoast plan: twice a week, 60 kg a batch week one; 5 kg bag test with two cafés. (demo data)")
     objectives = {
-        "sara": [{"id": "o-cafes", "title": "Hold our café accounts through the price war", "due": (today + dt.timedelta(days=20)).isoformat(),
+        "sara": [{"id": "o-cafes", "created": (today - dt.timedelta(days=12)).isoformat(), "title": "Hold our café accounts through the price war", "due": (today + dt.timedelta(days=20)).isoformat(),
                   "key_results": [{"name": "Cafés kept", "unit": "", "target": 12, "current": 11},
                                   {"name": "Price checks a week", "unit": "", "target": 5, "current": 4},
                                   {"name": "Competitor changes flagged within a day", "unit": "%", "target": 90, "current": 72}]}],
-        "omar": [{"id": "o-watch", "title": "Never miss a competitor move", "due": (today + dt.timedelta(days=34)).isoformat(),
+        "omar": [{"id": "o-watch", "created": (today - dt.timedelta(days=20)).isoformat(), "title": "Never miss a competitor move", "due": (today + dt.timedelta(days=34)).isoformat(),
                   "key_results": [{"name": "Pages watched", "unit": "", "target": 6, "current": 4},
                                   {"name": "Changes reported the same day", "unit": "%", "target": 95, "current": 90}]}],
-        "lina": [{"id": "o-mornings", "title": "Give Alex his mornings back", "due": (today + dt.timedelta(days=14)).isoformat(),
-                  "key_results": [{"name": "Reminders sent on time", "unit": "%", "target": 100, "current": 96},
+        "lina": [{"id": "o-mornings", "created": (today - dt.timedelta(days=26)).isoformat(), "title": "Give Alex his mornings back", "due": (today + dt.timedelta(days=14)).isoformat(),
+                  "key_results": [{"name": "Reminders sent on time", "unit": "%", "target": 100, "current": 80},
                                   {"name": "Minutes written within an hour", "unit": "", "target": 8, "current": 5},
                                   {"name": "Admin emails handled for Alex", "unit": "", "target": 40, "current": 18}]}],
     }

@@ -10,7 +10,7 @@
 result     one row for each thing you shipped (kind: short, video, post, report, file or other).
 ask        one question for your owner (kind: decision, approval or blocked). It shows up on their Home screen as a
            card with buttons; their answer is sent back to you as a message. Give --option for each choice.
-objective  create or update an objective (a goal with a due date).
+objective  create or update an objective (a goal with a due date; the day it was created is kept).
 kr         create or update a key result of an objective, found by its name: what it measures, the target, where it is now.
 
 Stored in <your workspace>/state/ (STAFF_EMPLOYEE picks the workspace): results.jsonl, asks.jsonl, objectives.json.
@@ -176,7 +176,7 @@ def set_objective(ws, oid, title, due):
     items = objectives(ws)
     o = next((x for x in items if x["id"] == oid), None)
     if o is None:
-        o = {"id": oid, "title": "", "due": due, "key_results": []}
+        o = {"id": oid, "title": "", "due": due, "created": dt.date.today().isoformat(), "key_results": []}
         items.append(o)
     o.update({"title": " ".join(str(title or "").split())[:200] or o["title"], "due": due})
     _save_objectives(ws, items)

@@ -313,6 +313,37 @@ class Panel(unittest.TestCase):
         self.assertEqual(waits, ["Something else entirely · since 2 Nov"])
         self.assertFalse([n for n in st["needs"] if n["kind"] == "ask" and n["title"].startswith("Approve")])      # answered: not open either
 
+    def test_metrics_weekly_buckets(self):
+        import datetime as dt
+        import record
+        ws = engine.employee("tess")["workspace"]
+        today = dt.date(2026, 11, 18)                                     # a Wednesday: this week starts Monday 16 Nov
+        iso = lambda d, hh="10:00:00": "%sT%s" % (d.isoformat(), hh)      # noqa: E731
+        def put(name, rows):
+            path = os.path.join(ws, "state", name)
+            old = open(path).read() if os.path.exists(path) else None
+            self.addCleanup(lambda: os.remove(path) if old is None else open(path, "w").write(old))
+            with open(path, "w") as fh:
+                fh.write("junk line\n" + "".join(json.dumps(r) + "\n" for r in rows))
+        put("results.jsonl", [{"id": "r-1", "ts": iso(dt.date(2026, 11, 16)), "title": "a"}, {"id": "r-2", "ts": iso(dt.date(2026, 11, 15, ), "23:59:59"), "title": "b"},
+                              {"id": "r-3", "ts": iso(dt.date(2026, 9, 21)), "title": "c"}, {"id": "r-4", "ts": iso(dt.date(2026, 9, 20)), "title": "too old"},
+                              {"id": "r-5", "ts": iso(dt.date(2026, 11, 19)), "title": "future"}])
+        put("asks.jsonl", [{"id": "a-1", "ts": iso(dt.date(2026, 11, 17)), "kind": "blocked"}, {"id": "a-2", "ts": iso(dt.date(2026, 11, 17)), "kind": "decision"},
+                           {"id": "a-3", "ts": iso(dt.date(2026, 11, 10)), "kind": "approval"}])
+        put("runs.jsonl", [{"ts": iso(dt.date(2026, 11, 18)), "ok": True, "cost_usd": 0.5, "tokens": 100}, {"ts": iso(dt.date(2026, 11, 18)), "ok": False, "cost_usd": 0.25}])
+        m = self.panel.metrics(today)
+        self.assertEqual(len(m["weeks"]), 8)
+        self.assertEqual((m["weeks"][0], m["weeks"][-1]), ("2026-09-28", "2026-11-16"))
+        t = [x for x in m["members"] if x["id"] == "tess"][0]
+        self.assertEqual(t["shipped"], [0, 0, 0, 0, 0, 0, 1, 1])         # Sunday the 15th is last week; Sep 21 and later falls off the 8 weeks
+        self.assertEqual((t["needed_you"][-1], t["blocked"][-1], t["asks_decision"][-1], t["asks_approval"][-2]), (2, 1, 1, 1))
+        self.assertEqual((t["runs"][-1], t["failed_runs"][-1], t["cost_usd"][-1]), (2, 1, 0.75))
+        self.assertEqual(m["crew"]["shipped"], t["shipped"])
+        self.assertEqual(m["api_equivalent_usd"], 0.75)
+        code, _, body = self.req("/api/metrics", headers=self.auth())
+        self.assertEqual((code, len(json.loads(body)["weeks"])), (200, 8))
+        self.assertEqual(self.req("/api/metrics")[0], 401)
+
     def test_unread_and_seen_in_the_panel(self):
         team.feed("tess", "Tess", "Alex", "Standup: all good.", "job")
         code, _, body = self.req("/api/state", headers=self.auth())
