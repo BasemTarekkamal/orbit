@@ -797,6 +797,15 @@ def settings_view():
             "keep_awake": reg.get("keep_awake") or "plugged", "compute": (reg.get("compute") or {}).get("repo", ""), "home": engine.HOME, "kit": engine.KIT, "port": port()}
 
 
+def remote_hosts() -> set:
+    """Extra addresses the panel answers on, so the owner can open it from their phone: exact host names they set
+    (staff.json "panel": {"hosts": [...]}, or STAFFROOM_PANEL_HOSTS, comma-separated), reached over HTTPS through a
+    private network such as Tailscale or a tunnel. The secret link and the cookie still guard every page."""
+    hosts = list((engine.registry().get("panel") or {}).get("hosts") or [])
+    hosts += os.environ.get("STAFFROOM_PANEL_HOSTS", "").split(",")
+    return {str(h).strip().lower() for h in hosts if str(h).strip()}
+
+
 # ------------------------------------------------------------------ HTTP
 class Handler(BaseHTTPRequestHandler):
     server_version = "Orbit"
@@ -807,10 +816,13 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- helpers
     def _origin(self):
-        return "http://127.0.0.1:%d" % port(), "http://localhost:%d" % port()
+        return ("http://127.0.0.1:%d" % port(), "http://localhost:%d" % port()) + tuple("https://" + h for h in remote_hosts())
+
+    def _remote(self):
+        return (self.headers.get("Host") or "").lower() in remote_hosts()
 
     def _allowed_host(self):
-        return "http://" + (self.headers.get("Host") or "").lower() in self._origin()
+        return "http://" + (self.headers.get("Host") or "").lower() in self._origin()[:2] or self._remote()
 
     def _authed(self):
         for part in (self.headers.get("Cookie") or "").split(";"):
@@ -846,7 +858,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(303)
         self.send_header("Location", to)
         if cookie:
-            self.send_header("Set-Cookie", "sr%d=%s; HttpOnly; SameSite=Strict; Path=/" % (port(), cookie))
+            self.send_header("Set-Cookie", "sr%d=%s; HttpOnly; SameSite=Strict; Path=/%s" % (port(), cookie, "; Secure" if self._remote() else ""))
         self.send_header("Content-Length", "0")
         self.end_headers()
 

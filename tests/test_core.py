@@ -269,6 +269,24 @@ class Panel(unittest.TestCase):
         self.assertIn("HttpOnly", h["Set-Cookie"])
         self.assertIn("SameSite=Strict", h["Set-Cookie"])
 
+    def test_phone_address_only_when_the_owner_sets_it(self):
+        phone = {"Host": "mac.tail1234.ts.net"}
+        self.assertEqual(self.req("/?t=" + self.tok, headers=phone)[0], 403)          # not set: refused
+        os.environ["STAFFROOM_PANEL_HOSTS"] = "mac.tail1234.ts.net"
+        try:
+            code, h, _ = self.req("/?t=" + self.tok, headers=phone)
+            self.assertEqual(code, 303)
+            self.assertIn("Secure", h["Set-Cookie"])
+            self.assertEqual(self.req("/api/state", headers=self.auth(phone))[0], 200)
+            self.assertEqual(self.req("/api/state", headers={"Host": "evil.example", **self.auth()})[0], 403)
+            ok = self.auth({**phone, "Origin": "https://mac.tail1234.ts.net"})
+            bad = self.auth({**phone, "Origin": "https://evil.example"})
+            self.assertNotEqual(self.req("/api/seen", {}, headers=ok)[0], 403)
+            self.assertEqual(self.req("/api/seen", {}, headers=bad)[0], 403)
+        finally:
+            del os.environ["STAFFROOM_PANEL_HOSTS"]
+        self.assertEqual(self.req("/api/state", headers=self.auth(phone))[0], 403)
+
     def test_app_and_api(self):
         for path in ("/", "/team", "/e/tess/memory", "/settings"):
             code, h, body = self.req(path, headers=self.auth())
