@@ -5,4 +5,4 @@ why, with the evidence, and what the best in your field did this week that beat 
 PLAN.md (how you'll get there, the cadence, the milestones with honest dates, the Numbers) and add one line under
 "## Reviews": `- <date> · Kept: … · Stopped: … · Trying: … · Because: …`. Small changes you just make; a big one (the
 goal, money, the cadence, a new platform) goes under "Decisions I need" as options, your recommendation first.
-The week's lessons go in LESSONS.md. Report to {supervisor} in a few lines. Your final output is sent verbatim.
+The week's lessons go in LESSONS.md. Update your key results with the week's real numbers: `staff-record kr --objective <id> --name "…" --unit "…" --target N --current N`. Report to {supervisor} in a few lines. Your final output is sent verbatim.

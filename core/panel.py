@@ -37,6 +37,7 @@ import engine  # noqa: E402
 import osinfo  # noqa: E402
 import hire  # noqa: E402
 import orders  # noqa: E402
+import record  # noqa: E402
 import skillbook  # noqa: E402
 import team  # noqa: E402
 
@@ -113,6 +114,7 @@ def members():
         import cloud
         import plan
         import rolebook
+        ws = emp["workspace"]
         out.append({"id": k, "name": m["name"], "role": m["role"], "scope": m.get("scope", ""), "supervisor": m.get("supervisor", ""),
                     "status": "paused" if paused else "active", "doing": team.DOING.get(k), "hired": m.get("hired"),
                     "last_run": s["last_run"], "next_job": nj, "next_job_at": nw.strftime("%Y-%m-%dT%H:%M:%S") if nw else None,
@@ -123,7 +125,8 @@ def members():
                     "abilities": sorted(abilities.effective(k)), "abilities_on": len(abilities.effective(k)), "abilities_total": total,
                     "model": m.get("model") or emp.get("model", "sonnet"), "brain": m.get("brain") or emp.get("brain") or "opus",
                     "effort": m.get("effort") or emp.get("effort", "medium"),
-                    "plan": plan.summary(k), "learned": rolebook.stats(k), "shared_as": m.get("shared_as") or "", "cloud": cloud.status(k)})
+                    "plan": plan.summary(k), "learned": rolebook.stats(k), "shared_as": m.get("shared_as") or "", "cloud": cloud.status(k),
+                    "objectives": record.objectives(ws), "asks_open": record.asks(ws, "open"), "results_7d": record.results(ws, 7)[:20]})
     return out
 
 
@@ -152,6 +155,11 @@ def reminders_for(emp_id, ws):
 
 def needs_you(emps, ords, pending, usage):
     out = []
+    for e in emps:                                        # questions the crew asked with `staff-record ask` lead
+        for a in e.get("asks_open") or []:
+            out.append({"kind": "ask", "ask_kind": a.get("kind"), "id": a.get("id"), "title": a.get("title", ""), "why": a.get("why", ""),
+                        "options": a.get("options") or [], "emp": e["id"], "detail": a.get("why", ""), "href": "/e/%s" % e["id"], "ts": a.get("ts", "")})
+    out.sort(key=lambda n: n.get("ts", ""))
     today = time.strftime("%Y-%m-%d")
     day_ago = (dt.datetime.now() - dt.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
     for i, p in pending.items():
@@ -170,7 +178,12 @@ def needs_you(emps, ords, pending, usage):
         if (e.get("plan") or {}).get("status") == "proposed":
             out.append({"kind": "plan", "title": "%s's plan is waiting for your OK" % e["name"],
                         "detail": (e["plan"].get("goal") or "")[:160], "href": "/e/%s/plan" % e["id"], "emp": e["id"]})
+        cut = (dt.datetime.now() - dt.timedelta(days=14)).strftime(record.FMT)
+        recent = [a for a in record.asks(engine.employee(e["id"])["workspace"]) if a.get("status") == "open" or str(a.get("answered_ts", "")) >= cut]
+        asked = [re.sub(r"\W+", " ", a.get("title", "").lower()).strip() for a in recent]
         for line in waiting_lines(e["id"]):
+            if any(t and re.sub(r"\W+", " ", line.lower()).strip().startswith(t) for t in asked):
+                continue                                  # already an ask card: don't list the same question twice
             out.append({"kind": "waiting", "title": line, "detail": "%s is waiting on you" % e["name"], "href": "/e/%s/knowledge?f=note:TASKS.md" % e["id"], "emp": e["id"]})
         ws = engine.employee(e["id"])["workspace"]
         for r in reminders_for(e["id"], ws):
@@ -401,6 +414,50 @@ def pairing_view():
             "paired": bool(p.get("paired_at")), "who": p.get("who"), "expires_in": max(0, int(p.get("expires", 0) - time.time())) if live else 0}
 
 
+def failed_runs(ws, days_from, days_to):
+    """Failed runs with a start between `days_to` and `days_from` days ago (0 = now)."""
+    now = dt.datetime.now()
+    lo, hi = (now - dt.timedelta(days=days_from)).strftime(record.FMT), (now - dt.timedelta(days=days_to)).strftime(record.FMT)
+    n = 0
+    try:
+        with open(os.path.join(ws, "state", "runs.jsonl"), encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(r, dict) and not r.get("ok", True) and lo <= str(r.get("ts", "")) < hi:
+                    n += 1
+    except OSError:
+        pass
+    return n
+
+
+def week_numbers(emps, usage):
+    """The four numbers on Home: this week (last 7 days) and the week before it."""
+    now = dt.datetime.now()
+    cut7, cut14 = ((now - dt.timedelta(days=n)).strftime(record.FMT) for n in (7, 14))
+    cur = {"shipped": 0, "needed_you": 0, "blocked": 0, "failed_runs": 0}
+    before = dict(cur)
+    for e in emps:
+        ws = engine.employee(e["id"])["workspace"]
+        for r in record.results(ws, 14):
+            (cur if r["ts"] >= cut7 else before)["shipped"] += 1
+        for a in record.asks(ws):
+            ts = str(a.get("ts", ""))
+            if ts < cut14:
+                continue
+            side = cur if ts >= cut7 else before
+            side["needed_you"] += 1
+            side["blocked"] += 1 if a.get("kind") == "blocked" else 0
+        cur["failed_runs"] += failed_runs(ws, 7, 0)
+        before["failed_runs"] += failed_runs(ws, 14, 7)
+    used = usage.get("seven_day")
+    cur["plan_used"] = round(used) if used is not None else None
+    before["plan_used"] = None                            # plan use is only known for now, not for last week
+    return cur, before
+
+
 def state():
     reg = engine.registry()
     emps = members()
@@ -409,6 +466,7 @@ def state():
     pending = team.jload(PENDING, {})
     usage = engine.usage()
     me = next(iter(reg.get("owners", {}).values()), {}).get("name", "Owner")
+    week, week_before = week_numbers(emps, usage)
     return {"team_name": reg.get("team_name", "Orbit"), "me": me, "online": daemon_online(),
             "workdays": reg.get("workdays", ["Mon", "Tue", "Wed", "Thu", "Fri"]), "now": time.strftime("%Y-%m-%dT%H:%M:%S"), "demo": DEMO, "device": osinfo.DEVICE, "update": update_view(),
             "usage": usage, "owners": [{"id": i, "name": o["name"], "local": bool(o.get("local")),
@@ -416,7 +474,7 @@ def state():
                                        for i, o in reg.get("owners", {}).items()],
             "employees": emps, "feed": feed, "orders": ords,
             "pending": [{"id": i, **p} for i, p in pending.items()],
-            "needs": needs_you(emps, ords, pending, usage), "checklist": checklist(emps, feed), "unread": len(team.unread(me)),
+            "needs": needs_you(emps, ords, pending, usage), "week": week, "week_before": week_before, "checklist": checklist(emps, feed), "unread": len(team.unread(me)),
             "working": dict(team.DOING), "jobs": team.JOBS, "labels": team.LABELS, "setup": setup_state(emps),
             "live": {k: {**v, "steps": list(v.get("steps", []))} for k, v in list(team.LIVE.items())},
             "calls": calls.status(),
@@ -520,6 +578,28 @@ def skill_action(f, me):
         raise orders.OrderError(str(ex))
     team.order_log(me, "skill", "%s skill %s (%s)" % (do.capitalize(), name, reg[emp]["name"]), "done", res)
     return res
+
+
+def answer_ask(f, me):
+    """The owner's click on an ask card: mark it answered, then wake the crew member with the answer, through the
+    same path as a typed message. In the demo nothing runs, so it is only marked."""
+    emp_id, ask_id = str(f.get("employee") or ""), str(f.get("id") or "")
+    text = " ".join(str(f.get("answer") or "").split())[:400]
+    m = engine.registry().get("employees", {}).get(emp_id)
+    if not m or m.get("status") == "retired":
+        raise orders.OrderError("No such crew member")
+    if not text:
+        raise orders.OrderError("Pick an answer first")
+    a = record.answer(engine.employee(emp_id)["workspace"], ask_id, text)
+    if not a:
+        raise orders.OrderError("That question is already answered")
+    if DEMO:
+        return "Sent to %s" % m["name"]
+    try:
+        orders.execute(me, "message", {"employee_id": emp_id, "text": 'You asked: "%s". %s answered: %s' % (a["title"], me, text)})
+    except orders.OrderError as ex:
+        return "Saved, but %s wasn't woken: %s" % (m["name"], ex)
+    return "Sent to %s" % m["name"]
 
 
 def read_file(emp_id, rel):
@@ -831,6 +911,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, {"ok": True, **rolebook.distill(emp)})
                 except (rolebook.RoleError, RuntimeError, subprocess.TimeoutExpired) as ex:
                     raise orders.OrderError(str(ex) or "Claude didn't answer; try again")
+            if path == "/api/ask/answer":
+                return self._json(200, {"ok": True, "message": answer_ask(f, me)})
             if path == "/api/claude_session":
                 return self._json(200, claude_session(str(f.get("employee") or "")))
             if path == "/api/desk":

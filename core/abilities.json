@@ -15,6 +15,10 @@
       "group": "Basics",
       "locked": true,
       "default": true,
+      "commands": [
+        "staff-record"
+      ],
+      "sandboxed": true,
       "description": "Keeps STATE, TASKS, GOALS and LESSONS in its own folder, so nothing is forgotten between chats.",
       "can": "Remember what you tell it, between chats"
     },

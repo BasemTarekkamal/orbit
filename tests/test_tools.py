@@ -748,6 +748,104 @@ class ShimTests(unittest.TestCase):
 
 
 @unittest.skipUnless(online(), "offline")
+class RecordTests(unittest.TestCase):
+    """staff-record: results, asks and objectives a crew member writes for the control panel."""
+
+    def setUp(self):
+        self.ws = tempfile.mkdtemp(prefix="record-", dir=TMP)
+        import record
+        self.record = record
+
+    def test_result_round_trip(self):
+        r = self.record.add_result(self.ws, "Harbor Roast clip", "short", "https://x.example/v", "o-1")
+        self.assertRegex(r["id"], r"^r-[0-9a-f]{4}$")
+        self.assertRegex(r["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$")
+        self.record.add_result(self.ws, "Second", "nonsense")
+        rows = self.record.results(self.ws)
+        self.assertEqual({x["title"]: x["kind"] for x in rows}, {"Harbor Roast clip": "short", "Second": "other"})   # unknown kinds become "other"
+        with self.assertRaises(ValueError):
+            self.record.add_result(self.ws, "  ")
+
+    def test_results_window_and_order(self):
+        p = os.path.join(self.ws, "state", "results.jsonl")
+        os.makedirs(os.path.dirname(p))
+        old = (time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 9 * 86400)))
+        new1 = (time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 3600)))
+        new2 = (time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 60)))
+        with open(p, "w") as fh:
+            for i, ts in enumerate((new1, old, new2)):
+                fh.write(json.dumps({"id": "r-%d" % i, "ts": ts, "title": "t%d" % i, "kind": "file", "where": "", "objective": ""}) + "\n")
+        self.assertEqual([r["id"] for r in self.record.results(self.ws, 7)], ["r-2", "r-0"])      # newest first, old one cut
+        self.assertEqual(len(self.record.results(self.ws, None)), 3)
+
+    def test_malformed_lines_are_skipped(self):
+        p = os.path.join(self.ws, "state", "asks.jsonl")
+        os.makedirs(os.path.dirname(p))
+        good = {"id": "a-0001", "ts": "2026-11-01T10:00:00", "title": "ok", "why": "", "kind": "decision", "options": [], "status": "open"}
+        with open(p, "w") as fh:
+            fh.write("not json\n" + json.dumps(good) + "\n[1, 2]\n{\"no\": \"id\"}\n\n")
+        self.assertEqual([a["id"] for a in self.record.asks(self.ws)], ["a-0001"])
+        a = self.record.add_ask(self.ws, "Next", "why", "approval", ["Approve", "Look first"])      # rewriting drops the junk, keeps the good
+        self.assertEqual([x["id"] for x in self.record.asks(self.ws)], ["a-0001", a["id"]])
+        with open(p) as fh:
+            self.assertEqual(fh.read().count("\n"), 2)
+
+    def test_ask_and_answer(self):
+        a = self.record.add_ask(self.ws, "Match the price cut?", "Harbor Roast is at $34", "decision", ["Match it", "Hold", " "])
+        self.assertEqual((a["status"], a["options"], a["answer"]), ("open", ["Match it", "Hold"], ""))
+        self.assertEqual(len(self.record.asks(self.ws, "open")), 1)
+        done = self.record.answer(self.ws, a["id"], "Hold")
+        self.assertEqual((done["status"], done["answer"]), ("answered", "Hold"))
+        self.assertTrue(done["answered_ts"])
+        self.assertEqual(self.record.asks(self.ws, "open"), [])
+        self.assertEqual(len(self.record.asks(self.ws, "answered")), 1)
+        self.assertIsNone(self.record.answer(self.ws, a["id"], "Again"))                           # only an open ask can be answered
+        self.assertIsNone(self.record.answer(self.ws, "a-nope", "x"))
+        with self.assertRaises(ValueError):
+            self.record.add_ask(self.ws, "x", "", "chat")
+
+    def test_objective_and_key_result_upsert(self):
+        self.record.set_objective(self.ws, "o-cafes", "Hold the cafés", "2026-12-31")
+        self.record.set_kr(self.ws, "o-cafes", "Cafés kept", "", 12, 10)
+        self.record.set_kr(self.ws, "o-cafes", "Revenue", "$", 500.0, 212.0)
+        self.record.set_kr(self.ws, "o-cafes", "Cafés kept", "", 12, 11)                            # same name: updated, not added
+        self.record.set_objective(self.ws, "o-cafes", "Hold our cafés", "2027-01-15")             # same id: updated, key results kept
+        o = self.record.objectives(self.ws)
+        self.assertEqual(len(o), 1)
+        self.assertEqual((o[0]["title"], o[0]["due"]), ("Hold our cafés", "2027-01-15"))
+        self.assertEqual([(k["name"], k["current"], k["target"]) for k in o[0]["key_results"]], [("Cafés kept", 11, 12), ("Revenue", 212, 500)])
+        self.assertAlmostEqual(self.record.progress(o[0]["key_results"][1]), 0.424)
+        self.assertEqual(self.record.progress({"target": 10, "current": 30}), 1.0)                  # capped
+        with self.assertRaises(ValueError):
+            self.record.set_kr(self.ws, "o-none", "x", "", 1, 1)
+        with self.assertRaises(ValueError):
+            self.record.set_objective(self.ws, "o-x", "t", "soon")
+        self.assertEqual(self.record.objectives(tempfile.mkdtemp(dir=TMP)), [])                     # nothing yet: an empty list
+
+    def test_command_line(self):
+        env = dict(os.environ, STAFFROOM_HOME=HOME)
+        env.pop("STAFF_EMPLOYEE", None)
+
+        def run(*args):
+            return subprocess.run([os.path.join(BIN, "staff-record"), *args], capture_output=True, text=True, env=env, cwd=self.ws, timeout=30)
+        self.assertIn("result", run("--help").stdout)
+        r = run("result", "--title", "A short", "--kind", "short", "--where", "https://x.example")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout.strip(), r"^r-[0-9a-f]{4}$")
+        aid = run("ask", "--title", "Approve?", "--why", "because", "--kind", "approval", "--option", "Approve", "--option", "Look first").stdout.strip()
+        self.assertRegex(aid, r"^a-[0-9a-f]{4}$")
+        self.assertEqual(run("objective", "--id", "o-1", "--title", "Goal", "--due", "2026-12-01").stdout.strip(), "o-1")
+        self.assertEqual(run("kr", "--objective", "o-1", "--name", "Things", "--unit", "kg", "--target", "500", "--current", "212").returncode, 0)
+        out = json.loads(run("list", "asks", "--json").stdout)
+        self.assertEqual((out[0]["id"], out[0]["options"]), (aid, ["Approve", "Look first"]))
+        self.assertIn("Things: 212 / 500 kg", run("list", "objectives").stdout)
+        self.assertEqual(json.loads(run("list", "results", "--json").stdout)[0]["kind"], "short")
+        bad = run("kr", "--objective", "o-missing", "--name", "x", "--target", "1", "--current", "0")
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertIn("create it first", bad.stderr)
+        self.assertNotEqual(run("ask", "--title", "x", "--kind", "chat").returncode, 0)
+
+
 class LiveSmokeTests(unittest.TestCase):
     def run_tool(self, *args, timeout=120):
         env = dict(os.environ, STAFFROOM_HOME=HOME, STAFF_WORKSPACE=WS)

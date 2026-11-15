@@ -100,6 +100,10 @@ const I = {
   share: svg('<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="m8.2 10.8 7.6-3.6M8.2 13.2l7.6 3.6"/>'),
   download: svg('<path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>'),
   claude: svg('<path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/>', 2),
+  lock: svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
+  film: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/>'),
+  doc: svg('<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>'),
+  link: svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
 };
 const icon = (n) => I[n] || '';
 
@@ -133,7 +137,7 @@ function store(get) { try { return get(); } catch (e) { return null; } }
 const MAC = () => (S.data && S.data.device) || 'Mac';
 const S = { data: null, detail: null, detailId: null, detailAt: 0, cat: null, roles: null, settings: null, file: null, fileLoading: '',
   skill: null, skillLoading: '', pair: null, job: null, situation: null, theme: store(() => localStorage.getItem('theme')) || '', lastHtml: '', vals: {},
-  open: new Set(), busy: new Set() };
+  open: new Set(), busy: new Set(), gone: new Set(), needsAll: false, tryIdx: {} };
 
 async function api(path, body) {
   const opt = body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {};
@@ -172,6 +176,9 @@ function route() {
   const p = location.pathname.replace(/\/+$/, '') || '/';
   const q = new URLSearchParams(location.search);
   if (p === '/') return { page: 'today' };
+  if (p === '/room') return { page: 'room' };
+  if (p === '/objectives') return { page: 'objectives' };
+  if (p === '/metrics') return { page: 'metrics' };
   if (p === '/welcome') return { page: 'welcome' };
   if (p === '/connect') return { page: 'connect', ch: q.get('ch') || '' };
   if (p === '/team') return { page: 'team' };
@@ -181,8 +188,8 @@ function route() {
   const m = p.match(/^\/e\/([a-z0-9-]+)(?:\/([a-z]+))?$/);
   if (m) {
     const alias = { memory: 'knowledge', skills: 'knowledge', activity: 'work', abilities: 'manage' };   // older links
-    const tab = alias[m[2]] || m[2] || 'plan';
-    if (!['plan', 'chat', 'knowledge', 'work', 'manage'].includes(tab)) return { page: 'missing' };
+    const tab = alias[m[2]] || m[2] || 'overview';
+    if (!['overview', 'plan', 'chat', 'knowledge', 'work', 'manage'].includes(tab)) return { page: 'missing' };
     let f = q.get('f') || '';
     if (m[2] === 'memory' && f && !f.includes(':')) f = 'note:' + f;
     return { page: 'employee', id: m[1], tab, f, v: m[2] === 'activity' ? 'activity' : q.get('v') || '' };
@@ -204,7 +211,7 @@ async function render(nav) {
   else if (r.page === 'welcome' && !setup.welcome) { history.replaceState(null, '', '/'); r = route(); nav = true; }
   try {
     if (r.page === 'employee' && (S.detailId !== r.id || !S.detail || nav)) await loadDetail(r.id);
-    if ((r.page === 'abilities' || (r.page === 'employee' && r.tab === 'manage')) && !S.cat) S.cat = await api('/api/abilities');
+    if ((r.page === 'abilities' || (r.page === 'employee' && (r.tab === 'manage' || r.tab === 'overview'))) && !S.cat) S.cat = await api('/api/abilities');
     if ((r.page === 'hire' || r.page === 'welcome') && !S.roles) S.roles = await api('/api/roles');
     if (r.page === 'settings' && (nav || !S.settings)) S.settings = await api('/api/settings');
   } catch (e) { toast(e.message, 'err'); }
@@ -215,11 +222,11 @@ async function render(nav) {
   if (inMain && !nav && (active.value || active.tagName === 'SELECT' || active.type === 'checkbox')) { patchLive(); return; }
   const focusId = inMain ? active.id : '';
   const chat = r.page === 'employee' && r.tab === 'chat';
-  if (chat || r.page === 'today') markSeen();
+  if (chat || r.page === 'today' || r.page === 'room') markSeen();
   const cm = chat && $('.chat-main', main);
   const following = !!cm && cm.getBoundingClientRect().bottom <= window.innerHeight + 60;   // you're at the latest message
-  const pretend = S.data && S.data.demo && r.page !== 'today'   // Mission Control has the long note
-    ? '<div class="demo-bar"><b>Demo: a pretend team.</b> Replies are scripted, nothing runs Claude, and nothing you type changes what they say. Your own team: run <code>orbit setup</code>, or paste the line from the README into the Claude app.</div>' : '';
+  const pretend = S.data && S.data.demo && r.page !== 'room'
+    ? '<div class="demo-bar"><b>Demo:</b> a pretend team. Replies are scripted and nothing runs Claude.</div>' : '';
   const html = pretend + (PAGES[r.page] || PAGES.missing)(r);
   if (nav || html !== S.lastHtml) {
     const y = window.scrollY;
@@ -235,7 +242,7 @@ async function render(nav) {
 function titleFor(r) {
   const t = S.data.team_name;
   if (r.page === 'employee') { const e = S.data.employees.find((x) => x.id === r.id); return (e ? e.name : 'Employee') + ' · ' + t; }
-  return ({ today: 'Mission Control', team: 'Crew', hire: 'Add crew', abilities: 'Abilities', settings: 'Settings', welcome: 'Welcome', connect: 'Your phone' }[r.page] || 'Orbit') + ' · ' + t;
+  return ({ today: 'Home', room: 'Team room', objectives: 'Objectives', metrics: 'Metrics', team: 'Crew', hire: 'Add crew', abilities: 'Abilities', settings: 'Settings', welcome: 'Welcome', connect: 'Your phone' }[r.page] || 'Orbit') + ' · ' + t;
 }
 function followChat() {          // the end of the conversation (latest message, live work, the box) at the bottom of the window
   const cm = $('.chat-main', main);
@@ -255,37 +262,22 @@ setInterval(ticks, 1000);
 
 function renderSide(r) {
   const d = S.data;
-  const on = (p) => (r.page === p ? 'on' : '');
-  const emps = d.employees.map((e) => {
-    const live = (d.live || {})[e.id];
-    const st = e.status === 'paused' ? 'paused' : live || e.doing ? 'working' : 'active';
-    return `<a class="emp ${r.page === 'employee' && r.id === e.id ? 'on' : ''}" href="/e/${e.id}"><i class="dot ${st}"></i><span>${esc(e.name)}</span><small>${live || e.doing ? 'working' : e.status === 'paused' ? 'paused' : ''}</small></a>`;
-  }).join('');
-  const u = d.usage || {};
-  const meters = ['five_hour', 'seven_day'].filter((k) => k in u).map((k) => {
-    const pct = Math.max(0, Math.min(100, u[k]));
-    return `<div class="row"><span>${k === 'five_hour' ? '5-hour limit' : 'Weekly limit'}</span><span class="num">${Math.round(pct)}%</span></div><div class="meter ${pct >= 80 ? 'hot' : ''}"><i data-w="${pct}"></i></div>`;
-  }).join('');
-  const today = d.employees.reduce((a, e) => a + (e.tokens_today || 0), 0);
+  const on = (...p) => (p.includes(r.page) ? ' class="on" aria-current="page"' : '');
+  const items = [['/', 'Home', ['today']], ['/team', 'Crew', ['team', 'employee', 'abilities']], ['/objectives', 'Objectives', ['objectives']],
+    ['/metrics', 'Metrics', ['metrics']], ['/hire', 'Hire', ['hire']]];
   side.innerHTML = `
-    <div class="brand"><img src="/icon.svg" alt=""><div><b>${esc(d.team_name)}${d.demo ? ' <span class="badge accent">demo</span>' : ''}</b><span class="meta"><i class="dot ${d.online ? 'active' : 'off'}"></i>${d.online ? 'Running' : 'Service stopped'}</span></div></div>
-    <nav class="nav">
-      <a href="/" class="${on('today')}">${icon('home')}Mission Control${d.unread ? ` <span class="badge accent" title="${d.unread} new from your crew">${d.unread}</span>` : ''}</a>
-      <a href="/team" class="${on('team') || on('abilities')}">${icon('users')}Crew</a>
-      <a href="/settings" class="${on('settings') || on('connect')}">${icon('sliders')}Settings</a>
-    </nav>
-    <a class="btn btn-primary hire" href="/hire">${icon('plus')}Add crew</a>
-    ${d.demo ? '' : `<button type="button" class="btn hire" data-act="open-desk" title="One Claude chat for your whole crew: hire, check and change anyone by talking">${icon('claude')}Orbit in Claude</button>`}
-    <h3>Crew</h3>
-    <nav class="nav emps">${emps || '<span class="faint small pad">None yet</span>'}</nav>
-    <div class="spacer"></div>
-    <div class="use">${meters}<div class="row"><span>Crew today</span><span class="num">${fmtTok(today)} tokens</span></div></div>
-    <div class="theme"><span>Appearance</span><div class="seg" role="group" aria-label="Appearance">
-      <button data-act="theme" data-v="" class="${S.theme === '' ? 'on' : ''}">Auto</button>
-      <button data-act="theme" data-v="light" class="${S.theme === 'light' ? 'on' : ''}">Light</button>
-      <button data-act="theme" data-v="dark" class="${S.theme === 'dark' ? 'on' : ''}">Dark</button></div></div>`;
-  side.querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w + '%'; });
+    <a class="brand" href="/" aria-label="Orbit, home"><img src="/icon.svg" alt=""><span class="brand-name">Orbit</span>${d.demo ? ' <span class="badge accent">demo</span>' : ''}</a>
+    <div class="topnav-wrap"><nav class="topnav" aria-label="Main">${items.map(([h, l, pg]) => `<a href="${h}"${on(...pg)}>${l}</a>`).join('')}</nav></div>
+    ${d.online ? '' : '<span class="badge danger">Service stopped</span>'}
+    <a class="iconbtn${['settings', 'connect'].includes(r.page) ? ' on' : ''}" href="/settings" aria-label="Settings" title="Settings">${icon('manage')}</a>`;
+  navFade();
 }
+function navFade() {            // a fade on the right edge of the scrolling nav, gone once it is scrolled to the end
+  const n = $('.topnav', side), w = $('.topnav-wrap', side);
+  if (n && w) w.classList.toggle('fade', n.scrollLeft + n.clientWidth < n.scrollWidth - 2);
+}
+document.addEventListener('scroll', (ev) => { if (ev.target.classList && ev.target.classList.contains('topnav')) navFade(); }, true);
+window.addEventListener('resize', navFade);
 
 function afterRender(r, nav) {
   syncLaunch(r);
@@ -515,23 +507,26 @@ function keepCard() {
   const f = $('.idcard'); if (!f || !S.ob || !S.ob.edit) return;
   S.ob.edit.role = f.elements.role.value; S.ob.edit.scope = f.elements.scope.value;
 }
-async function openClaude(emp, btn) {
+async function openClaude(emp, btn, quiet) {            // → true when their chat opened (or its command was handed over)
   const label = btn ? btn.innerHTML : '';
   const e = (S.data.employees || []).find((x) => x.id === emp) || { name: emp };
+  let ok = false;
   if (btn) { btn.disabled = true; btn.textContent = 'Opening Claude…'; }
   try {
     const r = await api('/api/claude_session', { employee: emp });
     S.claudeCmd = { ...(S.claudeCmd || {}), [emp]: r.command };
     const busy = r.busy ? ` ${esc(e.name)} is in the middle of ${esc(r.busy)}; the window opens when it's done.` : '';
     if (r.opened && r.how === 'app' && r.new_chat) toast(`Claude is opening a new chat with ${esc(e.name)}. Press Enter once: they set up their routines there, so every report lands in that chat.`);
-    else if (r.opened && r.how === 'app') toast(`Opening your chat with ${esc(e.name)} in Claude.`);
+    else if (r.opened && r.how === 'app') { if (!quiet) toast(`Opening your chat with ${esc(e.name)} in Claude.`); }
     else if (r.opened) toast(`A terminal is opening on ${esc(e.name)}'s conversation.${busy}`);
     else {
       try { await navigator.clipboard.writeText(r.command); } catch (_) { /* no clipboard */ }
       toast(`Run this in a terminal (copied): ${r.command}`);
     }
+    ok = true;
   } catch (e2) { toast(e2.message, 'err'); }
   if (btn) { btn.disabled = false; btn.innerHTML = label; }
+  return ok;
 }
 let seenAt = 0;
 function markSeen() {                 // the owner is looking at what the crew said: nothing is unread now
@@ -634,7 +629,146 @@ function connectedView(ch) {
 }
 
 // ---- today
+// ---------------------------------------------------------------- mission control: shared pieces
+// Crew members write three small records (results, asks, objectives: core/tools/record.py); these screens show them.
+const KIND_ICON = { short: 'film', video: 'film', post: 'send', report: 'doc', file: 'file', other: 'link' };
+const NEED_ICON = { approval: 'check', decision: 'target', blocked: 'lock', owner: 'user', failed: 'alert', paused: 'pause', waiting: 'clock', reminder: 'bell', usage: 'gauge', plan: 'target', asleep: 'alert' };
+const isUrl = (x) => /^https?:\/\//i.test(String(x || ''));
+function empById(id) { return S.data.employees.find((e) => e.id === id); }
+
+// One status per crew member, shown everywhere as a word plus a mark, never colour alone.
+function crewStatus(e) {
+  const d = S.data;
+  if (e.status === 'paused') return { k: 'paused', word: 'Paused' };
+  if (e.failures_today) return { k: 'failing', word: 'Failing' };
+  if ((d.needs || []).some((n) => n.emp === e.id && n.kind !== 'paused' && n.kind !== 'failed')) return { k: 'needs', word: 'Needs you' };
+  if (callOf(e.id) || (d.live || {})[e.id] || e.doing) return { k: 'working', word: 'Working' };
+  return { k: 'idle', word: 'Idle' };
+}
+const STATUS_DOT = { working: 'working', needs: 'warn', failing: 'off', paused: 'paused', idle: '' };
+function statusPill(e) { const st = crewStatus(e); return `<span class="status"><i class="dot ${STATUS_DOT[st.k]}"></i>${st.word}</span>`; }
+
+function resultTile(r, e, timeOnly) {
+  const kind = KIND_ICON[r.kind] ? r.kind : 'other';
+  const w = String(r.where || ''), t = parseTs(r.ts);
+  const when = t ? (timeOnly ? hm(t) : fmtTime(r.ts)) : '';
+  const inner = `<span class="rk" aria-hidden="true">${icon(KIND_ICON[kind])}</span><span class="rtitle"><span class="sr">${esc(kind)}: </span>${esc(r.title)}</span><span class="meta">${esc(e.name)} · ${esc(when)}</span>`;
+  if (isUrl(w)) return `<a class="rtile" href="${esc(w)}" target="_blank" rel="noopener noreferrer">${inner}</a>`;
+  if (w && !w.startsWith('/') && !w.split('/').includes('..')) return `<a class="rtile" href="/e/${esc(e.id)}/work?v=files&f=${encodeURIComponent(w)}">${inner}</a>`;
+  return `<div class="rtile">${inner}</div>`;
+}
+function krProgress(k) { const t = Number(k.target) || 0, c = Number(k.current) || 0; return t > 0 ? Math.max(0, Math.min(1, c / t)) : 0; }
+function objPct(o) { const ks = o.key_results || []; return ks.length ? Math.round(ks.reduce((a, k) => a + krProgress(k), 0) / ks.length * 100) : 0; }
+function fmtKR(k) {
+  const n = (x) => (Number(x) || 0).toLocaleString();
+  return k.unit === '%' ? `${n(k.current)}% / ${n(k.target)}%` : `${n(k.current)} / ${n(k.target)}${k.unit ? ' ' + esc(k.unit) : ''}`;
+}
+function dueLabel(due) { const d = parseTs(due); return d ? 'Due ' + d.toLocaleDateString([], { day: 'numeric', month: 'short' }) : ''; }
+function meterHtml(pct, label) { return `<div class="meter" role="progressbar" aria-label="${esc(label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i data-w="${pct}"></i></div>`; }
+
+// ---------------------------------------------------------------- Home
+// The orbit: you in the middle, the crew on two ellipses. Geometry differs on a phone so the text stays readable.
+function orbitGeo() {
+  return window.matchMedia('(max-width: 640px)').matches
+    ? { w: 340, h: 336, cx: 170, cy: 150, irx: 88, iry: 66, orx: 140, ory: 124, r: 21 }
+    : { w: 520, h: 372, cx: 260, cy: 168, irx: 128, iry: 76, orx: 222, ory: 142, r: 24 };
+}
+function initials(name) { const w = String(name || '?').trim().split(/\s+/); return (w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 1)).toUpperCase(); }
+function orbitSvg(d) {
+  const g = orbitGeo(), emps = d.employees, inner = emps.slice(0, 4), outer = emps.slice(4);
+  const INNER = { 1: [180], 2: [180, 0], 3: [210, 330, 90], 4: [225, 315, 45, 135] };      // degrees, clear of the label under "You"
+  const at = (rx, ry, deg) => [g.cx + rx * Math.cos(deg * Math.PI / 180), g.cy + ry * Math.sin(deg * Math.PI / 180)];
+  const f = (n) => n.toFixed(1);
+  const crew = (e, [x, y]) => {
+    const st = crewStatus(e), nm = e.name.length > 9 ? e.name.slice(0, 8) + '…' : e.name;
+    return `<a class="orb-node" href="/e/${esc(e.id)}" aria-label="${esc(e.name)}: ${st.word}">
+      <circle class="orb-halo" cx="${f(x)}" cy="${f(y)}" r="${g.r + 9}"/><circle class="orb-fill hue-${hue(e.id)}" cx="${f(x)}" cy="${f(y)}" r="${g.r}"/>
+      <circle class="orb-st ${st.k}" cx="${f(x)}" cy="${f(y)}" r="${g.r + 4}"/><text class="orb-init" x="${f(x)}" y="${f(y + 5)}" text-anchor="middle">${esc(initials(e.name))}</text>
+      <text class="orb-name" x="${f(x)}" y="${f(y + g.r + 18)}" text-anchor="middle">${esc(nm)}</text><text class="orb-word ${st.k}" x="${f(x)}" y="${f(y + g.r + 32)}" text-anchor="middle">${st.word}</text></a>`;
+  };
+  const slots = outer.length + 1, ang = (i) => 20 + 360 * i / slots;
+  const [hx, hy] = at(g.orx, g.ory, ang(outer.length));
+  const hire = `<a class="orb-node orb-hire" href="/hire" aria-label="Hire someone"><circle class="orb-halo" cx="${f(hx)}" cy="${f(hy)}" r="${g.r + 9}"/>
+    <circle class="orb-slot" cx="${f(hx)}" cy="${f(hy)}" r="${g.r}"/><path class="orb-plus" d="M${f(hx - 7)} ${f(hy)}h14M${f(hx)} ${f(hy - 7)}v14"/>
+    <text class="orb-name" x="${f(hx)}" y="${f(hy + g.r + 18)}" text-anchor="middle">Hire</text></a>`;
+  const pts = [...inner.map((e, i) => at(g.irx, g.iry, INNER[inner.length][i])), ...outer.map((e, i) => at(g.orx, g.ory, ang(i))), [hx, hy]];
+  const x0 = Math.min(g.cx - g.orx, ...pts.map((p) => p[0] - 38)) - 4, x1 = Math.max(g.cx + g.orx, ...pts.map((p) => p[0] + 38)) + 4;
+  const y0 = Math.min(g.cy - g.ory, ...pts.map((p) => p[1] - g.r - 6)) - 4, y1 = Math.max(g.cy + g.ory, ...pts.map((p) => p[1] + g.r + 38)) + 4;
+  return `<svg class="orbit" viewBox="${f(x0)} ${f(y0)} ${f(x1 - x0)} ${f(y1 - y0)}" role="group" aria-label="Your crew in orbit around you">
+    <ellipse class="orb-ring" cx="${g.cx}" cy="${g.cy}" rx="${g.irx}" ry="${g.iry}"/><ellipse class="orb-ring dashed" cx="${g.cx}" cy="${g.cy}" rx="${g.orx}" ry="${g.ory}"/>
+    <circle class="orb-you" cx="${g.cx}" cy="${g.cy}" r="30"/><text class="orb-init" x="${g.cx}" y="${g.cy + 5}" text-anchor="middle">You</text>
+    ${inner.map((e, i) => crew(e, at(g.irx, g.iry, INNER[inner.length][i]))).join('')}
+    ${outer.map((e, i) => crew(e, at(g.orx, g.ory, ang(i)))).join('')}${hire}</svg>`;
+}
+
+function needCard(n) {
+  const e = n.emp ? empById(n.emp) : null, name = e ? e.name : '';
+  const ic = icon(NEED_ICON[n.kind === 'ask' ? n.ask_kind : n.kind] || 'alert');
+  if (n.kind !== 'ask') {
+    return `<li class="ncard"><span class="nk">${ic}</span><div class="nmain"><div class="ntitle" title="${esc(n.title)}">${esc(n.title)}</div><div class="meta one">${esc(n.detail || name)}</div></div>
+      <div class="nbtns"><a class="btn btn-sm" href="${esc(n.href || '/')}">Open</a></div></li>`;
+  }
+  const ans = (o, i) => `<button type="button" class="btn btn-sm${i === 0 ? ' btn-primary' : ''}" data-act="ask-answer" data-emp="${esc(n.emp)}" data-id="${esc(n.id)}" data-answer="${esc(o)}">${esc(o)}</button>`;
+  const chat = `<button type="button" class="btn btn-sm" data-act="open-claude" data-emp="${esc(n.emp)}">Open chat</button>`;
+  const opts = (n.options || []).length ? n.options : n.ask_kind === 'approval' ? ['Approve', 'Not now'] : [];
+  const btns = n.ask_kind === 'blocked' ? chat + ans('Done', 1) : opts.length ? opts.map(ans).join('') : chat;
+  return `<li class="ncard"><span class="nk">${ic}</span><div class="nmain"><div class="ntitle" title="${esc(n.title)}">${esc(n.title)}</div><div class="meta one">${esc(name)} · ${esc(n.ask_kind)}</div></div><div class="nbtns">${btns}</div></li>`;
+}
+function needsHtml(d) {
+  const all = (d.needs || []).filter((n) => !(n.kind === 'ask' && S.gone.has(n.id)));
+  const shown = S.needsAll ? all : all.slice(0, 3);
+  return `<div class="sec-head"><h2>Needs you</h2><span class="meta num">${all.length}</span></div>` + (all.length
+    ? `<ul class="ncards">${shown.map(needCard).join('')}</ul>${all.length > 3 ? `<button type="button" class="btn btn-ghost btn-sm seeall" data-act="needs-all" aria-expanded="${S.needsAll}">${S.needsAll ? 'Show fewer' : `See all (${all.length})`}</button>` : ''}`
+    : `<div class="nothing">${icon('check')}<span>Nothing needs you right now.</span></div>`);
+}
+
+function weekStats(d) {
+  const w = d.week || {}, b = d.week_before || null;
+  return [['shipped', 'Shipped'], ['needed_you', 'Needed you'], ['blocked', 'Blocked'], ['plan_used', 'Plan used']].map(([k, label]) => {
+    const v = w[k];
+    let delta = k === 'plan_used' ? 'of the weekly limit' : '';
+    if (k !== 'plan_used' && b && b[k] != null && v != null) {
+      const diff = v - b[k];
+      delta = diff > 0 ? `<span class="sr">Up </span><span aria-hidden="true">▲</span> ${diff} vs last week` : diff < 0 ? `<span class="sr">Down </span><span aria-hidden="true">▼</span> ${-diff} vs last week` : 'Same as last week';
+    }
+    return `<div class="stat"><div class="n num">${v == null ? '—' : k === 'plan_used' ? v + '%' : v}</div><div class="l">${label}</div><div class="meta d">${delta}</div></div>`;
+  }).join('');
+}
+function todayResults(d) {
+  const now = new Date(), out = [];
+  for (const e of d.employees) for (const r of e.results_7d || []) { const t = parseTs(r.ts); if (t && sameDay(t, now)) out.push({ r, e, t }); }
+  return out.sort((a, b) => b.t - a.t);
+}
 PAGES.today = () => {
+  const d = S.data, today = todayResults(d);
+  const calls = Object.keys(d.calls || {}).map((id) => callCard(id, true)).join('');
+  const strip = today.length ? `<div class="strip" tabindex="0" role="region" aria-label="Results shipped today">${today.map(({ r, e }) => resultTile(r, e, true)).join('')}</div>`
+    : `<p class="quiet">Nothing shipped yet today.</p>`;
+  return `<h1 class="sr">Home</h1>${updateHtml(d)}${setupHtml(d)}${calls ? `<section>${calls}</section>` : ''}
+    <div class="home-top"><div class="orbit-sec"><div class="sec-head"><h2>Crew</h2></div>${orbitSvg(d)}</div><div class="needs-sec">${needsHtml(d)}</div></div>
+    <section><div class="sec-head"><h2>This week</h2></div><div class="week">${weekStats(d)}</div></section>
+    <section><div class="sec-head"><h2>Today</h2></div>${strip}</section>`;
+};
+
+PAGES.objectives = () => `<header class="page-head"><div><h1>Objectives</h1></div></header>
+  <div class="empty"><b>Coming in the next step.</b><p>Every objective and key result across your crew, with progress and due dates.</p></div>`;
+PAGES.metrics = () => `<header class="page-head"><div><h1>Metrics</h1></div></header>
+  <div class="empty"><b>Coming in the next step.</b><p>Results shipped, times you were needed, blocked messages, failed runs and plan use, week by week.</p></div>`;
+
+function setupHtml(d) {            // what's left to set up: the first-run flow, shown on Home until it's done
+  const todo = d.checklist.filter((c) => !c.done && !c.optional);
+  return todo.length ? `<div class="setup"><h2>Finish setting up</h2><ol>${d.checklist.filter((c) => !c.done).map((c) => `
+    <li>${icon('circle')}<div><span>${esc(c.title)}${c.optional ? ' <span class="meta">optional</span>' : ''}</span><div class="how">${esc(c.how)}</div></div>${c.href ? `<a class="btn btn-sm ${c.optional ? '' : 'btn-primary'}" href="${esc(c.href)}">${esc(c.cta)}</a>` : '<span></span>'}</li>`).join('')}</ol></div>` : '';
+}
+function updateHtml(d) {           // "a new Orbit is available"
+  const up = d.update || {};
+  return up.newer && !up.dismissed ? `<section class="update"><div><b>Orbit ${esc(up.latest)} is available</b> <span class="meta">you have ${esc(up.current)}</span>
+    ${up.notes ? `<div class="md small update-notes">${md(up.notes.split('\n').slice(0, 12).join('\n'))}</div>` : ''}
+    ${up.can_update ? '' : `<p class="meta">${esc(up.why_not)}</p>`}</div>
+    <div class="actions">${up.can_update ? `<button class="btn btn-primary btn-sm" data-act="update-now">Update now</button>` : ''}<button class="btn btn-ghost btn-sm" data-act="update-later">Later</button>${up.url ? `<a class="link small" href="${esc(up.url)}" target="_blank" rel="noopener">Release notes</a>` : ''}</div></section>` : '';
+}
+// ---- the team room (the old Today page, kept reachable at /room)
+PAGES.room = () => {
   const d = S.data, emps = d.employees, h = new Date().getHours();
   const greet = h < 5 ? 'Good evening' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   const live = Object.keys(d.live || {}).map((id) => emps.find((e) => e.id === id)).filter(Boolean);
@@ -644,9 +778,7 @@ PAGES.today = () => {
   else sub += ` · ${plural(emps.length, 'crew member')} · ${Object.keys(d.calls || {}).length ? 'on a call · ' : ''}${live.length ? live.length + ' working' : 'all idle'}`;
   if (!d.online) sub += ' · <span class="badge danger">service stopped</span>';
   const demo = d.demo ? `<div class="demo-bar"><b>A pretend team, to look around.</b> The business, the people and their findings are invented (links end in .example) and the replies are canned: no Claude run, no bot. Chat with someone anyway, teach a skill, change abilities. Your own team: run <code>orbit setup</code>, or paste the one line from the README into the Claude app.</div>` : '';
-  const todo = d.checklist.filter((c) => !c.done && !c.optional);
-  const setup = todo.length ? `<div class="setup"><h2>Finish setting up</h2><ol>${d.checklist.filter((c) => !c.done).map((c) => `
-    <li>${icon('circle')}<div><span>${esc(c.title)}${c.optional ? ' <span class="meta">optional</span>' : ''}</span><div class="how">${esc(c.how)}</div></div>${c.href ? `<a class="btn btn-sm ${c.optional ? '' : 'btn-primary'}" href="${esc(c.href)}">${esc(c.cta)}</a>` : '<span></span>'}</li>`).join('')}</ol></div>` : '';
+  const setup = setupHtml(d);
   const nowSec = live.length ? `<section><div class="sec-head"><h2>Working now</h2></div><div class="list now-list">${live.map((e) => {
     const L = d.live[e.id];
     return `<a class="row" href="/e/${e.id}">${avatar(e.id, e.name)}<div><div class="title">${esc(e.name)} <span class="meta">${esc(L.doing || '')}</span></div><div class="now-step"><i class="dot working"></i>${esc(lastStep(e.id))}</div></div><span class="meta num" data-since="${esc(L.started)}"></span></a>`;
@@ -674,11 +806,7 @@ PAGES.today = () => {
     ${['five_hour', 'seven_day'].filter((k) => k in u).map((k) => `<div class="row2"><span>${k === 'five_hour' ? '5-hour limit' : 'Weekly limit'}</span><b class="num">${Math.round(u[k])}% used</b></div>`).join('')}
     <p class="meta">Your crew runs on your Claude plan: nothing extra is billed. The limits are your plan's (shared with your own Claude use); each crew member also has a weekly budget.</p></div>`;
   const calls = Object.keys(d.calls || {}).map((id) => callCard(id, true)).join('');
-  const up = d.update || {};
-  const upd = up.newer && !up.dismissed ? `<section class="update"><div><b>Orbit ${esc(up.latest)} is available</b> <span class="meta">you have ${esc(up.current)}</span>
-    ${up.notes ? `<div class="md small update-notes">${md(up.notes.split('\n').slice(0, 12).join('\n'))}</div>` : ''}
-    ${up.can_update ? '' : `<p class="meta">${esc(up.why_not)}</p>`}</div>
-    <div class="actions">${up.can_update ? `<button class="btn btn-primary btn-sm" data-act="update-now">Update now</button>` : ''}<button class="btn btn-ghost btn-sm" data-act="update-later">Later</button>${up.url ? `<a class="link small" href="${esc(up.url)}" target="_blank" rel="noopener">Release notes</a>` : ''}</div></section>` : '';
+  const upd = updateHtml(d);
   return `${demo}${upd}<header class="greet"><h1>${greet}, ${esc(d.me)}.</h1><p class="sub">${sub}</p></header>${setup}
     <div class="cols"><div>${calls ? `<section>${calls}</section>` : ''}${nowSec}
       <section><div class="sec-head"><h2>Needs you</h2>${d.needs.length ? `<span class="meta">${d.needs.length}</span>` : ''}</div>${needs}</section>
@@ -762,38 +890,139 @@ function healthHtml(e) {
   const meter = cap ? `<div class="meter thin ${pct >= 90 ? 'hot' : ''}" title="${fmtTok(used)} of ${fmtTok(cap)} tokens this week"><i data-w="${pct}"></i></div>` : '';
   return `${runs}${fails}<div>${fmtTok(used)}${cap ? ' of ' + fmtTok(cap) : ''} tokens</div>${meter}`;
 }
+// ---------------------------------------------------------------- Crew
 PAGES.team = () => {
   const d = S.data, emps = d.employees;
-  const working = emps.filter((e) => (d.live || {})[e.id] || e.doing).length;
-  const rows = emps.map((e) => `<a class="row team-row" href="/e/${e.id}">
-    <div class="who">${avatar(e.id, e.name)}<div><div class="title">${esc(e.name)}</div><div class="meta">${esc(e.role)} · reports to ${esc(e.supervisor)}</div></div></div>
-    ${statusHtml(e)}<div class="c-next small muted">${esc(empNow(e))}</div>
-    <div class="c-today small muted num">${healthHtml(e)}</div>
-    <div class="c-model small muted">${esc(e.model)}</div>${icon('chev').replace('<svg', '<svg class="chev"')}</a>`).join('');
+  const working = emps.filter((e) => crewStatus(e).k === 'working').length;
+  const card = (e) => {
+    const o = (e.objectives || [])[0], asks = (e.asks_open || []).length;
+    return `<a class="crew-card" href="/e/${esc(e.id)}">
+      <div class="cc-head">${avatar(e.id, e.name)}<div class="cc-who"><div class="title">${esc(e.name)}</div><div class="meta one">${esc(e.role)}</div></div>${statusPill(e)}</div>
+      ${o ? `<div class="cc-obj"><div class="cc-otitle">${esc(o.title)}</div><div class="cc-bar">${meterHtml(objPct(o), o.title)}<span class="num meta">${objPct(o)}%</span></div></div>` : `<div class="cc-obj meta">No objective yet</div>`}
+      ${asks ? `<div class="cc-asks"><span class="badge warn">${plural(asks, 'ask')}</span></div>` : ''}</a>`;
+  };
   const ts = d.team_skills || [];
   const skills = emps.length ? `<section class="mt-lg"><div class="sec-head"><h2>Team skills</h2><span class="meta">${ts.length ? `${ts.length} shared · every employee uses them` : 'shared by employees, used by all'}</span></div>
     ${ts.length ? `<div class="list">${ts.map((s) => `<a class="row row-2" href="/e/${esc(s.shared_from || emps[0].id)}/knowledge?f=team:${esc(s.name)}"><div><div class="title">${esc(s.name)}</div><div class="meta">${esc(s.description)}</div></div><span class="meta">shared by ${esc(nameOf(s.shared_from || ''))}</span></a>`).join('')}</div>`
-      : `<p class="quiet">None yet. When an employee learns something every colleague should know, they share it here (or you do, from their Knowledge tab).</p>`}</section>` : '';
+      : `<p class="quiet">None yet.</p>`}</section>` : '';
   return `<header class="page-head"><div><h1>Crew</h1><p class="sub">${emps.length ? `${plural(emps.length, 'crew member')}${working ? ` · ${working} working` : ''}` : 'Nobody works here yet.'}</p></div>
-    <div class="actions">${emps.length ? `<a class="btn" href="/abilities">${icon('grid')}Compare abilities</a>` : ''}<a class="btn btn-primary" href="/hire">${icon('plus')}Add crew</a></div></header>
-    ${emps.length ? `<div class="list">${rows}</div>` : `<div class="empty"><b>Your first crew member is one click away.</b><p><a class="link" href="/hire">Pick what they should do</a>: they come with the whole toolbelt, a memory, and a morning brief.</p></div>`}${skills}`;
+    <div class="actions">${emps.length ? `<a class="btn btn-ghost" href="/abilities">${icon('grid')}Compare abilities</a>` : ''}</div></header>
+    <div class="crew-grid">${emps.map(card).join('')}<a class="crew-card crew-add" href="/hire">${icon('plus')}Hire someone</a></div>${skills}`;
 };
 
-// ---- employee
+// ---------------------------------------------------------------- Crew member
+const ABILITY_SKIP = ['memory', 'safety', 'telegram', 'team_room'];            // plumbing: not something to ask for
+const ROUTINES = ['brief', 'standup', 'initiative', 'eod', 'review', 'scout', 'evals'];
+const ABILITY_ICON = { voice: 'mic', meetings: 'mic', files: 'file', documents: 'doc', reminders: 'bell', web: 'eye', fetch: 'link', browser: 'grid', apify: 'users', watchers: 'bell',
+  own_browser: 'grid', full_autonomy: 'claude', act_in_browser: 'send', content: 'film', marketing: 'gauge', compute: 'gauge', build_tools: 'manage', learn: 'target' };
+const TRY = {                                                                  // two plain asks per ability, for any business
+  web: ['Find what our three biggest competitors changed on their sites this week', 'Find five recent articles about our industry and tell me which matter'],
+  fetch: ['Read our closest competitor’s pricing page and list what each plan costs', 'Check our own site for broken links and tell me which to fix'],
+  browser: ['Walk through a competitor’s checkout and tell me every step', 'Screenshot our pricing page and tell me what looks unclear'],
+  apify: ['Pull a competitor’s last 20 posts and tell me which did best', 'Find the best-rated places near us on Maps and what customers complain about'],
+  watchers: ['Watch our competitors’ pricing pages and tell me the day one changes', 'Tell me when a supplier’s terms page changes'],
+  documents: ['Read the contract I send you and list the dates and the amounts', 'Turn a scanned receipt into a row I can paste in a spreadsheet'],
+  voice: ['I will send a voice note: turn it into a to-do list', 'Transcribe my next voice note and answer what it asks'],
+  files: ['Read the PDF I send you and give me the five lines that matter', 'Look at the photo I send you and tell me what is wrong with it'],
+  reminders: ['Remind me every Monday at 9 to review last week’s numbers', 'On Friday, remind me to chase anyone who has not answered'],
+  meetings: ['Take minutes of my next call and list who owes what by when', 'Turn my last recording into decisions and next steps'],
+  own_browser: ['Open our admin dashboard in your own window and tell me what looks off', 'Check our listing on a review site and note any new reviews'],
+  full_autonomy: ['Do this whole task start to finish and only ask me for decisions', 'Find the tools you need, install them and finish the job'],
+  act_in_browser: ['Draft this week’s post, show me, and publish it once I approve', 'Fill in the supplier’s order form and show me before you send it'],
+  content: ['Plan next week’s posts for our channels, one idea a day', 'Write three short video scripts about our best seller'],
+  marketing: ['Suggest one small ad test for next week and what it would cost', 'Read last month’s ad numbers and tell me what to stop'],
+  compute: ['Run the heavy analysis on my GitHub and tell me when it is done', 'Crunch last year’s export on my GitHub and summarise it'],
+  build_tools: ['Build a small tool that checks competitor prices every day', 'Write a script that turns my weekly export into a clean summary'],
+  learn: ['From now on, end every report with the one thing I should do next', 'Learn how I like my weekly summary and use it every time'],
+};
+const TRY_ANY = ['Tell me what you worked on this week and what you need from me', 'Propose three things you could do for us next week'];
+const CHIP_ORDER = ['content', 'act_in_browser', 'marketing', 'web', 'fetch', 'documents', 'watchers', 'browser', 'meetings', 'reminders', 'voice', 'files', 'apify', 'own_browser', 'build_tools', 'learn', 'compute', 'full_autonomy'];
+const CHIP_LABEL = { content: 'Content and channels', act_in_browser: 'Posts for you', marketing: 'Paid ads', web: 'Web research', fetch: 'Reads any page', documents: 'Reads documents', watchers: 'Watches pages',
+  browser: 'Reads hard pages', meetings: 'Calls and minutes', reminders: 'Reminders', voice: 'Voice notes', files: 'Photos and files', apify: 'Social and maps data', own_browser: 'Own browser window',
+  build_tools: 'Builds its own tools', learn: 'Learns skills', compute: 'Heavy jobs', full_autonomy: 'Works on its own' };
+function visibleAbilities(e) { return (e.abilities || []).filter((id) => !ABILITY_SKIP.includes(id) && !ROUTINES.includes(id)); }
+function tryList(e) {
+  const out = [];
+  for (const id of visibleAbilities(e)) for (const t of TRY[id] || []) if (!out.includes(t)) out.push(t);
+  return out.length ? out : TRY_ANY;
+}
+async function askInClaude(emp, text, btn) {                // an open chat can't be pre-filled: copy the sentence, open the chat
+  const e = empById(emp) || { name: 'them' };
+  let copied = true;
+  try { await navigator.clipboard.writeText(text); } catch (_) { copied = false; }
+  if (await openClaude(emp, btn, true)) toast(copied ? `Copied. Paste it in ${e.name}’s chat.` : `Open ${e.name}’s chat and type: ${text}`);
+}
+function weekTimeline(e, dt) {
+  const key = (x) => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+  const runs = dt && dt.runs ? dt.runs : [], res = e.results_7d || [];
+  const cols = [];
+  for (let i = 6; i >= 0; i--) {
+    const x = new Date(); x.setDate(x.getDate() - i);
+    const k = key(x);
+    const rs = runs.filter((r) => String(r.ts || '').slice(0, 10) === k).reverse();
+    const dots = rs.slice(0, 12).map((r) => { const t = parseTs(r.ts), at = t ? hm(t) : '';
+      return r.ok ? `<i class="rd" role="img" aria-label="Run at ${esc(at)}"></i>` : `<i class="rd fail" role="img" aria-label="Failed run at ${esc(at)}"></i>`; }).join('');
+    const n = res.filter((r) => String(r.ts || '').slice(0, 10) === k).length;
+    cols.push(`<li class="wd${i === 0 ? ' today' : ''}"><span class="wd-day">${i === 0 ? 'Today' : x.toLocaleDateString([], { weekday: 'short' })}</span>
+      <span class="wd-dots">${dots}${rs.length > 12 ? `<span class="meta">+${rs.length - 12}</span>` : ''}</span><span class="wd-n num${n ? '' : ' none'}" aria-label="${plural(n, 'result')} shipped">${n}</span></li>`);
+  }
+  return `<ol class="week-tl" aria-label="The last seven days">${cols.join('')}</ol><p class="meta">Dots are runs, diamonds are failed runs. Numbers are results shipped.</p>`;
+}
+function tabOverview(e, dt, r) {
+  const st = crewStatus(e), paused = e.status === 'paused', live = (S.data.live || {})[e.id];
+  const status = `<span class="status"><i class="dot ${STATUS_DOT[st.k]}"></i><span class="one">${st.word}${st.k === 'working' && live ? ' · ' + esc(lastStep(e.id)) : ''}</span></span>`;
+  const head = `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span aria-hidden="true">·</span>${status}</div></div>
+    <div class="actions"><button type="button" class="btn btn-primary" data-act="open-claude" data-emp="${e.id}">${icon('claude')}Open chat</button>
+    <button type="button" class="btn" data-act="order" data-kind="${paused ? 'resume' : 'pause'}" data-emp="${e.id}">${icon(paused ? 'play' : 'pause')}${paused ? 'Resume' : 'Pause'}</button></div></header>${callCard(e.id)}`;
+  const asks = (e.asks_open || []).filter((a) => !S.gone.has(a.id));
+  const askCards = asks.length ? `<ul class="ncards on-member" aria-label="${esc(e.name)} needs you">${asks.map((a) => needCard({ kind: 'ask', ask_kind: a.kind, id: a.id, title: a.title, options: a.options || [], emp: e.id })).join('')}</ul>` : '';
+  const objs = e.objectives || [];
+  const objective = objs.length ? objs.map((o) => `<div class="obj"><div class="obj-head"><span class="obj-title">${esc(o.title)}</span><span class="meta">${esc(dueLabel(o.due))}</span></div>
+      ${(o.key_results || []).length ? (o.key_results || []).map((k) => `<div class="kr"><span class="kn">${esc(k.name)}</span>${meterHtml(Math.round(krProgress(k) * 100), k.name)}<span class="kv num">${fmtKR(k)}</span></div>`).join('')
+        : '<p class="quiet">No key results yet.</p>'}</div>`).join('')
+    : `<div class="none-yet"><p>No objective yet.</p><button type="button" class="btn" data-act="try-ask" data-emp="${e.id}" data-text="Propose your objective for this month with three key results, using staff-record.">Ask ${esc(e.name)} to propose one</button></div>`;
+  const byId = {}; for (const a of (S.cat ? S.cat.abilities : [])) byId[a.id] = a;
+  const vis = visibleAbilities(e).sort((a, b) => (CHIP_ORDER.indexOf(a) + 1 || 99) - (CHIP_ORDER.indexOf(b) + 1 || 99));
+  const chipOf = (id) => `<span class="chip static">${icon(ABILITY_ICON[id] || 'check')}${esc(CHIP_LABEL[id] || (byId[id] || {}).name || id)}</span>`;
+  const showAll = S.chipsAll === e.id, shown = showAll ? vis : vis.slice(0, 8);
+  const chips = shown.map(chipOf).join('') + (vis.length > 8 ? `<button type="button" class="chip more" data-act="chips-more" data-emp="${e.id}" aria-expanded="${showAll}">${showAll ? 'Show fewer' : '+' + (vis.length - 8) + ' more'}</button>` : '');
+  const routines = (e.abilities || []).filter((id) => ROUTINES.includes(id)).map((id) => JOB_LABELS[id]);
+  const list = tryList(e), text = list[(S.tryIdx[e.id] || 0) % list.length];
+  const can = `<div class="chips">${chips || '<span class="quiet">Nothing switched on yet.</span>'}</div>${routines.length ? `<p class="meta">Works on a schedule: ${esc(routines.join(', '))}</p>` : ''}
+    <div class="try"><span class="meta">Try asking</span><p class="try-text">“${esc(text)}”</p>
+      <div class="try-actions"><button type="button" class="btn btn-primary" data-act="try-ask" data-emp="${e.id}" data-text="${esc(text)}">${icon('claude')}Ask in Claude</button>
+      ${list.length > 1 ? `<button type="button" class="btn btn-ghost" data-act="try-next" data-emp="${e.id}">Another</button>` : ''}</div></div>`;
+  const gallery = (e.results_7d || []).length ? `<div class="gallery">${e.results_7d.map((x) => resultTile(x, e)).join('')}</div>` : `<p class="quiet">Nothing shipped this week.</p>`;
+  const mopts = (cur) => MODELS.map((m) => `<option value="${m}" ${m === cur ? 'selected' : ''}>${m}${m === 'sonnet' ? ' (balanced)' : m === 'haiku' ? ' (lightest)' : ' (strongest)'}</option>`).join('');
+  const auto = (e.abilities || []).includes('full_autonomy');
+  const controls = `<div class="controls">
+    <div class="ctl"><label for="brain-${e.id}">Thinking model</label><select class="select auto" id="brain-${e.id}" data-field="brain" data-emp="${e.id}">${mopts(e.brain || 'opus')}</select></div>
+    <div class="ctl"><label for="hands-${e.id}">Routine model</label><select class="select auto" id="hands-${e.id}" data-field="model" data-emp="${e.id}">${mopts(e.model)}</select></div>
+    <div class="ctl"><span id="auto-${e.id}">Works without asking</span><button type="button" class="switch" role="switch" aria-checked="${auto}" aria-labelledby="auto-${e.id}" data-act="order" data-kind="set_autonomy" data-emp="${e.id}" data-on="${auto ? '' : '1'}"><i></i></button><span class="meta">${auto ? 'On' : 'Off'}</span></div>
+    <div class="ctl"><button type="button" class="btn" data-act="order" data-kind="${paused ? 'resume' : 'pause'}" data-emp="${e.id}">${icon(paused ? 'play' : 'pause')}${paused ? 'Resume' : 'Pause'}</button></div></div>
+    <nav class="elinks" aria-label="More about ${esc(e.name)}"><a href="/e/${e.id}/plan">Plan</a><a href="/e/${e.id}/knowledge">Knowledge</a><a href="/e/${e.id}/work?v=files">Files</a><a href="/e/${e.id}/work?v=activity">Activity</a><a href="/e/${e.id}/manage">Settings</a></nav>`;
+  return `${head}${askCards}<section><div class="sec-head"><h2>Objective</h2></div>${objective}</section>
+    <section><div class="sec-head"><h2>What ${esc(e.name)} can do</h2></div>${can}</section>
+    <section><div class="sec-head"><h2>This week</h2></div>${weekTimeline(e, dt)}</section>
+    <section><div class="sec-head"><h2>Results</h2></div>${gallery}</section>
+    <section><div class="sec-head"><h2>Controls</h2></div>${controls}</section>`;
+}
+
 PAGES.employee = (r) => {
   const e = S.data.employees.find((x) => x.id === r.id);
-  if (!e) return `<div class="empty"><b>No employee called “${esc(r.id)}”.</b><p><a class="link" href="/team">Back to the team</a></p></div>`;
+  if (!e) return `<div class="empty"><b>No crew member called “${esc(r.id)}”.</b><p><a class="link" href="/team">Back to the crew</a></p></div>`;
   const dt = S.detail && S.detailId === r.id ? S.detail : null;
+  if (r.tab === 'overview') return tabOverview(e, dt, r);
   const nKnow = dt ? dt.skills.own.length + dt.skills.team.length : '';
   const pl = (e.plan || {}).status;
-  const tabs = [['plan', 'Plan', pl === 'proposed' ? 'needs your OK' : ''], ['work', 'Work', ''], ['chat', 'Chat', ''], ['knowledge', 'Knowledge', nKnow || ''], ['manage', 'Manage', '']];
+  const tabs = [['overview', 'Overview', ''], ['plan', 'Plan', pl === 'proposed' ? 'needs your OK' : ''], ['work', 'Work', ''], ['knowledge', 'Knowledge', nKnow || ''], ['manage', 'Manage', '']];
   const body = { plan: tabPlan, chat: tabChat, knowledge: tabKnowledge, work: tabWork, manage: tabManage }[r.tab](e, dt, r);
   const canCall = dt && dt.abilities.includes('meetings') && e.status !== 'paused';
   const callBtn = callOf(e.id) ? '' : canCall && !Object.keys(S.data.calls || {}).length
     ? `<button class="btn" data-act="order" data-kind="call_start" data-emp="${e.id}" title="${esc(e.name)} listens on this ${MAC()} and takes notes. Tell the others you're taking notes.">${icon('mic')}Listen to a call</button>` : '';
   const claudeBtn = S.data.demo ? '' : `<button class="btn btn-primary" data-act="open-claude" data-emp="${e.id}" title="${esc(e.name)}'s own running conversation in a Claude window: everything they did and said, and what you say there they remember">${icon('claude')}Open in Claude</button>`;
   return `<header class="emp-head">${avatar(e.id, e.name, 'lg')}<div class="id"><h1>${esc(e.name)}</h1><div class="sub"><span>${esc(e.role)}</span><span>·</span><span>reports to ${esc(e.supervisor)}</span><span>·</span>${statusHtml(e)}</div></div><div class="actions">${claudeBtn}${callBtn}</div></header>${callCard(e.id)}
-    <nav class="tabs">${tabs.map(([k, l, n]) => `<a href="/e/${e.id}/${k}" class="${r.tab === k ? 'on' : ''}">${l}${n !== '' ? `<small>${esc(n)}</small>` : ''}</a>`).join('')}</nav>${body}`;
+    <nav class="tabs">${tabs.map(([k, l, n]) => `<a href="/e/${e.id}${k === 'overview' ? '' : '/' + k}" class="${r.tab === k ? 'on' : ''}">${l}${n !== '' ? `<small>${esc(n)}</small>` : ''}</a>`).join('')}</nav>${body}`;
 };
 
 // The plan: PLAN.md, the one place a crew member's strategy lives. Agreed by the owner with one click,
@@ -1118,7 +1347,7 @@ PAGES.settings = () => {
     <button class="btn btn-sm" data-act="owner" data-id="${esc(p.id)}" data-do="ignore">Ignore</button></div>`).join('')}</div>` : '';
   const chans = Object.entries(CH).map(([k, l]) => { const c = s.channels[k] || {}; return `<div class="row row-2"><div><div class="title">${l}</div><div class="meta">${c.on ? 'connected' + (c.team_chat ? ' · team chat ' + esc(c.team_chat) : '') : 'not connected'}</div></div><a class="btn btn-sm" href="/connect?ch=${k}">${c.on ? 'Manage' : 'Connect'}</a></div>`; }).join('');
   const orders = d.orders.slice(-15).reverse();
-  return `<header class="page-head"><div><h1>Settings</h1></div></header>
+  return `<header class="page-head"><div><h1>Settings</h1></div>${d.demo ? '' : `<div class="actions"><button type="button" class="btn" data-act="open-desk" title="One Claude chat for your whole crew: hire, check and change anyone by talking">${icon('claude')}Orbit in Claude</button></div>`}</header>
   <div class="settings">
   <form class="settings" data-form="settings">
     <section><h2>Your business</h2><p class="desc">Every employee reads this before they work.</p>
@@ -1224,7 +1453,7 @@ async function sendMessage(f) {
 
 document.addEventListener('click', async (ev) => {
   const a = ev.target.closest('a[href]');
-  if (a && a.getAttribute('href').startsWith('/') && !a.getAttribute('href').startsWith('/api/') && !a.hasAttribute('download') && !a.target && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey) { ev.preventDefault(); go(a.getAttribute('href')); return; }
+  if (a && a.getAttribute('href').startsWith('/') && !a.getAttribute('href').startsWith('/api/') && !a.hasAttribute('download') && !a.hasAttribute('target') && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey) { ev.preventDefault(); go(a.getAttribute('href')); return; }
   const b = ev.target.closest('[data-act]');
   if (!b) return;
   const act = b.dataset.act;
@@ -1246,6 +1475,16 @@ document.addEventListener('click', async (ev) => {
   else if (act === 'ob-routine' && S.ob) { S.ob.edit.routines[b.dataset.k] = !S.ob.edit.routines[b.dataset.k]; keepCard(); render(true); }
   else if (act === 'ob-budget' && S.ob) { S.ob.edit.budget = b.dataset.k; keepCard(); render(true); }
   else if (act === 'open-claude') { openClaude(b.dataset.emp, b); }
+  else if (act === 'try-ask') { askInClaude(b.dataset.emp, b.dataset.text, b); }
+  else if (act === 'try-next') { S.tryIdx[b.dataset.emp] = (S.tryIdx[b.dataset.emp] || 0) + 1; render(false); }
+  else if (act === 'chips-more') { S.chipsAll = S.chipsAll === b.dataset.emp ? null : b.dataset.emp; render(false); }
+  else if (act === 'needs-all') { S.needsAll = !S.needsAll; render(false); }
+  else if (act === 'ask-answer') {
+    const { emp, id, answer } = b.dataset, name = (empById(emp) || { name: 'them' }).name;
+    S.gone.add(id); render(false);                       // the card leaves at once; it comes back if the answer didn't go through
+    try { await api('/api/ask/answer', { employee: emp, id, answer }); toast(`Sent to ${name}`); await refresh(false); }
+    catch (err) { S.gone.delete(id); toast(err.message, 'err'); render(false); }
+  }
   else if (act === 'open-desk') {
     api('/api/desk', {}).then((r) => {
       if (r.opened) toast(r.new ? 'Orbit\'s chat is opening in Claude. Press Enter there once: it sets itself up.' : 'Opening Orbit\'s chat in Claude.');
@@ -1547,3 +1786,4 @@ async function tick() {
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(false).catch(() => {}); schedule(); } });
 
 render(true).then(schedule);
+window.matchMedia('(max-width: 640px)').addEventListener('change', () => { if (S.data && route().page === 'today') render(false); });   // the orbit has a phone layout

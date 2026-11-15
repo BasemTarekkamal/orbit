@@ -23,7 +23,7 @@ sys.path.insert(0, CORE)
 sys.path.insert(0, os.path.join(CORE, "tools"))
 import engine  # noqa: E402
 
-PORT = 7318
+PORT = int(os.environ.get("STAFFROOM_DEMO_PORT") or 7318)     # another port lets two demos run side by side
 OWNER = "Alex"
 TEAM_NAME = "Northwind Coffee"
 PEOPLE = [
@@ -207,6 +207,61 @@ def animate():
 
 
 # ------------------------------------------------------------------ seeding
+def seed_records(ws, today):
+    """The three records the panel's Home and crew pages show (core/tools/record.py): objectives, results, asks."""
+    TS = "%Y-%m-%dT%H:%M:%S"
+    ago = lambda days, hhmm: when(days, hhmm, TS)  # noqa: E731
+    soon = lambda mins: max(dt.datetime.now() - dt.timedelta(minutes=mins), dt.datetime.now().replace(hour=0, minute=1)).strftime(TS)  # noqa: E731
+    month = today.strftime("%Y-%m")
+    write(os.path.join(ws["lina"], "notes", "forecast-november.md"), "# November forecast (draft)\n\nRoast plan: twice a week, 60 kg a batch week one; 5 kg bag test with two cafés. (demo data)")
+    objectives = {
+        "sara": [{"id": "o-cafes", "title": "Hold our café accounts through the price war", "due": (today + dt.timedelta(days=20)).isoformat(),
+                  "key_results": [{"name": "Cafés kept", "unit": "", "target": 12, "current": 11},
+                                  {"name": "Price checks a week", "unit": "", "target": 5, "current": 4},
+                                  {"name": "Competitor changes flagged within a day", "unit": "%", "target": 90, "current": 72}]}],
+        "omar": [{"id": "o-watch", "title": "Never miss a competitor move", "due": (today + dt.timedelta(days=34)).isoformat(),
+                  "key_results": [{"name": "Pages watched", "unit": "", "target": 6, "current": 4},
+                                  {"name": "Changes reported the same day", "unit": "%", "target": 95, "current": 90}]}],
+        "lina": [{"id": "o-mornings", "title": "Give Alex his mornings back", "due": (today + dt.timedelta(days=14)).isoformat(),
+                  "key_results": [{"name": "Reminders sent on time", "unit": "%", "target": 100, "current": 96},
+                                  {"name": "Minutes written within an hour", "unit": "", "target": 8, "current": 5},
+                                  {"name": "Admin emails handled for Alex", "unit": "", "target": 40, "current": 18}]}],
+    }
+    R = lambda k, rid, ts, title, kind, where, obj="": {"id": rid, "ts": ts, "title": title, "kind": kind, "where": where, "objective": obj}  # noqa: E731
+    results = {
+        "sara": [R("sara", "r-1a01", soon(35), "1 kg bag prices, all four roasters", "report", "research/prices-%s.md" % month, "o-cafes"),
+                 R("sara", "r-1a02", ago(1, "10:20"), "Harbor Roast on TikTok, this week", "report", "research/tiktok-harbor-roast.md", "o-cafes"),
+                 R("sara", "r-1a03", ago(2, "16:05"), "Q4 competitor list (draft)", "report", "research/competitors.md", "o-cafes"),
+                 R("sara", "r-1a04", ago(4, "09:40"), "Harbor Roast's cupping clip, the reply we could make", "short", "https://tiktok.example/@harborroast/video/1", "o-cafes"),
+                 R("sara", "r-1a05", ago(5, "11:30"), "Price tracker script", "file", "tools/price_check.py"),
+                 R("sara", "r-1a06", ago(9, "10:00"), "Digest, week 44", "report", "research/competitors.md"),
+                 R("sara", "r-1a07", ago(11, "10:00"), "Price check, 1 kg bags", "report", "research/prices-%s.md" % month)],
+        "omar": [R("omar", "r-2a01", soon(190), "Kettle & Co wholesale page, before and after", "video", "https://kettleandco.example/wholesale/recording.mp4", "o-watch"),
+                 R("omar", "r-2a02", ago(3, "13:15"), "Watcher log, four pages", "file", "research/watchers.md", "o-watch"),
+                 R("omar", "r-2a03", ago(9, "13:00"), "Bluebird Beans banner change", "other", "https://bluebirdbeans.example", "o-watch")],
+        "lina": [R("lina", "r-3a01", ago(2, "15:40"), "Minutes: Monday team call", "report", "research/minutes-%s.md" % (today - dt.timedelta(days=2)).isoformat(), "o-mornings"),
+                 R("lina", "r-3a02", soon(95), "Draft: 5 kg bag announcement for the cafés", "post", "https://instagram.example/northwind/p/draft-5kg", "o-mornings"),
+                 R("lina", "r-3a03", ago(1, "08:45"), "November forecast, ready to send", "file", "notes/forecast-november.md", "o-mornings")],
+    }
+    A = lambda rid, ts, title, why, kind, opts, status="open", answer="", at="": {"id": rid, "ts": ts, "title": title, "why": why, "kind": kind,  # noqa: E731
+                                                                                "options": opts, "status": status, "answer": answer, "answered_ts": at}
+    asks = {
+        "sara": [A("a-5a01", ago(6, "09:30"), "Cover decaf in the Monday digest?", "Harbor Roast's comments ask about it.", "decision",
+                   ["Yes, add a line", "No, skip it"], "answered", "No, skip it", ago(6, "09:41")),
+                 A("a-5a02", ago(2, "17:10"), "Approve the Q4 competitor list?", "Three companies, one page each: research/competitors.md.", "approval", ["Approve", "Look first"])],
+        "omar": [A("a-6a01", ago(1, "12:00"), "Watch Kettle & Co's jobs page too?", "Sara reads hiring as a demand signal; it is one more watcher.", "decision",
+                   ["Yes, watch it", "No, leave it"]),
+                 A("a-6a02", ago(10, "12:00"), "Drop the Bluebird home-page watcher?", "It changed twice in a month.", "decision", ["Keep it", "Drop it"], "answered", "Keep it", ago(10, "12:30"))],
+        "lina": [A("a-7a01", ago(1, "14:20"), "The packaging supplier's portal needs a sign-in", "The lead time sits behind it, and I never sign in for you.", "blocked", [])],
+    }
+    for k in ("sara", "omar", "lina"):
+        os.makedirs(os.path.join(ws[k], "state"), exist_ok=True)
+        with open(os.path.join(ws[k], "state", "objectives.json"), "w", encoding="utf-8") as fh:
+            json.dump(objectives[k], fh, indent=1)
+        jsonl(os.path.join(ws[k], "state", "results.jsonl"), results[k])
+        jsonl(os.path.join(ws[k], "state", "asks.jsonl"), asks[k])
+
+
 def seed(home):
     import hire
     import skillbook
@@ -387,6 +442,7 @@ My view: the 5 kg bag is the cheapest test we have of wholesale demand.
                              "error": "timed out after 30 min" if (days == 3 and job == "bus" and k == "omar") else None})
         rows.sort(key=lambda r: r["ts"])
         jsonl(os.path.join(ws[k], "state", "runs.jsonl"), rows)
+    seed_records(ws, today)
     with open(os.path.join(ws["sara"], "state", "claude_usage.json"), "w") as fh:
         json.dump({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "rateLimits": [{"kind": "five_hour", "percentUsed": 23}, {"kind": "seven_day", "percentUsed": 41}]}, fh)
     os.makedirs(os.path.join(home, "state"), exist_ok=True)

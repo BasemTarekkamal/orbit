@@ -1,0 +1,4 @@
+#!/bin/sh
+# Records for the control panel: results, asks, objectives. See core/tools/record.py.
+D=$(cd "$(dirname "$0")/.." && pwd -P)
+exec /usr/bin/env python3 "$D/core/tools/record.py" "$@"

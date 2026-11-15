@@ -268,6 +268,51 @@ class Panel(unittest.TestCase):
         self.assertTrue(all(f["path"].split("/")[0] in ("research", "notes", "tools", "growth", "evals") for f in d["files"]))
         self.assertEqual(self.req("/api/employee/nobody", headers=self.auth())[0], 404)
 
+    def test_records_in_state_and_answering_an_ask(self):
+        import record
+        ws = engine.employee("tess")["workspace"]
+        record.set_objective(ws, "o-1", "Hold the cafés", "2026-12-31")
+        record.set_kr(ws, "o-1", "Cafés kept", "", 12, 11)
+        res = record.add_result(ws, "Price report", "report", "research/notes.md", "o-1")
+        ask = record.add_ask(ws, "Approve the list?", "Three companies", "approval", ["Approve", "Look first"])
+        record.add_ask(ws, "Sign in for me", "Portal", "blocked")
+        st = json.loads(self.req("/api/state", headers=self.auth())[2])
+        e = st["employees"][0]
+        self.assertEqual(e["objectives"][0]["key_results"][0]["current"], 11)
+        self.assertEqual([a["id"] for a in e["asks_open"]][0], ask["id"])
+        self.assertEqual([r["id"] for r in e["results_7d"]], [res["id"]])
+        self.assertEqual({k: st["week"][k] for k in ("shipped", "needed_you", "blocked", "failed_runs")},
+                         {"shipped": 1, "needed_you": 2, "blocked": 1, "failed_runs": 0})
+        self.assertIn("plan_used", st["week"])
+        self.assertEqual(st["week_before"]["shipped"], 0)
+        asks = [n for n in st["needs"] if n["kind"] == "ask"]
+        self.assertEqual([n["id"] for n in st["needs"][:2]], [a["id"] for a in asks])      # asks lead the list
+        self.assertEqual((asks[0]["ask_kind"], asks[0]["options"], asks[0]["emp"]), ("approval", ["Approve", "Look first"], "tess"))
+        d = json.loads(self.req("/api/employee/tess", headers=self.auth())[2])
+        self.assertEqual((len(d["objectives"]), len(d["asks_open"]), len(d["results_7d"])), (1, 2, 1))
+        # answering: same locks as the other writes
+        body = {"employee": "tess", "id": ask["id"], "answer": "Approve"}
+        self.assertEqual(self.req("/api/ask/answer", body)[0], 403)
+        self.assertEqual(self.req("/api/ask/answer", body, headers=self.auth())[0], 403)               # no Origin
+        before = len(RUNS)
+        code, _, out = self.req("/api/ask/answer", body, headers=self.auth({"Origin": self.base}))
+        self.assertEqual(code, 200, out)
+        self.assertEqual(len(RUNS), before + 1)                                                          # the crew member was woken...
+        self.assertIn('You asked: "Approve the list?". Alex answered: Approve', RUNS[-1][0][1])         # ...with the answer
+        self.assertEqual(record.asks(ws, "answered")[0]["answer"], "Approve")
+        code, _, out = self.req("/api/ask/answer", body, headers=self.auth({"Origin": self.base}))
+        self.assertEqual(code, 400)                                                                      # not twice
+        self.assertEqual(self.req("/api/ask/answer", {"employee": "nobody", "id": "x", "answer": "y"}, headers=self.auth({"Origin": self.base}))[0], 400)
+        st = json.loads(self.req("/api/state", headers=self.auth())[2])
+        self.assertEqual(len(st["employees"][0]["asks_open"]), 1)
+        # a TASKS.md "waiting on owners" line for an ask that is open or was answered lately is not a second need
+        with open(os.path.join(ws, "TASKS.md"), "w") as fh:
+            fh.write("# Tasks\n\n## Waiting on owners\n- Approve the list (research/notes.md) · since 1 Nov\n- Something else entirely · since 2 Nov\n")
+        st = json.loads(self.req("/api/state", headers=self.auth())[2])
+        waits = [n["title"] for n in st["needs"] if n["kind"] == "waiting"]
+        self.assertEqual(waits, ["Something else entirely · since 2 Nov"])
+        self.assertFalse([n for n in st["needs"] if n["kind"] == "ask" and n["title"].startswith("Approve")])      # answered: not open either
+
     def test_unread_and_seen_in_the_panel(self):
         team.feed("tess", "Tess", "Alex", "Standup: all good.", "job")
         code, _, body = self.req("/api/state", headers=self.auth())

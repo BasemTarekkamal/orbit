@@ -112,6 +112,9 @@ def _bash_step(command, ws):
         return "Posting to the team" if first == "post" else "Checking who's on the team"
     if tool == "staff-remind":
         return {"add": "Setting a reminder", "cancel": "Cancelling a reminder"}.get(first, "Checking reminders")
+    if tool == "staff-record":
+        return {"result": "Recording what I shipped", "ask": "Asking you a question", "objective": "Updating my objective",
+                "kr": "Updating my key results"}.get(first, "Checking my records")
     if tool == "staff-skill":
         return {"new": "Writing down a new skill", "check": "Checking a skill", "share": "Sharing a skill with the team",
                 "drop": "Dropping a skill"}.get(first, "Checking my skills")
