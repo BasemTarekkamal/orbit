@@ -88,8 +88,8 @@ and everything it says reaches you on all of them:
   routine's time the alarm messages that chat, they do the work right there, and the report waits for you
   with the unread dot, like any Claude chat you leave running. You answer in the same chat. No Claude app? `orbit chat maya`
   opens their running conversation in a terminal instead.
-- **In the control panel:** the team room, each crew member's Chat tab, and a count of what you haven't
-  seen. In a terminal: `orbit inbox`.
+- **In Mission Control:** what they shipped shows up as results, and anything they need from you as a
+  "needs you" card you answer with one click. In a terminal: `orbit inbox`.
 - **On your phone:** Telegram, Slack or Discord (the panel connects it in about two minutes). Without a
   phone, routine reports also pop up as notifications on this computer; on a Mac, the first one asks you
   to allow notifications from Orbit.
@@ -98,7 +98,7 @@ and everything it says reaches you on all of them:
 with a pretend team (invented business, canned replies, no bot, no Claude run). `orbit demo --stop`
 ends it.
 
-![Watching an employee work](docs/screens/live-dark.jpg)
+![Mission Control: your crew in orbit, what needs you, this week](docs/screens/home-dark.jpg)
 
 ---
 
@@ -192,30 +192,36 @@ and claim comes with a source link.
 
 ## Mission Control
 
-![Today](docs/screens/today-dark.jpg)
+![A crew member's page](docs/screens/crew-member-dark.jpg)
 
-`orbit panel` opens Mission Control, a small app on your computer (no account, no cloud, light and dark), built for people
-who don't live in Terminal: every setting is a button or a form.
+`orbit panel` opens Mission Control, a small app on your computer (no account, no cloud, light and dark, phone
+width too), built for people who don't live in Terminal. It shows instead of tells: your crew writes down what it
+shipped, what it needs from you and how far it is toward its goals, and the panel draws that as cards and bars.
+There is no chat inside it: talking happens in each crew member's own Claude chat, one click away.
 
-- **Watch them work.** While an employee works you see each step as it happens ("Searching the web",
-  "Opening tiktok.com in the browser", "Asking Omar", "Writing research/prices.md"), and every answer
-  keeps a **How I did it** receipt: the steps, the time, the tokens.
-- **Hiring is an interview:** your name and business, then the job (be my right hand, research my
-  market, tell me what's said on TikTok, find leads, watch my competitors, keep my books, or describe it
-  yourself), then your Claude asks what this job needs and writes the card you approve. Instead of
-  "I can't", the card lists the access they'll ask for: signing in once in their own browser, posting
-  after you approve, money read only.
+- **Home:** your crew in orbit around you, each with one word for where they are (Working, Needs you, Idle,
+  Paused, Failing); at most three "needs you" cards answered with one click (Approve, pick an option,
+  Open chat); this week's numbers; and today's results.
+- **A crew member's page:** their questions for you, their objective with key-result bars, what they can do
+  with a sentence to try in Claude, their week at a glance, their results, and the controls (models, works
+  without asking, pause). Their notes, files and activity are one link away.
+- **Objectives:** every crew member's goals, soonest due first, each marked On track or Behind.
+- **Metrics:** the last 8 weeks: shipped, times they needed you, blocked, failed runs, and your plan use.
+- **Hiring is an interview, one question at a time:** pick the job (be my right hand, research my market,
+  tell me what's said on TikTok, find leads, watch my competitors, keep my books, or describe it yourself),
+  answer a few questions your Claude writes for it, and approve the card: their responsibilities, first
+  task, first 30-day objective, and the access they'll ask for instead of saying "I can't" (signing in once
+  in their own browser, posting after you approve, money read only).
+- **On your phone:** add your Mac's private address (for example its Tailscale name) to `staff.json` as
+  `"panel": {"hosts": ["your-mac.your-tailnet.ts.net"]}` and open the panel's link there. Only that exact
+  address is accepted, over HTTPS, and the secret link still guards it.
 - **Your phone in two minutes:** paste your bot's token in the panel, tap "Open Telegram and press
   Start" (or send a 6-digit code on Slack or Discord), done. The token never goes through a chat.
-- **Today:** who's working on what right now, what needs you, what the team said, plan use.
-- **An employee's page:** **Chat** (with suggestions to try, what they can and can never do),
-  **Knowledge** (the notes they keep, skills they learned or you taught, rules you set), **Work**
-  (every file they wrote, and every run with its steps) and **Manage** (pause, brain and hands,
-  abilities, run a routine now).
-- **Settings:** your business, workdays, routine times, the research budget and Apify token, chat
-  channels, who may direct the team.
+- **Settings:** your business, connections and chat channels, the limits that never change, appearance,
+  and an Advanced section (the abilities table, team skills, the team room, model defaults).
 
-![An employee's first day](docs/screens/first-day-dark.jpg)
+![Objectives](docs/screens/objectives-dark.jpg)
+![Metrics](docs/screens/metrics-dark.jpg)
 
 ## Safe by design
 
